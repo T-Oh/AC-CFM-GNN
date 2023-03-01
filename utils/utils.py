@@ -8,6 +8,7 @@ from torch.serialization import save
 from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected
 import numpy as np
+import matplotlib.pyplot as plt
 
 #from tabulate import tabulate
 
@@ -293,3 +294,38 @@ class ImbalancedSampler(torch.utils.data.WeightedRandomSampler):
         weight = class_weight[y]
 
         return super().__init__(weight, num_samples, replacement=True)
+    
+def discrete_loss(output, target):
+    discrete_array = torch.eq(torch.floor(output*10), torch.floor(target*10))
+    loss = torch.sum(discrete_array*-1+1).float()
+    loss.requires_grad = True
+    
+    #old version where if within 20% of label mse is used otherwise error is 1
+    """loss = 0
+    loss_from_missclassification = 0
+    loss_from_correct_classification = 0
+    for i in range(len(output)):
+        if output[i] > target[i]* 0.8 and output[i] < target[i]*1.2:
+            loss += (output[i]-target[i])**2
+            loss_from_correct_classification += (output[i]-target[i])**2
+        elif target[i] == 0 and output[i] < 0.01:
+            loss += 0
+        else: 
+            loss += 1
+            loss_from_missclassification += 1"""
+    return loss/len(output)
+
+def count_missclassified(output,target):
+    count = 0
+    missclassified = np.zeros(2000)
+    for i in range(len(output)):
+        if output[i] > target[i]* 0.8 and output[i] < target[i]*1.2:
+            continue
+        elif target[i] == 0 and output[i] < 0.01:
+            continue
+        else: 
+            count +=1
+            missclassified[i] = output[i]
+    plt.bar(range(2000),missclassified)
+    return count
+    

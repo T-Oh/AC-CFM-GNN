@@ -11,24 +11,24 @@ import numpy as np
 
 def plot_loss(file=None):
     if file == None:
-        losses=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/test2/losses.pt")
+        losses=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/SAGE/training_study_highoutage_subset/losses_1L_12HF_0.172lr.pt")
     else:
         losses=load(file)
     plt.plot(losses)
     #plt.xlim(1,100)
     #plt.ylim(1.705e6,1.710e6)
-    plt.title("TAG LR=0.015, feature_scaling=min_max, label_scaling=max")
+    plt.title("SAGE LR=0.172, 1 layers")
     plt.ylabel("MSE")
     plt.xlabel("Epoch")
     plt.show()
     
 def plot_hist(file=None):
     if file == None:
-        data=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/TAGNet01_supernode/labels.pt")
+        data=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/subset/logtrans/labels.pt")
     else:
         data=load(file)
     plt.hist(data,bins=10)
-    plt.ylim((0,110))
+    #plt.ylim((0,110))
     plt.title("Labels")
     plt.xlabel("Outage")
     plt.ylabel("N labels")

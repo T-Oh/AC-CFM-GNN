@@ -4,17 +4,18 @@ from torch.nn import Module, ModuleList, Linear, Sigmoid, ReLU, BatchNorm1d
 
 
 class ArmaConvModule(Module):
-    def __init__(self, num_channels_in, num_channels_out, activation, num_internal_layers, num_internal_stacks, batch_norm=False, shared_weights=True, dropout=0.25):
+    def __init__(self, num_channels_in, num_channels_out, activation, num_internal_layers, num_internal_stacks, batch_norm=False, shared_weights=False, dropout=0.00):
         super(ArmaConvModule, self).__init__()
         self.activation = activation
         self.batch_norm = batch_norm
         self.conv = ARMAConv(in_channels=num_channels_in, out_channels=num_channels_out,
                              num_stacks=num_internal_stacks, num_layers=num_internal_layers, shared_weights=shared_weights, dropout=dropout)
+        #self.endLinear=Linear()
         if batch_norm:
             self.batch_norm_layer = BatchNorm1d(num_channels_out)
 
-    def forward(self, data, x):
-        edge_index, edge_weight = data.edge_index, data.edge_attr
+    def forward(self, data):
+        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr
 
         x = self.conv(x, edge_index=edge_index,
                       edge_weight=edge_weight.float())
