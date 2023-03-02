@@ -18,7 +18,7 @@ def run_training(trainloader, testloader, engine, cfg):
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
-        temp_train_loss, temp_output, temp_labels = engine.train_epoch(trainloader)
+        temp_train_loss, _, _ = engine.train_epoch(trainloader)
         temp_eval, _, _ = engine.eval(testloader)    #TO change back to testloader if train_size <1
 
         train_loss.append(temp_train_loss)

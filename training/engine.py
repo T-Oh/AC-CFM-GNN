@@ -53,7 +53,7 @@ class Engine(object):
 
             
             #compile outputs and labels for saving
-                        
+            """            
             if first:
                 if self.task == "NodeReg":
                     total_output=output[None,:] 
@@ -69,13 +69,14 @@ class Engine(object):
                 else:
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
-
-            
+            """
+            total_output = 0    #REMOVE if total output of every epoch should be saved
+            total_labels = 0
             #calc and backpropagate loss
 
 
             temp_loss = self.criterion(output, labels)#.float()
-
+            print(temp_loss)
 
             self.optimizer.zero_grad()
             temp_loss.backward()
@@ -117,13 +118,15 @@ class Engine(object):
                     labels=torch.tensor(temp_labels)
                     output= torch.tensor(temp_output)
                     first = False
-                elif second:
+                    """elif second:
+                    print(labels.shape)
+                    print(temp_labels.shape)
                     labels = torch.stack([labels,temp_labels])
                     output = torch.stack([output, temp_output])
-                    second = False
+                    second = False"""
                 else:
-                    labels = torch.cat((labels, temp_labels.unsqueeze(0)),0)
-                    output = torch.cat((output, temp_output.unsqueeze(0)),0)
+                    labels = torch.cat((labels, temp_labels),0)     #.unsqueeze(0)
+                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)
             #TO
             R2torch=R2Score().to(self.device)
             labels=labels.to(self.device)

@@ -75,8 +75,8 @@ def get_min_max_features(path):
     return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max
 
 
-
-path='.\\processed\\'
+"""
+path='.//processed//'
 x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max = get_min_max_features(path)
 
 x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
@@ -146,7 +146,7 @@ np.savez("test_data_histograms",x1hist=x1hist, x2hist=x2hist,
                                  node_label_bins=node_label_bins)
 
 
-
+"""
 """
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
@@ -173,6 +173,33 @@ for i in range(4):
 #np.savez("data_histograms",x1hist=x1hist,x2hist=x2hist,edgehist=edgehist,x1bins=x1bins,x2bins=x2bins,edgebins=edgebins)
 
 """
+
+
+data = np.load('C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/plots/Feature_Distributions/1500_subset/1500_subset_data_histograms.npz')
+x1hist = data['x1hist']
+x2hist = data['x2hist']
+x1bins = data['x1bins']
+x2bins = data['x2bins']
+
+edgehist1 = data['edgehist1']
+edgehist2 = data['edgehist2']
+edgehist3 = data['edgehist3']
+edgehist4 = data['edgehist4']
+edgehist5 = data['edgehist5']
+edgehist6 = data['edgehist6']
+edgehist7 = data['edgehist7']
+
+edgebins1 = data['edgebins1']
+edgebins2 = data['edgebins2']
+edgebins3 = data['edgebins3']
+edgebins4 = data['edgebins4']
+edgebins5 = data['edgebins5']
+edgebins6 = data['edgebins6']
+edgebins7 = data['edgebins7']
+
+node_label_hist = data['node_label_hist']
+node_label_bins = data['node_label_bins']
+
 #Plotting
 fig1,ax1=plt.subplots()
 ax1.bar(x1bins[0:10],x1hist,width=x1bins[1]-x1bins[0],align='edge')
@@ -181,7 +208,7 @@ ax1.set_title("Node Feature Apparent Power")
 fig1.savefig("ac_node_feature_distr_active_power.png")
 
 fig2,ax2=plt.subplots()
-ax2.bar(x2bins[0:10],x2hist,width=x2bins[1]-x2bins[0],align='edge')
+ax2.bar(x2bins[0:11],x2hist,width=x2bins[1]-x2bins[0],align='edge')
 ax2.set_title("Node Feature Voltage magnitude")
 #ax2.set_xlabel("Voltage Angle [degree]")
 fig2.savefig("ac_node_feature_distr_vm_power.png")
@@ -235,7 +262,7 @@ ax4.set_xlabel("")
 fig4.savefig("ac_node_feature_distr_voltage_amplitude.png")"""
 
 fig5,ax5=plt.subplots()
-ax5.bar(node_label_bins[0:10],node_label_hist,width=node_label_bins[1]-node_label_bins[0],align='edge')
+ax5.bar(node_label_bins[0:11],node_label_hist,width=node_label_bins[1]-node_label_bins[0],align='edge')
 ax5.set_title("Power Outage at Nodes (NodeLabel)")
 ax5.set_xlabel("")
 fig5.savefig("ac_node_label_distr.png")

@@ -81,7 +81,8 @@ if cfg["study::run"]:
         'layers' : tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
         'HF' : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
         'heads' : tune.choice([1,2]),
-        'LR' : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper'])}
+        'LR' : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
+        'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])}
     
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')

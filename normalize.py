@@ -111,7 +111,7 @@ for file in os.listdir(processed_dir):
         #node power
         x[:,0] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)
         #node voltage magnitude
-        x[:,1] = ((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
+        x[:,1] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
         
         #Edge Features
         edge_attr = data['edge_attr']
