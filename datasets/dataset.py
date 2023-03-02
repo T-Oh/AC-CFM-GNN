@@ -279,7 +279,7 @@ class HurricaneDataset(Dataset):
             scenario = self.get_scenario_of_file(raw_path)
             file=scipy.io.loadmat(raw_path)  #loads a full scenario   
             #loop through steps of scenario each step will be one processed data file
-            for i in [2,3,4,5,6,11,19,22]:#len(file['clusterresult'][0,:])):
+            for i in [0,1,2,3,4,5,6,11,19,22]:#len(file['clusterresult'][0,:])):
                 #Node data
                 if i == 0:  #in first iteration load original pwsdata as initial data  
                     node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
