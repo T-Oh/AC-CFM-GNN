@@ -30,11 +30,11 @@ assert False
 """
 
 class GAT(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.05, num_heads=1):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1):
         super(GAT, self).__init__()
         self.num_layers=num_layers
-        self.conv1=GATv2Conv(num_node_features,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = 0, heads=num_heads).to(float)
-        self.conv2=GATv2Conv(hidden_size*num_heads,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = 0,heads=num_heads).to(float)
+        self.conv1=GATv2Conv(num_node_features,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout, heads=num_heads).to(float)
+        self.conv2=GATv2Conv(hidden_size*num_heads,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=num_heads).to(float)
 
         self.relu = ReLU()
         self.endLinear = Linear(hidden_size*num_heads,num_targets,bias=True)

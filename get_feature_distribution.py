@@ -75,8 +75,8 @@ def get_min_max_features(path):
     return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max
 
 
-"""
-path='.//processed//'
+
+path='./processed/'
 x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max = get_min_max_features(path)
 
 x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
@@ -138,7 +138,7 @@ for file in os.listdir(path):
             edgehist7 += edgehist7_temp
             #labelhist += labelhist_temp
             node_label_hist += node_label_hist_temp
-np.savez("test_data_histograms",x1hist=x1hist, x2hist=x2hist, 
+np.savez("4000_subset_data_histograms",x1hist=x1hist, x2hist=x2hist, 
                                  edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
                                  node_label_hist=node_label_hist,
                                  x1bins=x1bins, x2bins=x2bins, 
@@ -146,7 +146,6 @@ np.savez("test_data_histograms",x1hist=x1hist, x2hist=x2hist,
                                  node_label_bins=node_label_bins)
 
 
-"""
 """
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
@@ -171,89 +170,63 @@ for i in range(4):
     edgehist+=edgehist_temp
     print(edgehist)
 #np.savez("data_histograms",x1hist=x1hist,x2hist=x2hist,edgehist=edgehist,x1bins=x1bins,x2bins=x2bins,edgebins=edgebins)
-
 """
-
-
-data = np.load('C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/plots/Feature_Distributions/1500_subset/1500_subset_data_histograms.npz')
-x1hist = data['x1hist']
-x2hist = data['x2hist']
-x1bins = data['x1bins']
-x2bins = data['x2bins']
-
-edgehist1 = data['edgehist1']
-edgehist2 = data['edgehist2']
-edgehist3 = data['edgehist3']
-edgehist4 = data['edgehist4']
-edgehist5 = data['edgehist5']
-edgehist6 = data['edgehist6']
-edgehist7 = data['edgehist7']
-
-edgebins1 = data['edgebins1']
-edgebins2 = data['edgebins2']
-edgebins3 = data['edgebins3']
-edgebins4 = data['edgebins4']
-edgebins5 = data['edgebins5']
-edgebins6 = data['edgebins6']
-edgebins7 = data['edgebins7']
-
-node_label_hist = data['node_label_hist']
-node_label_bins = data['node_label_bins']
 
 #Plotting
 fig1,ax1=plt.subplots()
 ax1.bar(x1bins[0:10],x1hist,width=x1bins[1]-x1bins[0],align='edge')
 ax1.set_title("Node Feature Apparent Power")
 #ax1.set_xlabel("Power [100MW]")
-fig1.savefig("ac_node_feature_distr_active_power.png")
+fig1.savefig("ac_node_feature_distr_active_power_4000_subset.png")
 
 fig2,ax2=plt.subplots()
-ax2.bar(x2bins[0:11],x2hist,width=x2bins[1]-x2bins[0],align='edge')
+ax2.bar(x2bins[0:10],x2hist,width=x2bins[1]-x2bins[0],align='edge')
 ax2.set_title("Node Feature Voltage magnitude")
 #ax2.set_xlabel("Voltage Angle [degree]")
-fig2.savefig("ac_node_feature_distr_vm_power.png")
+fig2.savefig("ac_node_feature_distr_vm_power_4000_subset.png")
 
 fig3,ax3=plt.subplots()
 ax3.bar(edgebins1[0:11],edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')
 ax3.set_title("Edge Feature Capacity")
 ax3.set_xlabel("Capacity [MVA]")
-fig3.savefig("ac_edge_feature_capacity_distr.png")
+fig3.savefig("ac_edge_feature_capacity_distr_4000_subset.png")
 
 fig4,ax4=plt.subplots()
 ax4.bar(edgebins2[0:10],edgehist2,width=edgebins2[1]-edgebins2[0],align='edge')
 ax4.set_title("Active PF")
 ax4.set_xlabel("")
-fig4.savefig("ac_edge_feature_active_pf_distr.png")
+fig4.savefig("ac_edge_feature_active_pf_distr_4000_subset.png")
 
 fig6,ax6=plt.subplots()
 ax6.bar(edgebins3[0:10],edgehist3,width=edgebins3[1]-edgebins3[0],align='edge')
 ax6.set_title("Edge Feature reactive PF")
 ax6.set_xlabel("")
-fig6.savefig("ac_edge_feature_reactive_pf_distr.png")
+fig6.savefig("ac_edge_feature_reactive_pf_distr_4000_subset.png")
 
 fig7,ax7=plt.subplots()
 ax7.bar(edgebins4[0:10],edgehist4,width=edgebins4[1]-edgebins4[0],align='edge')
 ax7.set_title("Edge Feature Status")
 ax7.set_xlabel("")
-fig7.savefig("ac_edge_feature_status_distr.png")
+fig7.savefig("ac_edge_feature_status_distr_4000_subset.png")
 
 fig8,ax8=plt.subplots()
 ax8.bar(edgebins5[0:10],edgehist5,width=edgebins5[1]-edgebins5[0],align='edge')
 ax8.set_title("Edge Feature resistance")
 ax8.set_xlabel("")
-fig8.savefig("ac_edge_feature_resistance_distr.png")
+fig8.savefig("ac_edge_feature_resistance_distr_4000_subset.png")
 
 fig9,ax9=plt.subplots()
 ax9.bar(edgebins6[0:11],edgehist6, width=edgebins6[1]-edgebins6[0], align='edge')
 ax9.set_title("Edge Feature reactance")
 ax9.set_xlabel("")
-fig9.savefig("ac_edge_feature_reactance_distr.png")
+fig9.savefig("ac_edge_feature_reactance_distr_4000_subset.png")
 
 fig10,ax10=plt.subplots()
 ax10.bar(edgebins7[0:10],edgehist7,width=edgebins7[1]-edgebins7[0],align='edge')
 ax10.set_title("Edge Feature Init Damage")
 ax10.set_xlabel("")
-fig10.savefig("ac_edge_feature_init_dmg_distr.png")
+fig10.savefig("ac_edge_feature_init_dmg_distr_4000_subset.png")
+
 """
 fig4,ax4=plt.subplots()
 ax4.bar(x3bins[0:9],x3hist,width=x3bins[1]-x3bins[0],align='edge')
@@ -261,15 +234,10 @@ ax4.set_title("Node Feature Voltage Amplitude")
 ax4.set_xlabel("")
 fig4.savefig("ac_node_feature_distr_voltage_amplitude.png")"""
 
+
 fig5,ax5=plt.subplots()
-ax5.bar(node_label_bins[0:11],node_label_hist,width=node_label_bins[1]-node_label_bins[0],align='edge')
+ax5.bar(node_label_bins[0:10],node_label_hist,width=node_label_bins[1]-node_label_bins[0],align='edge')
 ax5.set_title("Power Outage at Nodes (NodeLabel)")
 ax5.set_xlabel("")
-fig5.savefig("ac_node_label_distr.png")
-
-
-
-                
-
-
+fig5.savefig("ac_node_label_distr_4000_subset.png")
 
