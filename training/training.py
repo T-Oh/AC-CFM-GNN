@@ -64,7 +64,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     r2 = []
     start = time.time()
     for i in range(1, cfg['epochs'] + 1):
-        train_loss,_,_ = engine.train_epoch(trainloader)
+        train_loss,_,_ = engine.train_epoch(trainloader, config['gradclip'])
         train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:

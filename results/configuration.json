@@ -32,11 +32,14 @@
     "train_set::shuffle": false,
     "manual_seed" : 7,
 
-    "study::run" : false,
+    "study::run" : true,
     "study::n_trials" : 2,
+
     "study::lr::lower" : 1e-9,
     "study::lr::upper" : 0.1,
 
+    "study::batchsize_upper" : 250,
+    "study::batchsize_lower" : 20,
     "study::pruner:n_warmup_trials" : 10,
     "study::pruner:n_warmup_steps" : 1000,
     "study::pruner:n_min_trials" : 3,

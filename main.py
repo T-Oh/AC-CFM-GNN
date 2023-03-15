@@ -75,15 +75,16 @@ criterion.to(device)
 #Runs study if set in configuration file
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
-    
     search_space = {
-        'layers' : tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
-        'HF' : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
+        'layers'    : tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
+        'HF'    : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
         'heads' : tune.randint(cfg["study::heads_lower"],cfg["study::heads_upper"]),
-        'LR' : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
+        'LR'    : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
-        'dropout' : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01)
+        'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
+        'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05)
     }
+
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 

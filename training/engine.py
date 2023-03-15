@@ -25,7 +25,7 @@ class Engine(object):
         self.tol = tol
         self.task = task
 
-    def train_epoch(self, dataloader):
+    def train_epoch(self, dataloader, gradclip):
         
         #TO print weight matrices for debugging
         """print('\nBefore TRAINING\n')
@@ -81,8 +81,8 @@ class Engine(object):
             self.optimizer.zero_grad()
             temp_loss.backward()
             #print(temp_loss.grad)
-            
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+            if gradclip != 0:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
             
             self.optimizer.step()
             loss += temp_loss.item()
