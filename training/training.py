@@ -68,7 +68,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:
-            eval_score, _, _ =  engine.eval(trainloader)    #change back to TESTLOADER
+            eval_score, _, _ =  engine.eval(testloader)  
             test_losses.append(eval_score[0].cpu())
             discrete_measure.append(eval_score[3].cpu())
             r2.append(eval_score[1].cpu())
@@ -84,7 +84,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
             logging.warning("Trial pruned")
             raise optuna.exceptions.TrialPruned()"""
     
-    final_eval, output, labels = engine.eval(trainloader) #change back to TESTLOADER
+    final_eval, output, labels = engine.eval(testloader) 
     torch.save(list(test_losses), cfg['dataset::path'] + "results/" + f"test_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
     torch.save(list(train_losses), cfg['dataset::path'] + "results/" + f"train_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
     torch.save(list(output), cfg['dataset::path'] + "results/" + f"output_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
