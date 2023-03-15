@@ -13,25 +13,23 @@ def run_training(trainloader, testloader, engine, cfg):
     train_loss = []
     test_loss = []
     eval_scores = []
-    #output=[]
-    #labels=[]
+    output=[]
+    labels=[]
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
-        temp_train_loss, _, _ = engine.train_epoch(trainloader)
+        temp_train_loss,temp_output, temp_labels = engine.train_epoch(trainloader)
         temp_eval, _, _ = engine.eval(testloader)    #TO change back to testloader if train_size <1
 
         train_loss.append(temp_train_loss)
         test_loss.append(temp_eval[0])
-        #output.append(temp_output)  #can be added to return to save best output instead of last outpu
-        #labels.append(temp_labels)
-        #eval_scores.append(temp_eval)
-
-
+        
         if i % cfg['output_freq'] == 0:
             logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
+            output.append(temp_output)  #can be added to return to save best output instead of last outpu
+            labels.append(temp_labels)
 
-    final_eval, output, labels =  engine.eval(testloader)  #TO change back to testloader if trainsiz<1
+    final_eval, final_output, final_labels =  engine.eval(testloader)  #TO change back to testloader if trainsiz<1
     #print('USING TRAINLOADER FOR EVALUATION!')
 
     #logging.info("Final R2: ", final_eval[1])
@@ -46,7 +44,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     params = {
         "num_layers" : config['layers'],
         "hidden_size" : config['HF'],
-        "dropout" : cfg["dropout"],
+        "dropout" : config["dropout"],
         "heads" : config['heads'],
         "num_features" : num_features,
         "num_edge_features" : num_edge_features,
@@ -60,16 +58,18 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     
     logging.info(f"\n\nNew Parameters suggested:\n LR : {config['LR']} \n Layers : {config['layers']} \n HF : {config['HF']} \n Heads : {config['heads']}\n")
     
-    losses=[]
+    test_losses = []
+    train_losses = []
     discrete_measure = []
     r2 = []
     start = time.time()
     for i in range(1, cfg['epochs'] + 1):
-        _,output,labels = engine.train_epoch(trainloader)
+        train_loss,_,_ = engine.train_epoch(trainloader)
+        train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:
-            eval_score, output, labels =  engine.eval(trainloader)    #change back to TESTLOADER
-            losses.append(eval_score[0].cpu())
+            eval_score, _, _ =  engine.eval(trainloader)    #change back to TESTLOADER
+            test_losses.append(eval_score[0].cpu())
             discrete_measure.append(eval_score[3].cpu())
             r2.append(eval_score[1].cpu())
             logging.info(f"Epoch {i}: loss {eval_score[0]} // accuracy {eval_score[2]} // discrete measure {eval_score[3]}")
@@ -85,9 +85,10 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
             raise optuna.exceptions.TrialPruned()"""
     
     final_eval, output, labels = engine.eval(trainloader) #change back to TESTLOADER
-    torch.save(list(losses), cfg['dataset::path'] + "results/" + f"losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr.pt") #saving train losses
-    torch.save(list(output), cfg['dataset::path'] + "results/" + f"output_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr.pt") #saving train losses
-    torch.save(list(labels), cfg['dataset::path'] + "results/" + f"labels_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr.pt") #saving train losses
+    torch.save(list(test_losses), cfg['dataset::path'] + "results/" + f"test_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
+    torch.save(list(train_losses), cfg['dataset::path'] + "results/" + f"train_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
+    torch.save(list(output), cfg['dataset::path'] + "results/" + f"output_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
+    torch.save(list(labels), cfg['dataset::path'] + "results/" + f"labels_{params['num_layers']}L_{params['hidden_size']}HF_{params['heads']}heads_{config['LR']:.{3}f}lr_{config['dropout']}dropout.pt") #saving train losses
     #tune.report(np.array(discrete_measure).min())  #only necessary for intermediate results
 
 
@@ -95,9 +96,10 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     logging.info(f'Runtime: {(end-start)/60} min')
     result = {
         'discrete_measure' : np.array(discrete_measure).min(),
-        'loss' : np.array(losses).min(),
+        'test_loss' : np.array(test_losses).min(),
         'r2' : np.array(r2).min(),
-        'runtime' : (end-start)/60
+        'runtime' : (end-start)/60,
+        'train_loss' : np.array(train_losses).min()
         }
 
     return result

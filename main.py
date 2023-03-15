@@ -36,7 +36,6 @@ if cfg['study::run'] == True:
     port_dashboard = int(argv[2])
     #init ray
     ray.init(_temp_dir=temp_dir,num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True,dashboard_port=port_dashboard)
-
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
 
@@ -80,14 +79,15 @@ if cfg["study::run"]:
     search_space = {
         'layers' : tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
         'HF' : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
-        'heads' : tune.choice([1,2]),
+        'heads' : tune.randint(cfg["study::heads_lower"],cfg["study::heads_upper"]),
         'LR' : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
-        'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])}
-    
+        #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
+        'dropout' : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01)
+    }
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
-                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion),resources={"cpu": 1, "gpu":N_gpus/N_cpus}), param_space = search_space, 
+                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion),resources={"cpu": 2, "gpu":N_gpus/(N_cpus/2)}), param_space = search_space, 
 tune_config=tune_config, 
 run_config=run_config)
     results = tuner.fit()
@@ -136,7 +136,7 @@ else:
     torch.save(list(losses), "results/" + "losses.pt") #saving train losses
     plt.title(f'LR={cfg["optim::LR"]}')
     plt.plot(losses)
-
+    """
     fig1,ax1=plt.subplots()
     x_ticks = np.array(range(2000))
     ax1.bar(x_ticks, labels[0])
@@ -145,7 +145,7 @@ else:
     ax1.set_xlabel("Node ID")
     ax1.set_ylabel('Load Shed in p.U.')
     fig1.savefig("ac_node_feature_distr_active_power.png")
-
+    """
 end = time.time()
 logging.info(f'\nOverall Runtime: {(end-start)/60} min')    
 

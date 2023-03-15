@@ -70,13 +70,13 @@ class Engine(object):
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
             """
-            total_output = 0    #REMOVE if total output of every epoch should be saved
-            total_labels = 0
+            total_output = output    #REMOVE if total output of every epoch should be saved
+            total_labels = labels
             #calc and backpropagate loss
 
 
             temp_loss = self.criterion(output, labels)#.float()
-            print(temp_loss)
+            print(f'Temp Loss:{temp_loss}') 
 
             self.optimizer.zero_grad()
             temp_loss.backward()
@@ -112,21 +112,21 @@ class Engine(object):
                 if self.task == 'GraphReg':
                     temp_labels=batch.y
                 else:
-                    temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output= self.model(batch).reshape(-1).to(self.device)
-                if first:
+                    labels = batch.node_labels.type(torch.FloatTensor)
+                    output= self.model(batch).reshape(-1).to(self.device)
+                """if first:
                     labels=torch.tensor(temp_labels)
                     output= torch.tensor(temp_output)
-                    first = False
-                    """elif second:
+                    first = False"""
+                """elif second:
                     print(labels.shape)
                     print(temp_labels.shape)
                     labels = torch.stack([labels,temp_labels])
                     output = torch.stack([output, temp_output])
                     second = False"""
-                else:
+                """else:
                     labels = torch.cat((labels, temp_labels),0)     #.unsqueeze(0)
-                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)
+                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)"""
             #TO
             R2torch=R2Score().to(self.device)
             labels=labels.to(self.device)
