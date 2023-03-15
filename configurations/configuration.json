@@ -5,15 +5,17 @@
     "task":"NodeReg",
 
     "n_scenarios":10000,
-    "epochs": 10,
+    "epochs": 1,
     "model": "GAT",
     "supernode":false,
-    "output_freq" : 250,
+    "output_freq" : 100,
 
     "num_layers": 4,
-    "hidden_size":12,
+    "hidden_size":24,
     "num_heads" : 2,
     "dropout":0.0,
+    "gradclip" : 0.1,
+    "use_batchnorm" : true,
 
     "train_size":0.5,
     "accuracy_tolerance":0.15,
@@ -27,19 +29,18 @@
     "optim::nesterov": false,
     "optim::optimizer": "Adam",
     "optim::weight_decay": 1e-9,
-    "test_set::batchsize": 2,
-    "train_set::batchsize": 2,
+    
+    "test_set::batchsize": 50,
+    "train_set::batchsize": 50,
     "train_set::shuffle": false,
+    
     "manual_seed" : 7,
 
     "study::run" : false,
-    "study::n_trials" : 2,
+    "study::n_trials" : 3,
+    "study::lr::lower" : 1e-8,
+    "study::lr::upper" : 1e-4,
 
-    "study::lr::lower" : 1e-9,
-    "study::lr::upper" : 0.1,
-
-    "study::batchsize_upper" : 250,
-    "study::batchsize_lower" : 20,
     "study::pruner:n_warmup_trials" : 10,
     "study::pruner:n_warmup_steps" : 1000,
     "study::pruner:n_min_trials" : 3,
@@ -47,10 +48,18 @@
     "study::layers_lower" : 4,
     "study::layers_upper" : 5,
 
-    "study::hidden_features_lower" : 12,
-    "study::hidden_features_upper" : 14,
+    "study::hidden_features_lower" : 30,
+    "study::hidden_features_upper" : 30,
     "study::hidden_features_stride" : 2,
 
-    "study::heads_lower" : 1,
-    "study::heads_upper" : 2
+    "study::heads_lower" : 4,
+    "study::heads_upper" : 4,
+
+    "study::dropout_lower" : 0.0,
+    "study::dropout_upper" : 0.0,
+
+    "study::gradclip_lower" : 0.0,
+    "study::gradclip_upper" : 0.15,
+    
+    "study::batchnorm" : true
 }

@@ -82,9 +82,10 @@ if cfg["study::run"]:
         'LR'    : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
         'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
-        'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05)
+        'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05),
     }
-
+    if cfg['study::batchnorm']:
+        search_space['use_batchnorm'] = tune.choice([True, False])
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
@@ -98,13 +99,15 @@ run_config=run_config)
     
 else:
     params = {
-        "num_layers" : cfg['num_layers'],
-        "hidden_size" : cfg['hidden_size'],
-        "dropout" : cfg["dropout"],
-        "heads" : cfg['num_heads'],
-        "num_features" : num_features,
+        "num_layers"    : cfg['num_layers'],
+        "hidden_size"   : cfg['hidden_size'],
+        "dropout"       : cfg["dropout"],
+        "heads"         : cfg['num_heads'],
+        "use_batchnorm" : cfg['use_batchnorm'],
+        "gradclip"      : cfg['gradclip'],
+        "num_features"  : num_features,
         "num_edge_features" : num_edge_features,
-        "num_targets" : num_targets
+        "num_targets"   : num_targets
     }
     #Loading GNN model
     model = get_model(cfg, params)   #TO get_model does not load an old model but create a new one 

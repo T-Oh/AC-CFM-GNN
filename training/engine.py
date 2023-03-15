@@ -82,6 +82,7 @@ class Engine(object):
             temp_loss.backward()
             #print(temp_loss.grad)
             if gradclip != 0:
+                print('USING GRADCLIP')
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
             
             self.optimizer.step()

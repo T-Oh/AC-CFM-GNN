@@ -1,4 +1,4 @@
-from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv
+from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm
 from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh
 import torch
 
@@ -30,7 +30,7 @@ assert False
 """
 
 class GAT(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, batchnorm = True):
         super(GAT, self).__init__()
         self.num_layers=num_layers
         self.conv1=GATv2Conv(num_node_features,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout, heads=num_heads).to(float)
@@ -42,6 +42,8 @@ class GAT(Module):
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
         
+        self.batchnorm = BatchNorm(hidden_size*num_heads)
+        self.use_batchnorm = batchnorm
     def forward(self, data):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
@@ -62,6 +64,9 @@ class GAT(Module):
         
         
         for _ in range(self.num_layers - 1):
+            if self.use_batchnorm:
+                print('USING BATCHNORM')
+                x = self.batchnorm(x)
             x = self.relu(x)
             #print(x)
             #x = self.dropout(x)
