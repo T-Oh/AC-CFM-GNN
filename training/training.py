@@ -19,7 +19,7 @@ def run_training(trainloader, testloader, engine, cfg):
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
         temp_train_loss,temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
-        temp_eval, _, _ = engine.eval(testloader)    #TO change back to testloader if train_size <1
+        temp_eval, _, _ = engine.eval(trainloader)    #TO change back to testloader if train_size <1
 
         train_loss.append(temp_train_loss)
         test_loss.append(temp_eval[0])
@@ -29,7 +29,7 @@ def run_training(trainloader, testloader, engine, cfg):
             output.append(temp_output)  #can be added to return to save best output instead of last outpu
             labels.append(temp_labels)
 
-    final_eval, final_output, final_labels =  engine.eval(testloader)  #TO change back to testloader if trainsiz<1
+    final_eval, final_output, final_labels =  engine.eval(trainloader)  #TO change back to testloader if trainsiz<1
     #print('USING TRAINLOADER FOR EVALUATION!')
 
     #logging.info("Final R2: ", final_eval[1])
@@ -98,7 +98,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     result = {
         'discrete_measure' : np.array(discrete_measure).min(),
         'test_loss' : np.array(test_losses).min(),
-        'r2' : np.array(r2).min(),
+        'r2' : np.array(r2).max(),
         'runtime' : (end-start)/60,
         'train_loss' : np.array(train_losses).min()
         }

@@ -42,7 +42,7 @@ class GAT(Module):
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
         
-        self.batchnorm = BatchNorm(hidden_size*num_heads)
+        self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
         self.use_batchnorm = batchnorm
     def forward(self, data):
         

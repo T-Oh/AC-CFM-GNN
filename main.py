@@ -83,6 +83,7 @@ if cfg["study::run"]:
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
         'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
         'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05),
+        'use_batchnorm'     : cfg['use_batchnorm']
     }
     if cfg['study::batchnorm']:
         search_space['use_batchnorm'] = tune.choice([True, False])

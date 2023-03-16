@@ -113,30 +113,31 @@ class Engine(object):
                 if self.task == 'GraphReg':
                     temp_labels=batch.y
                 else:
-                    labels = batch.node_labels.type(torch.FloatTensor)
-                    output= self.model(batch).reshape(-1).to(self.device)
-                """if first:
+                    temp_labels = batch.node_labels.type(torch.FloatTensor)
+                    temp_output= self.model(batch).reshape(-1).to(self.device)
+                if first:
                     labels=torch.tensor(temp_labels)
                     output= torch.tensor(temp_output)
-                    first = False"""
-                """elif second:
+                    first = False
+                elif second:
                     print(labels.shape)
                     print(temp_labels.shape)
                     labels = torch.stack([labels,temp_labels])
                     output = torch.stack([output, temp_output])
-                    second = False"""
-                """else:
+                    second = False
+                else:
                     labels = torch.cat((labels, temp_labels),0)     #.unsqueeze(0)
-                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)"""
+                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)
             #TO
             R2torch=R2Score().to(self.device)
-            labels=labels.to(self.device)
+            labels = labels.to(self.device)
             output = output.to(self.device)
             loss = self.criterion(output, labels)
             discrete_measure = discrete_loss(output, labels)
             R2=R2torch(labels.reshape(-1), output.reshape(-1))
+            print(R2)
             correct = ((labels-output).abs() < self.tol).sum().item()
             accuracy = correct/len(dataloader.dataset)
             #TO end
         evaluation = [loss, R2, accuracy, discrete_measure/count]
-        return evaluation, np.array(output.cpu()), np.array(labels.cpu())
+        return evaluation, np.array(output[0:30000].cpu()), np.array(labels[0:30000].cpu())
