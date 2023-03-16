@@ -1,5 +1,6 @@
-from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm
+from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm, GINEConv
 from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh
+import torch.nn as nn
 import torch
 
 
@@ -29,12 +30,14 @@ assert False
 
 """
 
-class GAT(Module):
+class GINE(Module):
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, batchnorm = True):
-        super(GAT, self).__init__()
+        super(GINE, self).__init__()
         self.num_layers=num_layers
-        self.conv1=GATv2Conv(num_node_features,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout, heads=num_heads).to(float)
-        self.conv2=GATv2Conv(hidden_size*num_heads,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=num_heads).to(float)
+        GINE_linear1 = nn.Sequential(Linear(num_node_features, hidden_size))
+        GINE_linear2 = nn.Sequential(Linear(hidden_size, hidden_size))
+        self.conv1=GINEConv(GINE_linear1, edge_dim=num_edge_features)#.to(float)
+        self.conv2=GINEConv(GINE_linear2, edge_dim=num_edge_features)#.to(float)
 
         self.relu = ReLU()
         self.endLinear = Linear(hidden_size*num_heads,num_targets,bias=True)
@@ -62,12 +65,11 @@ class GAT(Module):
 
 
         
-        print(f'Before:\n {x}')
+        
         for _ in range(self.num_layers - 1):
             if self.use_batchnorm:
                 print('USING BATCHNORM')
                 x = self.batchnorm(x)
-                print(f'After:\n{x}')
             x = self.relu(x)
             #print(x)
             #x = self.dropout(x)

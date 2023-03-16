@@ -3,6 +3,7 @@ from models.tag import TAG, TAGNet01, TAGTest, TAGNodeReg
 from models.gcn import GCN
 from models.gat import GAT
 from models.sage import SAGE
+from models.gine import GINE
 
 
 def get_model(cfg, params):
