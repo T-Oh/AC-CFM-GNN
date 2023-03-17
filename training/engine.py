@@ -82,7 +82,6 @@ class Engine(object):
             temp_loss.backward()
             #print(temp_loss.grad)
             if gradclip != 0:
-                print('USING GRADCLIP')
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
             
             self.optimizer.step()
@@ -105,7 +104,7 @@ class Engine(object):
             correct = 0
             
             first = True
-            second = True
+            #second = True
             count = 0
             for batch in dataloader:
                 count += 1
@@ -119,15 +118,15 @@ class Engine(object):
                     labels=torch.tensor(temp_labels)
                     output= torch.tensor(temp_output)
                     first = False
-                elif second:
+                    """elif second:
                     print(labels.shape)
                     print(temp_labels.shape)
                     labels = torch.stack([labels,temp_labels])
                     output = torch.stack([output, temp_output])
-                    second = False
+                    second = False"""
                 else:
-                    labels = torch.cat((labels, temp_labels),0)     #.unsqueeze(0)
-                    output = torch.cat((output, temp_output),0)     #.unsqueeze(0)
+                    labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
+                    output = torch.cat([output, temp_output])     #.unsqueeze(0)
             #TO
             R2torch=R2Score().to(self.device)
             labels = labels.to(self.device)

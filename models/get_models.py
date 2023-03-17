@@ -35,7 +35,8 @@ def get_model(cfg, params):
                     num_layers=params["num_layers"],
                     dropout = params['dropout'],
                     num_heads = params["heads"],
-                    batchnorm = params['use_batchnorm']
+                    use_batchnorm = params['use_batchnorm'],
+                    use_skipcon = params['use_skipcon']
                 )
             except NameError:
                 raise NameError("Unknown model selected. Change model in gnn/configuration.json")

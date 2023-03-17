@@ -5,21 +5,22 @@
     "task":"NodeReg",
 
     "n_scenarios":10000,
-    "epochs": 1,
-    "model": "GAT",
+    "epochs": 2,
+    "model": "GINE",
     "supernode":false,
-    "output_freq" : 100,
+    "output_freq" : 1,
 
-    "num_layers": 4,
-    "hidden_size":24,
-    "num_heads" : 2,
+    "num_layers": 3,
+    "hidden_size":30,
+    "num_heads" : 1,
     "dropout":0.0,
     "gradclip" : 0.1,
-    "use_batchnorm" : true,
+    "use_batchnorm" : false,
+    "use_skipcon" : true,
 
-    "train_size":0.5,
+    "train_size":1,
     "accuracy_tolerance":0.15,
-    "optim::LR": 3e-2,
+    "optim::LR": 3e-3,
     "optim::betas": [
         0.9,
         0.999
@@ -30,13 +31,13 @@
     "optim::optimizer": "Adam",
     "optim::weight_decay": 1e-9,
     
-    "test_set::batchsize": 50,
-    "train_set::batchsize": 50,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 8,
     "train_set::shuffle": false,
     
     "manual_seed" : 7,
 
-    "study::run" : false,
+    "study::run" : true,
     "study::n_trials" : 3,
     "study::lr::lower" : 1e-8,
     "study::lr::upper" : 1e-4,
@@ -61,5 +62,7 @@
     "study::gradclip_lower" : 0.0,
     "study::gradclip_upper" : 0.15,
     
-    "study::batchnorm" : true
+    "study::batchnorm" : false,
+
+    "study::skipcon" : true
 }

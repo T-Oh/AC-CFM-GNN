@@ -76,17 +76,20 @@ criterion.to(device)
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
     search_space = {
-        'layers'    : tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
-        'HF'    : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
-        'heads' : tune.randint(cfg["study::heads_lower"],cfg["study::heads_upper"]),
-        'LR'    : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
+        'layers'    : 3,#tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
+        'HF'    : 16,#tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
+        'heads' : 0,#tune.randint(cfg["study::heads_lower"],cfg["study::heads_upper"]),
+        'LR'    : 3e-4,#tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
-        'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
-        'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05),
-        'use_batchnorm'     : cfg['use_batchnorm']
+        'dropout'   : 0,#tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
+        'gradclip'  : 0.1,#tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05),
+        'use_batchnorm'     : cfg['use_batchnorm'],
+        'use_skipcon'   :cfg['use_skipcon']
     }
     if cfg['study::batchnorm']:
         search_space['use_batchnorm'] = tune.choice([True, False])
+    if cfg['study::skipcon']:
+        search_space['use_batcon'] = tune.choice([True, False])
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
@@ -106,6 +109,7 @@ else:
         "heads"         : cfg['num_heads'],
         "use_batchnorm" : cfg['use_batchnorm'],
         "gradclip"      : cfg['gradclip'],
+        "use_skipcon"   : cfg['use_skipcon'],
         "num_features"  : num_features,
         "num_edge_features" : num_edge_features,
         "num_targets"   : num_targets

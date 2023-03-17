@@ -31,22 +31,27 @@ assert False
 """
 
 class GINE(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, batchnorm = True):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
         super(GINE, self).__init__()
+        #Params
         self.num_layers=num_layers
+        self.use_skipcon = use_skipcon
+        
+        #ConvLayers
         GINE_linear1 = nn.Sequential(Linear(num_node_features, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
         GINE_linear2 = nn.Sequential(Linear(hidden_size, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
         self.conv1=GINEConv(GINE_linear1, edge_dim=num_edge_features)#.to(float)
         self.conv2=GINEConv(GINE_linear2, edge_dim=num_edge_features)#.to(float)
-
+        
+        #Additional Layers
         self.relu = ReLU()
-        self.endLinear = Linear(hidden_size*num_heads,num_targets,bias=True)
+        self.endLinear = Linear(hidden_size,num_targets,bias=True)
         self.endSigmoid=Sigmoid()
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
         
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
-        self.use_batchnorm = batchnorm
+
     def forward(self, data):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
@@ -58,36 +63,36 @@ class GINE(Module):
             print(x)
             print(edge_index)
             print(edge_weight)
-            
-        #x = self.convsingle(x=x, edge_index=edge_index, edge_weight=edge_weight)
-        #x=self.conv1(x=x, edge_index=edge_index,edge_attr=edge_weight)
-        x = self.conv1(x=x, edge_index=edge_index, edge_attr=edge_weight)
-        out1 = x
+
+        out = self.conv1(x=x, edge_index=edge_index, edge_attr=edge_weight)
+        #for skip connection
 
         
         
-        for _ in range(self.num_layers - 1):
-            if self.use_batchnorm:
-                print('USING BATCHNORM')
-                x = self.batchnorm(x)
-            x = self.relu(x)
-            #print(x)
-            #x = self.dropout(x)
-            #print(x)
-            x = self.conv2(x=x+out1, edge_index=edge_index,edge_attr = edge_weight)
+        for i in range(self.num_layers - 1):
+            if self.use_skipcon and i==0:
+                skip_in = out
+                out = self.conv2(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                regular_in = out
+            elif self.use_skipcon and i>0:
+                out = self.conv2(x=skip_in+regular_in, edge_index=edge_index,edge_attr = edge_weight)
+                skip_in = regular_in
+                regular_in = out
+            else:
+                x = self.conv2(x=x, edge_index=edge_index,edge_attr = edge_weight)
             #print(x)
         
-        x = self.relu(x)
+        #out = self.relu(out)
         #print(x)
-        #x = self.dropout(x)
+        x = self.dropout(x)
         #print(x)
-        x=self.endLinear(x)
+        out=self.endLinear(out)
         #print(f'SHAPE AFTER ENDLINEAR {x.shape}')
         #print("Pool")
         #print(x)
         #x = self.pool(x,batch)
-        x = self.endSigmoid(x)
-        x.type(torch.DoubleTensor)
+        out = self.endSigmoid(out)
+        out.type(torch.DoubleTensor)
         #print(x)
         #print("END")
-        return x
+        return out
