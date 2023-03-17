@@ -1,5 +1,5 @@
 from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm, GINEConv
-from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh
+from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh, BatchNorm1d
 import torch.nn as nn
 import torch
 
@@ -34,8 +34,8 @@ class GINE(Module):
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, batchnorm = True):
         super(GINE, self).__init__()
         self.num_layers=num_layers
-        GINE_linear1 = nn.Sequential(Linear(num_node_features, hidden_size))
-        GINE_linear2 = nn.Sequential(Linear(hidden_size, hidden_size))
+        GINE_linear1 = nn.Sequential(Linear(num_node_features, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
+        GINE_linear2 = nn.Sequential(Linear(hidden_size, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
         self.conv1=GINEConv(GINE_linear1, edge_dim=num_edge_features)#.to(float)
         self.conv2=GINEConv(GINE_linear2, edge_dim=num_edge_features)#.to(float)
 
@@ -45,7 +45,7 @@ class GINE(Module):
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
         
-        self.batchnorm = BatchNorm(hidden_size*num_heads)
+        self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
         self.use_batchnorm = batchnorm
     def forward(self, data):
         
@@ -62,7 +62,7 @@ class GINE(Module):
         #x = self.convsingle(x=x, edge_index=edge_index, edge_weight=edge_weight)
         #x=self.conv1(x=x, edge_index=edge_index,edge_attr=edge_weight)
         x = self.conv1(x=x, edge_index=edge_index, edge_attr=edge_weight)
-
+        out1 = x
 
         
         
@@ -74,7 +74,7 @@ class GINE(Module):
             #print(x)
             #x = self.dropout(x)
             #print(x)
-            x = self.conv2(x=x, edge_index=edge_index,edge_attr = edge_weight)
+            x = self.conv2(x=x+out1, edge_index=edge_index,edge_attr = edge_weight)
             #print(x)
         
         x = self.relu(x)
