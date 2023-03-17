@@ -9,9 +9,31 @@ from torch import load
 import torch
 import numpy as np
 
+def plot_train_test_loss(train_loss=None, test_loss = None):
+    if train_loss == None:
+        train_loss=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/1500_subset/GC_BN_ministudy/train_losses_4L_30HF_4heads_0.001lr_0.0dropout.pt")
+        test_loss = load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/1500_subset/GC_BN_ministudy/test_losses_4L_30HF_4heads_0.001lr_0.0dropout.pt")
+    else:
+        train_loss=load(train_loss)
+        test_loss = load(test_loss)
+    fig = plt.figure()
+    ax = fig.add_subplot(111,label='train_loss')
+    ax2 = fig.add_subplot(111,label='test_loss', frame_on=False)
+    ax.plot(train_loss, color='orange', label='train_loss')
+    ax2.plot(test_loss, label='test_loss')
+    ax2.set_ylim(0.048,0.066)
+    ax.set_ylim(0.048,0.066)
+    plt.title("4000 subset")
+    plt.ylabel("MSE")
+    plt.xlabel("Epoch")
+    ax.legend()
+    ax2.legend(loc='center right')
+    plt.show()
+
+
 def plot_loss(file=None):
     if file == None:
-        losses=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/SAGE/training_study_highoutage_subset/losses_1L_12HF_0.172lr.pt")
+        losses=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/4000_subset/output_through_time_5000epochs/losses.pt")
     else:
         losses=load(file)
     plt.plot(losses)
