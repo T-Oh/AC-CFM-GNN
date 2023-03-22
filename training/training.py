@@ -18,7 +18,7 @@ def run_training(trainloader, testloader, engine, cfg):
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
-        temp_train_loss,temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
+        temp_train_loss,temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'], i)
         temp_eval, _, _ = engine.eval(trainloader)    #TO change back to testloader if train_size <1
 
         train_loss.append(temp_train_loss)
@@ -52,6 +52,9 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         "use_batchnorm" : config['use_batchnorm'],
         "use_skipcon"   : config['use_skipcon']
     }
+    if device=='cuda':
+        print('CUDA')
+        tune.utils.wait_for_gpu()
     model = get_model(cfg, params)
     model.to(device)
     optimizer = get_optimizer(cfg, model)
@@ -66,7 +69,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     r2 = []
     start = time.time()
     for i in range(1, cfg['epochs'] + 1):
-        train_loss,_,_ = engine.train_epoch(trainloader, config['gradclip'])
+        train_loss,_,_ = engine.train_epoch(trainloader, config['gradclip'], i)
         train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:

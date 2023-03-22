@@ -52,7 +52,7 @@ class GINE(Module):
         
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
 
-    def forward(self, data):
+    def forward(self, data, epoch):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
 
@@ -84,6 +84,9 @@ class GINE(Module):
         
         #out = self.relu(out)
         #print(x)
+        if epoch == 100:
+            self.dropout.p=0.0
+        print(f'Dropout: {self.dropout.p}')
         x = self.dropout(x)
         #print(x)
         out=self.endLinear(out)
