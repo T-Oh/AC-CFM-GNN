@@ -1,5 +1,5 @@
 from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm
-from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh
+from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh, LeakyReLU
 import torch
 
 
@@ -30,7 +30,7 @@ assert False
 """
 
 class GAT(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, use_batchnorm = True):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True):
         super(GAT, self).__init__()
         #Params
         self.num_layers=num_layers
@@ -41,8 +41,9 @@ class GAT(Module):
         self.conv2=GATv2Conv(hidden_size*num_heads,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=num_heads).to(float)
 
         #Additional Layers
-        self.relu = ReLU()
-        self.endLinear = Linear(hidden_size*num_heads,num_targets,bias=True)
+        self.relu = LeakyReLU()
+        self.regHead = Linear(hidden_size*num_heads, reg_head_size)
+        self.endLinear = Linear(reg_head_size ,num_targets,bias=True)
         self.endSigmoid = Sigmoid()
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)       
@@ -83,12 +84,13 @@ class GAT(Module):
         #print(x)
         #x = self.dropout(x)
         #print(x)
+        x = self.regHead(x)
         x=self.endLinear(x)
         #print(f'SHAPE AFTER ENDLINEAR {x.shape}')
         #print("Pool")
         #print(x)
         #x = self.pool(x,batch)
-        x = self.endSigmoid(x)
+        #x = self.endSigmoid(x)
         x.type(torch.DoubleTensor)
         #print(x)
         #print("END")

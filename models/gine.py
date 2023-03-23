@@ -49,7 +49,7 @@ class GINE(Module):
         self.endSigmoid=Sigmoid()
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
-        self.regressionHead = Linear(hidden_size, reg_head_size)
+        self.regHead = Linear(hidden_size, reg_head_size)
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
 
     def forward(self, data, epoch):
@@ -89,7 +89,7 @@ class GINE(Module):
         print(f'Dropout: {self.dropout.p}')
         out = self.dropout(out)
         #Regression Head
-        out = self.regressionHead(out)
+        out = self.regHead(out)
         out = self.relu(out)
         out = self.endLinear(out)
         
