@@ -55,14 +55,14 @@ class GINE(Module):
     def forward(self, data, epoch):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
-
+        
 
         PRINT=False
         if PRINT:
             print("START")
-            print(x)
-            print(edge_index)
-            print(edge_weight)
+            print(x.shape)
+            print(edge_index.shape)
+            print(edge_weight.shape)
 
         out = self.conv1(x=x, edge_index=edge_index, edge_attr=edge_weight)
         #for skip connection
@@ -71,11 +71,11 @@ class GINE(Module):
         
         for i in range(self.num_layers - 1):
             if self.use_skipcon and i==0:
-                skip_in = out
+                skip_in = out.clone()
                 out = self.conv2(x=out, edge_index=edge_index,edge_attr = edge_weight)
-                regular_in = out
+                regular_in = out.clone()
             elif self.use_skipcon and i>0:
-                out = self.conv2(x=skip_in+regular_in, edge_index=edge_index,edge_attr = edge_weight)
+                out = self.conv2(x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
                 skip_in = regular_in.clone()
                 regular_in = out.clone()
             else:
