@@ -34,11 +34,12 @@ class Engine(object):
             
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
-
+        R2score=R2Score().to(self.device)
         first=True;
 
         count = 0
         for (i, batch) in enumerate(dataloader):
+            self.optimizer.zero_grad()
             count +=1
             batch.to(self.device)
 
@@ -53,7 +54,7 @@ class Engine(object):
 
             
             #compile outputs and labels for saving
-            """            
+                        
             if first:
                 if self.task == "NodeReg":
                     total_output=output[None,:] 
@@ -69,16 +70,17 @@ class Engine(object):
                 else:
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
-            """
-            total_output = output    #REMOVE if total output of every epoch should be saved
-            total_labels = labels
+            
+            #total_output = output    #REMOVE if total output of every epoch should be saved
+            #total_labels = labels
             #calc and backpropagate loss
 
 
             temp_loss = self.criterion(output, labels)#.float()
             print(f'Temp Loss:{temp_loss}') 
 
-            self.optimizer.zero_grad()
+
+            
             temp_loss.backward()
             #print(temp_loss.grad)
             if gradclip != 0:
@@ -86,6 +88,7 @@ class Engine(object):
             
             self.optimizer.step()
             loss += temp_loss.item()
+        R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
             
         #TO print weight matrices for debugging
         """print('\nAFTER TRAINING\n')
@@ -93,7 +96,7 @@ class Engine(object):
             print(param)"""
 
         #End TO
-        return loss/count, total_output, total_labels
+        return loss/count, R2, total_output, total_labels
 
     def eval(self, dataloader):
         "Evaluates model"
@@ -113,10 +116,10 @@ class Engine(object):
                     temp_labels=batch.y
                 else:
                     temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output= self.model(batch,10000000).reshape(-1).to(self.device)
+                    temp_output = self.model.forward(batch,100).reshape(-1).to(self.device)
                 if first:
-                    labels=torch.tensor(temp_labels)
-                    output= torch.tensor(temp_output)
+                    labels=temp_labels.clone()
+                    output= temp_output.clone()
                     first = False
                     """elif second:
                     print(labels.shape)
@@ -125,18 +128,22 @@ class Engine(object):
                     output = torch.stack([output, temp_output])
                     second = False"""
                 else:
-                    labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
-                    output = torch.cat([output, temp_output])     #.unsqueeze(0)
+                    #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
+                    #output = torch.cat([output, temp_output])     #.unsqueeze(0)
+                    output=cat((output,temp_output),0)  
+                    labels=cat((labels,temp_labels),0)
+
             #TO
             R2torch=R2Score().to(self.device)
             labels = labels.to(self.device)
             output = output.to(self.device)
             loss = self.criterion(output, labels)
-            discrete_measure = discrete_loss(output, labels)
-            R2=R2torch(labels.reshape(-1), output.reshape(-1))
-            print(R2)
+            discrete_measure = discrete_loss(output.clone(), labels.clone())
+            
+
+            R2=R2torch(output.reshape(-1), labels.reshape(-1))
             correct = ((labels-output).abs() < self.tol).sum().item()
             accuracy = correct/len(dataloader.dataset)
             #TO end
         evaluation = [loss, R2, accuracy, discrete_measure/count]
-        return evaluation, np.array(output[0:30000].cpu()), np.array(labels[0:30000].cpu())
+        return evaluation, np.array(output[0:16000].cpu()), np.array(labels[0:16000].cpu())

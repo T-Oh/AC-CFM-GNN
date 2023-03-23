@@ -8,6 +8,7 @@ from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
 from ray import tune
 from ray.air import session
+from torchmetrics import R2Score
 
 def run_training(trainloader, testloader, engine, cfg):
     train_loss = []
@@ -18,16 +19,17 @@ def run_training(trainloader, testloader, engine, cfg):
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
-        temp_train_loss,temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'], i)
-        temp_eval, _, _ = engine.eval(trainloader)    #TO change back to testloader if train_size <1
+        temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'], i)
+        temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
+
 
         train_loss.append(temp_train_loss)
         test_loss.append(temp_eval[0])
-        
         if i % cfg['output_freq'] == 0:
-            logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
+            logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / train R2 {R2}/ test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
             output.append(temp_output)  #can be added to return to save best output instead of last outpu
             labels.append(temp_labels)
+            
 
     final_eval, final_output, final_labels =  engine.eval(trainloader)  #TO change back to testloader if trainsiz<1
     #print('USING TRAINLOADER FOR EVALUATION!')
@@ -66,17 +68,19 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     test_losses = []
     train_losses = []
     discrete_measure = []
-    r2 = []
+    test_R2 = []
+    train_R2 = []
     start = time.time()
     for i in range(1, cfg['epochs'] + 1):
-        train_loss,_,_ = engine.train_epoch(trainloader, config['gradclip'], i)
+        train_loss, temp_train_R2, _,_ = engine.train_epoch(trainloader, config['gradclip'], i)
         train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:
             eval_score, _, _ =  engine.eval(testloader)  
             test_losses.append(eval_score[0].cpu())
             discrete_measure.append(eval_score[3].cpu())
-            r2.append(eval_score[1].cpu())
+            test_R2.append(eval_score[1].cpu())
+            train_R2.append(temp_train_R2.cpu())
             logging.info(f"Epoch {i}: loss {eval_score[0]} // accuracy {eval_score[2]} // discrete measure {eval_score[3]}")
             result = {
                 'discrete_measure' : eval_score[3],
