@@ -28,14 +28,15 @@ start =time.time()
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
 
+
 if cfg['study::run'] == True:
     #arguments for ray
     temp_dir ='/p/tmp/tobiasoh/ray_tmp'
     N_gpus = 1
     N_cpus = int(argv[1])
-    port_dashboard = int(argv[2])
+    #port_dashboard = int(argv[2])
     #init ray
-    ray.init(_temp_dir=temp_dir,num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True,dashboard_port=port_dashboard)
+    ray.init(_temp_dir=temp_dir,num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True)#,dashboard_port=port_dashboard)
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
 
@@ -76,13 +77,14 @@ criterion.to(device)
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
     search_space = {
-        'layers'    : 3,#tune.randint(cfg["study::layers_lower"],cfg["study::layers_upper"]),
-        'HF'    : 16,#tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]),
-        'heads' : 0,#tune.randint(cfg["study::heads_lower"],cfg["study::heads_upper"]),
-        'LR'    : 3e-4,#tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
+        'layers'    : tune.qrandint(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
+        'HF'    : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
+        'heads' : tune.qrandint(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
+        'LR'    : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
-        'dropout'   : 0,#tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
-        'gradclip'  : 0.1,#tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.05),
+        'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
+        'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.01),
+        'dropout_off_epoch' : tune.quniform(cfg['study::dropout_off_epoch_lower'], cfg['study::dropout_off_epoch_lower'], 100),
         'use_batchnorm'     : cfg['use_batchnorm'],
         'use_skipcon'   :cfg['use_skipcon']
     }
@@ -93,7 +95,7 @@ if cfg["study::run"]:
     tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
-                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion),resources={"cpu": 2, "gpu":N_gpus/(N_cpus/2)}), param_space = search_space, 
+                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion),resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}), param_space = search_space, 
 tune_config=tune_config, 
 run_config=run_config)
     results = tuner.fit()
@@ -135,6 +137,7 @@ else:
     logging.info(f"Accuracy: {final_eval[2]}")
     logging.info(f"R2: {final_eval[1]}")
     logging.info(f'Discrete loss: {final_eval[3]}')
+    print(f'Final R2: {final_eval[1]}')
     
     
     save_model = True
