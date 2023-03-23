@@ -11,16 +11,17 @@
     "output_freq" : 100,
 
     "num_layers": 3,
-    "hidden_size":30,
+    "hidden_size": 30,
+    "reg_head_size": 500,
     "num_heads" : 1,
     "dropout":0.0,
     "gradclip" : 0.1,
-    "use_batchnorm" : true,
-    "use_skipcon" : true,
+    "use_batchnorm" : false,
+    "use_skipcon" : false,
 
     "train_size":1,
     "accuracy_tolerance":0.15,
-    "optim::LR": 3e-3,
+    "optim::LR": 1e-3,
     "optim::betas": [
         0.9,
         0.999
@@ -58,12 +59,16 @@
     "study::heads_upper" : 4,
 
     "study::dropout_lower" : 0.0,
-    "study::dropout_upper" : 0.0,
+    "study::dropout_upper" : 0.1,
 
     "study::gradclip_lower" : 0.0,
     "study::gradclip_upper" : 0.15,
     
     "study::batchnorm" : false,
 
-    "study::skipcon" : true
+    "study::skipcon" : false,
+
+    "study::dropout_off_epoch_lower": 0,
+    "study::dropout_off_epoch_upper": 200
+
 }

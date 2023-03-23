@@ -1,5 +1,5 @@
 from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_mean_pool, SAGEConv, GATConv, BatchNorm, GINEConv
-from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh, BatchNorm1d
+from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh, BatchNorm1d, LeakyReLU
 import torch.nn as nn
 import torch
 
@@ -31,7 +31,7 @@ assert False
 """
 
 class GINE(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, dropout=0.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
         super(GINE, self).__init__()
         #Params
         self.num_layers=num_layers
@@ -44,12 +44,12 @@ class GINE(Module):
         self.conv2=GINEConv(GINE_linear2, edge_dim=num_edge_features)#.to(float)
         
         #Additional Layers
-        self.relu = ReLU()
-        self.endLinear = Linear(hidden_size,num_targets,bias=True)
+        self.relu = LeakyReLU()
+        self.endLinear = Linear(reg_head_size,num_targets,bias=True)
         self.endSigmoid=Sigmoid()
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
-        
+        self.regressionHead = Linear(hidden_size, reg_head_size)
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
 
     def forward(self, data, epoch):
@@ -76,10 +76,10 @@ class GINE(Module):
                 regular_in = out
             elif self.use_skipcon and i>0:
                 out = self.conv2(x=skip_in+regular_in, edge_index=edge_index,edge_attr = edge_weight)
-                skip_in = regular_in
-                regular_in = out
+                skip_in = regular_in.clone()
+                regular_in = out.clone()
             else:
-                x = self.conv2(x=x, edge_index=edge_index,edge_attr = edge_weight)
+                out = self.conv2(x=out, edge_index=edge_index,edge_attr = edge_weight)
             #print(x)
         
         #out = self.relu(out)
@@ -87,14 +87,12 @@ class GINE(Module):
         if epoch == 100:
             self.dropout.p=0.0
         print(f'Dropout: {self.dropout.p}')
-        x = self.dropout(x)
-        #print(x)
-        out=self.endLinear(out)
-        #print(f'SHAPE AFTER ENDLINEAR {x.shape}')
-        #print("Pool")
-        #print(x)
-        #x = self.pool(x,batch)
-        out = self.endSigmoid(out)
+        out = self.dropout(out)
+        #Regression Head
+        out = self.regressionHead(out)
+        out = self.relu(out)
+        out = self.endLinear(out)
+        
         out.type(torch.DoubleTensor)
         #print(x)
         #print("END")
