@@ -296,7 +296,9 @@ class ImbalancedSampler(torch.utils.data.WeightedRandomSampler):
         return super().__init__(weight, num_samples, replacement=True)
     
 def discrete_loss(output, target):
-    discrete_array = torch.eq(torch.floor(output*10), torch.floor(target*10))
+    output_=output.clone()
+    labels_=target.clone()
+    discrete_array = torch.eq(torch.floor(output_*10), torch.floor(labels_*10))
     loss = torch.sum(discrete_array*-1+1).float()
     loss.requires_grad = True
     

@@ -62,7 +62,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     print(config)
     if device=='cuda':
         print('CUDA')
-        tune.utils.wait_for_gpu()
+        tune.utils.wait_for_gpu(target_util=0.66)
     model = get_model(cfg, params)
     model.to(device)
     optimizer = get_optimizer(cfg, model)

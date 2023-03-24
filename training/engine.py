@@ -57,16 +57,16 @@ class Engine(object):
                         
             if first:
                 if self.task == "NodeReg":
-                    total_output=output[None,:] 
-                    total_labels=labels[None,:]
+                    total_output=output
+                    total_labels=labels
                 else:
                     total_output=output
                     total_labels=labels
                 first=False
             else:
                 if self.task == "NodeReg":
-                    total_output=cat((total_output,output[None,:]),0)   
-                    total_labels=cat((total_labels,labels[None,:]),0)
+                    total_output=cat((total_output,output),0)   
+                    total_labels=cat((total_labels,labels),0)
                 else:
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
