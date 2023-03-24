@@ -38,10 +38,26 @@ class GINE(Module):
         self.use_skipcon = use_skipcon
         
         #ConvLayers
-        GINE_linear1 = nn.Sequential(Linear(num_node_features, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
-        GINE_linear2 = nn.Sequential(Linear(hidden_size, hidden_size),BatchNorm1d(hidden_size), ReLU(), Linear(hidden_size,hidden_size), ReLU())
-        self.conv1=GINEConv(GINE_linear1, edge_dim=num_edge_features)#.to(float)
-        self.conv2=GINEConv(GINE_linear2, edge_dim=num_edge_features)#.to(float)
+        self.convLayers = []
+        for i in range(num_layers):
+            if i == 0:
+                self.convLayers.append(GINEConv(
+                    nn.Sequential(
+                        Linear(num_node_features, hidden_size),
+                        BatchNorm1d(hidden_size),
+                        LeakyReLU(), 
+                        Linear(hidden_size,hidden_size),
+                        LeakyReLU()
+                        ), edge_dim=num_edge_features))
+            else:
+                self.convLayers.append(GINEConv(
+                    nn.Sequential(
+                        Linear(hidden_size, hidden_size),
+                        BatchNorm1d(hidden_size),
+                        LeakyReLU(), 
+                        Linear(hidden_size,hidden_size), 
+                        LeakyReLU()
+                        ), edge_dim=num_edge_features))
         
         #Additional Layers
         self.relu = LeakyReLU()
@@ -55,43 +71,45 @@ class GINE(Module):
     def forward(self, data, epoch):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
-        
 
         PRINT=False
         if PRINT:
             print("START")
-            print(x.shape)
-            print(edge_index.shape)
-            print(edge_weight.shape)
+            print(x)
+            print(edge_index)
+            print(edge_weight)
 
-        out = self.conv1(x=x, edge_index=edge_index, edge_attr=edge_weight)
-        #for skip connection
+        out = self.convLayers[0](x=x, edge_index=edge_index, edge_attr=edge_weight)
+        #print(out)
 
-        
-        
+    
         for i in range(self.num_layers - 1):
             if self.use_skipcon and i==0:
                 skip_in = out.clone()
-                out = self.conv2(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                out = self.convLayers[i+1](x=out, edge_index=edge_index,edge_attr = edge_weight)
                 regular_in = out.clone()
             elif self.use_skipcon and i>0:
-                out = self.conv2(x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
+                out = self.convLayers[i+1](x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
                 skip_in = regular_in.clone()
                 regular_in = out.clone()
             else:
-                out = self.conv2(x=out, edge_index=edge_index,edge_attr = edge_weight)
-            #print(x)
+                out = self.convLayers[i+1](x=out, edge_index=edge_index,edge_attr = edge_weight)
+            #print(out)
+
         
         #out = self.relu(out)
         #print(x)
         if epoch == 100:
             self.dropout.p=0.0
-        print(f'Dropout: {self.dropout.p}')
         out = self.dropout(out)
+        #print(out)
         #Regression Head
         out = self.regHead(out)
+        #print(out)
         out = self.relu(out)
+        #print(out)
         out = self.endLinear(out)
+        #print(out)
         
         out.type(torch.DoubleTensor)
         #print(x)
