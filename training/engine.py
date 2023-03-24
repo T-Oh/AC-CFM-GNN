@@ -89,6 +89,10 @@ class Engine(object):
             self.optimizer.step()
             loss += temp_loss.item()
         R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        example_output = total_output[0:16000]
+        example_labels = total_labels[0:16000]
+        del total_output
+        del total_labels
             
         #TO print weight matrices for debugging
         """print('\nAFTER TRAINING\n')
@@ -96,7 +100,7 @@ class Engine(object):
             print(param)"""
 
         #End TO
-        return loss/count, R2, total_output, total_labels
+        return loss/count, R2, example_output, example_labels
 
     def eval(self, dataloader):
         "Evaluates model"
@@ -116,7 +120,7 @@ class Engine(object):
                     temp_labels=batch.y
                 else:
                     temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output = self.model.forward(batch,100).reshape(-1).to(self.device)
+                    temp_output = self.model.forward(batch,100).reshape(-1)#.to(self.device)
                 if first:
                     labels=temp_labels.clone()
                     output= temp_output.clone()
@@ -134,16 +138,22 @@ class Engine(object):
                     labels=cat((labels,temp_labels),0)
 
             #TO
-            R2torch=R2Score().to(self.device)
+            R2torch=R2Score()#.to(self.device)
             labels = labels.to(self.device)
             output = output.to(self.device)
             loss = self.criterion(output, labels)
-            discrete_measure = discrete_loss(output.clone(), labels.clone())
-            
+            #discrete_measure = discrete_loss(output.clone(), labels.clone())
+            print('Labels, Output before R2:')
+            print(labels)
+            print(output)
 
             R2=R2torch(output.reshape(-1), labels.reshape(-1))
             correct = ((labels-output).abs() < self.tol).sum().item()
             accuracy = correct/len(dataloader.dataset)
             #TO end
         evaluation = [loss, R2, accuracy, discrete_measure/count]
-        return evaluation, np.array(output[0:16000].cpu()), np.array(labels[0:16000].cpu())
+        example_output = np.array(output[0:16000].cpu())
+        example_labels = np.array(labels[0:16000].cpu())
+        del output
+        del labels
+        return evaluation, example_output, example_labels

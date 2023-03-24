@@ -21,7 +21,11 @@ def run_training(trainloader, testloader, engine, cfg):
         print(f'Epoch: {i}')
         temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'], i)
         temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
-
+        print(f'\nTrainLabels{temp_labels}')
+        print(f'\nEvalLabels{eval_labels}')
+        
+        print(f'\nTrainOutput{temp_output}')
+        print(f'\nEvalOutput{eval_output}')
 
         train_loss.append(temp_train_loss)
         test_loss.append(temp_eval[0])
@@ -54,6 +58,8 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         "use_batchnorm" : config['use_batchnorm'],
         "use_skipcon"   : config['use_skipcon']
     }
+    print('\nCONFIG:\n')
+    print(config)
     if device=='cuda':
         print('CUDA')
         tune.utils.wait_for_gpu()
@@ -106,7 +112,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     result = {
         'discrete_measure' : np.array(discrete_measure).min(),
         'test_loss' : np.array(test_losses).min(),
-        'r2' : np.array(r2).max(),
+        'r2' : np.array(test_R2).max(),
         'runtime' : (end-start)/60,
         'train_loss' : np.array(train_losses).min()
         }
