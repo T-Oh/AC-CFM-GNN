@@ -19,7 +19,7 @@ def run_training(trainloader, testloader, engine, cfg):
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
-        temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'], i)
+        temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
         temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
         print(f'\nTrainLabels{temp_labels}')
         print(f'\nEvalLabels{eval_labels}')
@@ -78,7 +78,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     train_R2 = []
     start = time.time()
     for i in range(1, cfg['epochs'] + 1):
-        train_loss, temp_train_R2, _,_ = engine.train_epoch(trainloader, config['gradclip'], i)
+        train_loss, temp_train_R2, _,_ = engine.train_epoch(trainloader, config['gradclip'])
         train_losses.append(train_loss)
         #report
         if i % cfg['output_freq'] == 0:

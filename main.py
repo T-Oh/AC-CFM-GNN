@@ -78,15 +78,15 @@ if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
     search_space = {
         'layers'    : tune.qrandint(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
-        'HF'    : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
-        'heads' : tune.qrandint(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
-        'LR'    : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
-        #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"]),
+        'HF'        : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
+        'heads'     : tune.qrandint(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
+        'LR'        : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
         'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.01),
         'dropout_off_epoch' : tune.quniform(cfg['study::dropout_off_epoch_lower'], cfg['study::dropout_off_epoch_lower'], 100),
         'use_batchnorm'     : cfg['use_batchnorm'],
-        'use_skipcon'   :cfg['use_skipcon']
+        'use_skipcon'       :cfg['use_skipcon']
+        #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
     }
     if cfg['study::batchnorm']:
         search_space['use_batchnorm'] = tune.choice([True, False])
@@ -108,6 +108,7 @@ else:
         "num_layers"    : cfg['num_layers'],
         "hidden_size"   : cfg['hidden_size'],
         "dropout"       : cfg["dropout"],
+        "dropout_temp"  : cfg["dropout_temp"],
         "heads"         : cfg['num_heads'],
         "use_batchnorm" : cfg['use_batchnorm'],
         "gradclip"      : cfg['gradclip'],
@@ -125,7 +126,6 @@ else:
 
     #Initializing engine
     engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"])
-
 
     losses, final_eval, output, labels = run_training(trainloader, testloader, engine, cfg)
     torch.save(list(output), "results/"  + f"output.pt") #saving train losses
@@ -165,81 +165,4 @@ logging.info(f'\nOverall Runtime: {(end-start)/60} min')
 
 #torch.save(list(evaluations), "results/" + cfg["dataset::path"] + "evaluations.pt") #saving test evaluations
 
-"""layers_lower=cfg["study::layers_lower"]
-layers_upper=cfg["study::layers_upper"]
-hidden_features_lower=cfg["study::hidden_features_lower"]
-hidden_features_upper=cfg["study::hidden_features_upper"]
-hidden_features_stride = cfg["study::hidden_features_stride"]
-heads_lower = cfg["study::heads_lower"]
-heads_upper = cfg["study::heads_upper"]
-best_discrete_measure = np.Inf
-for layers in range(layers_lower,layers_upper+1):
-    for hidden_features in range(hidden_features_lower,hidden_features_upper+1, hidden_features_stride):
-        for heads in range(heads_lower, heads_upper+1):
-            logging.basicConfig(filename=f"results/regression_{layers}L_{hidden_features}HF.log", filemode="w", level=logging.INFO)
-            logging.info('\n\n Starting new LR study with following Params:\n')
-            logging.info(f'Layers: {layers}')
-            logging.info(f'Hidden Features: {hidden_features}')
-            logging.info(f'Heads: {heads}\n')
-            #Setting model parameters (these are tunable in hyperoptimization)
-            params = {
-                "num_layers" : layers,
-                "hidden_size" : hidden_features,
-                "dropout" : cfg["dropout"],
-                "heads" : heads,
-                "num_features" : num_features,
-                "num_edge_features" : num_edge_features,
-                "num_targets" : num_targets
-            }
-            
-            #Loading GNN model
-            """
-            
-"""model = get_model(cfg, params)   #TO get_model does not load an old model but create a new one 
-model.to(device)
-           
-
-#Choosing optimizer
-optimizer = get_optimizer(cfg, model)
-
-#Initializing engine
-engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"])"""
-
-"""
-            objective = Objective(trainloader, testloader, cfg, params, device, criterion)
-            optimal_params = run_tuning(cfg, objective)
-        
-            with open("optimal_params.json", "w+") as out:
-                out.write(json.dumps(optimal_params))
-        
-            optim_lr=optimal_params["lr"]
-            logging.info(f'\nResults of best LR ({optim_lr}) with\nLayers : {layers}\nHF : {hidden_features}\nHeads : {heads}\n')
-            #TO added to start a new model after study and not keep training the model before
-            model = get_model(cfg, params)   #TO get_model does not load an old model but create a new one 
-            model.to(device)
-            optimizer = get_optimizer(cfg, model)
-            engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"])
-            #End TO
-            
-            engine.optimizer.lr = optim_lr 
-            losses, final_eval, output, labels = run_training(trainloader, testloader, engine, epochs=cfg["epochs"])
-            #check if performance in discrete measure is better, if yes update best params
-            if final_eval[3] < best_discrete_measure:
-                best_eval = final_eval
-                best_params = {'layers' : layers,
-                               'hidden_features' : hidden_features,
-                               'heads' : heads,
-                               'lr' : optim_lr}
-            torch.save(list(losses), "results/" + cfg["dataset::path"] + f"losses_{layers}L_{hidden_features}HF_{heads}heads_{optim_lr:.{3}f}lr.pt") #saving train losses
-            torch.save(list(output), "results/" + cfg["dataset::path"] + f"output_{layers}L_{hidden_features}HF_{heads}heads_{optim_lr:.{3}f}lr.pt") #saving train losses
-            torch.save(list(labels), "results/" + cfg["dataset::path"] + f"labels_{layers}L_{hidden_features}HF_{heads}heads_{optim_lr:.{3}f}lr.pt") #saving train losses
-        
-        
-logging.info(f'Best overall parameters:\n{best_params}')
-logging.info(f'Performance:')
-logging.info(f'Final Loss {best_eval[0]}')
-logging.info(f'Final R2 {best_eval[1]}')
-logging.info(f'Final Accuracy {best_eval[2]}')
-logging.info(f'Final Discrete Measure {best_eval[3]}')
-"""
     

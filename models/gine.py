@@ -31,33 +31,57 @@ assert False
 """
 
 class GINE(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
         super(GINE, self).__init__()
         #Params
         self.num_layers=num_layers
         self.use_skipcon = use_skipcon
+        self.dropout_temp = dropout_temp
         
         #ConvLayers
-        self.convLayers = []
-        for i in range(num_layers):
-            if i == 0:
-                self.convLayers.append(GINEConv(
-                    nn.Sequential(
-                        Linear(num_node_features, hidden_size),
-                        BatchNorm1d(hidden_size),
-                        LeakyReLU(), 
-                        Linear(hidden_size,hidden_size),
-                        LeakyReLU()
-                        ), edge_dim=num_edge_features))
-            else:
-                self.convLayers.append(GINEConv(
-                    nn.Sequential(
-                        Linear(hidden_size, hidden_size),
-                        BatchNorm1d(hidden_size),
-                        LeakyReLU(), 
-                        Linear(hidden_size,hidden_size), 
-                        LeakyReLU()
-                        ), edge_dim=num_edge_features))
+        
+        self.convLayer1 = GINEConv(
+            nn.Sequential(
+                Linear(num_node_features, hidden_size),
+                BatchNorm1d(hidden_size),
+                LeakyReLU(), 
+                Linear(hidden_size,hidden_size),
+                LeakyReLU()
+                ), edge_dim=num_edge_features)
+        
+        self.convLayer2 = GINEConv(                 #Layers 2 to 5 are the same but batchnorm layers can not be reuse bcs of track_stats=True
+            nn.Sequential(
+                Linear(hidden_size, hidden_size),
+                BatchNorm1d(hidden_size),
+                LeakyReLU(), 
+                Linear(hidden_size,hidden_size), 
+                LeakyReLU()
+                ), edge_dim=num_edge_features)
+        self.convLayer3 = GINEConv(
+            nn.Sequential(
+                Linear(hidden_size, hidden_size),
+                BatchNorm1d(hidden_size),
+                LeakyReLU(), 
+                Linear(hidden_size,hidden_size), 
+                LeakyReLU()
+                ), edge_dim=num_edge_features)
+        self.convLayer4 = GINEConv(
+            nn.Sequential(
+                Linear(hidden_size, hidden_size),
+                BatchNorm1d(hidden_size),
+                LeakyReLU(), 
+                Linear(hidden_size,hidden_size), 
+                LeakyReLU()
+                ), edge_dim=num_edge_features)
+        self.convLayer5 = GINEConv(
+            nn.Sequential(
+                Linear(hidden_size, hidden_size),
+                BatchNorm1d(hidden_size),
+                LeakyReLU(), 
+                Linear(hidden_size,hidden_size), 
+                LeakyReLU()
+                ), edge_dim=num_edge_features)
+
         
         #Additional Layers
         self.relu = LeakyReLU()
@@ -68,7 +92,7 @@ class GINE(Module):
         self.regHead = Linear(hidden_size, reg_head_size)
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
 
-    def forward(self, data, epoch):
+    def forward(self, data):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
 
@@ -79,28 +103,46 @@ class GINE(Module):
             print(edge_index)
             print(edge_weight)
 
-        out = self.convLayers[0](x=x, edge_index=edge_index, edge_attr=edge_weight)
+        out = self.convLayer1(x=x, edge_index=edge_index, edge_attr=edge_weight)
         #print(out)
 
     
         for i in range(self.num_layers - 1):
-            if self.use_skipcon and i==0:
-                skip_in = out.clone()
-                out = self.convLayers[i+1](x=out, edge_index=edge_index,edge_attr = edge_weight)
-                regular_in = out.clone()
-            elif self.use_skipcon and i>0:
-                out = self.convLayers[i+1](x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
-                skip_in = regular_in.clone()
-                regular_in = out.clone()
+            if self.use_skipcon:
+                if i==0:
+                    skip_in = out.clone()
+                    out = self.convLayer2(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                    regular_in = out.clone()
+                if i==1:
+                    out = self.convLayer3(x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
+                    skip_in = regular_in.clone()
+                    regular_in = out.clone()
+                if i==2:
+                    out = self.convLayer4(x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
+                    skip_in = regular_in.clone()
+                    regular_in = out.clone()
+                if i==3:
+                    out = self.convLayer5(x=skip_in+regular_in/2, edge_index=edge_index,edge_attr = edge_weight)
+                    skip_in = regular_in.clone()
+                    regular_in = out.clone()
+
             else:
-                out = self.convLayers[i+1](x=out, edge_index=edge_index,edge_attr = edge_weight)
+                if i== 0:
+                    out = self.convLayer2(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                if i== 1:
+                    out = self.convLayer3(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                if i== 2:
+                    out = self.convLayer4(x=out, edge_index=edge_index,edge_attr = edge_weight)
+                if i== 3:
+                    out = self.convLayer5(x=out, edge_index=edge_index,edge_attr = edge_weight)
+            
             #print(out)
 
         
         #out = self.relu(out)
         #print(x)
-        if epoch == 100:
-            self.dropout.p=0.0
+        self.dropout.p = self.dropout.p*self.dropout_temp
+        print(f'Dropout {self.dropout.p}')
         out = self.dropout(out)
         #print(out)
         #Regression Head

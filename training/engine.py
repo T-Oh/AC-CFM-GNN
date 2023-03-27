@@ -25,7 +25,7 @@ class Engine(object):
         self.tol = tol
         self.task = task
 
-    def train_epoch(self, dataloader, gradclip, epoch=0):
+    def train_epoch(self, dataloader, gradclip):
         
         #TO print weight matrices for debugging
         """print('\nBefore TRAINING\n')
@@ -44,7 +44,7 @@ class Engine(object):
             batch.to(self.device)
 
 
-            output = self.model.forward(batch, epoch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
+            output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
             output.to(self.device)
             
             if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
@@ -120,7 +120,7 @@ class Engine(object):
                     temp_labels=batch.y
                 else:
                     temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output = self.model.forward(batch,100).reshape(-1)#.to(self.device)
+                    temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
                 if first:
                     labels=temp_labels.clone()
                     output= temp_output.clone()
