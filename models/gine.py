@@ -31,12 +31,14 @@ assert False
 """
 
 class GINE(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers =2,
+                 dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
         super(GINE, self).__init__()
         #Params
         self.num_layers=num_layers
         self.use_skipcon = use_skipcon
         self.dropout_temp = dropout_temp
+        self.reghead_layers = reghead_layers
         
         #ConvLayers
         
@@ -82,20 +84,20 @@ class GINE(Module):
                 LeakyReLU()
                 ), edge_dim=num_edge_features)
 
+        #Regression Head Layers
+        self.regHead1 = Linear(hidden_size, reghead_size)
+        self.regHead2 = Linear(reghead_size, reghead_size)
+        self.endLinear = Linear(reghead_size,num_targets,bias=True)
+        self.singleLinear = Linear(hidden_size, num_targets)
         
         #Additional Layers
         self.relu = LeakyReLU()
-        self.endLinear = Linear(reg_head_size,num_targets,bias=True)
-        self.endSigmoid=Sigmoid()
-        self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)
-        self.regHead = Linear(hidden_size, reg_head_size)
         self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
 
     def forward(self, data):
         
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
-
         PRINT=False
         if PRINT:
             print("START")
@@ -103,10 +105,10 @@ class GINE(Module):
             print(edge_index)
             print(edge_weight)
 
-        out = self.convLayer1(x=x, edge_index=edge_index, edge_attr=edge_weight)
+        out = self.convLayer1(x, edge_index=edge_index, edge_attr=edge_weight)
         #print(out)
 
-    
+        #Arranging Conv Layers
         for i in range(self.num_layers - 1):
             if self.use_skipcon:
                 if i==0:
@@ -142,16 +144,27 @@ class GINE(Module):
         #out = self.relu(out)
         #print(x)
         self.dropout.p = self.dropout.p*self.dropout_temp
-        print(f'Dropout {self.dropout.p}')
         out = self.dropout(out)
         #print(out)
+        
         #Regression Head
-        out = self.regHead(out)
-        #print(out)
-        out = self.relu(out)
-        #print(out)
-        out = self.endLinear(out)
-        #print(out)
+        if self.reghead_layers == 1:
+                out = self.singleLinear(out)
+                print(f'out single layer {out.shape}')
+
+        elif self.reghead_layers > 1:
+            out = self.regHead1(out)
+            print(f'out first layer {out.shape}')
+            out = self.relu(out)
+            for i in range(self.reghead_layers-2):
+                out = self.regHead2(out)
+                print(f'out {i}th layer {out.shape}')
+                #print(out)
+                out = self.relu(out)
+                #print(out)
+            out = self.endLinear(out)
+            print(f'out last layer {out.shape}')
+            #print(out)
         
         out.type(torch.DoubleTensor)
         #print(x)

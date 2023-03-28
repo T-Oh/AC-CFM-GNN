@@ -34,9 +34,9 @@ if cfg['study::run'] == True:
     temp_dir ='/p/tmp/tobiasoh/ray_tmp'
     N_gpus = 1
     N_cpus = int(argv[1])
-    #port_dashboard = int(argv[2])
+    port_dashboard = int(argv[2])
     #init ray
-    ray.init(_temp_dir=temp_dir,num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True)#,dashboard_port=port_dashboard)
+    ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard) 
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
 
@@ -77,22 +77,24 @@ criterion.to(device)
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
     search_space = {
-        'layers'    : tune.qrandint(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
+        'layers'    : 4,#tune.qrandint(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
         'HF'        : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
         'heads'     : tune.qrandint(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
         'LR'        : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
-        'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
+        'dropout'   : 0.0,#tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
         'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.01),
-        'dropout_off_epoch' : tune.quniform(cfg['study::dropout_off_epoch_lower'], cfg['study::dropout_off_epoch_lower'], 100),
+        'dropout_off_epoch' : 1000,# tune.quniform(cfg['study::dropout_off_epoch_lower'], cfg['study::dropout_off_epoch_lower'], 100),
+        'reghead_size'      : tune.lograndint(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1),
+        'reghead_layers'    : tune.qrandint(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1,1),
         'use_batchnorm'     : cfg['use_batchnorm'],
-        'use_skipcon'       :cfg['use_skipcon']
+        'use_skipcon'       : cfg['use_skipcon']
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
     }
     if cfg['study::batchnorm']:
         search_space['use_batchnorm'] = tune.choice([True, False])
     if cfg['study::skipcon']:
-        search_space['use_batcon'] = tune.choice([True, False])
-    tune_config = tune.tune_config.TuneConfig(mode='min', metric='discrete_measure', num_samples = cfg['study::n_trials'])
+        search_space['use_skipcon'] = tune.choice([True, False])
+    tune_config = tune.tune_config.TuneConfig(mode='max', metric='r2', num_samples = cfg['study::n_trials'])
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
                                             num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion),resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}), param_space = search_space, 
@@ -113,6 +115,9 @@ else:
         "use_batchnorm" : cfg['use_batchnorm'],
         "gradclip"      : cfg['gradclip'],
         "use_skipcon"   : cfg['use_skipcon'],
+        "reghead_size"  : cfg['reghead_size'],
+        "reghead_layers": cfg['reghead_layers'],
+        
         "num_features"  : num_features,
         "num_edge_features" : num_edge_features,
         "num_targets"   : num_targets

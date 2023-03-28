@@ -28,15 +28,18 @@ def get_model(cfg, params):
         else:
             try:
                 model = eval(cfg["model"])(
-                    num_node_features=params["num_features"],
-                    num_edge_features = params["num_edge_features"],
-                    num_targets= params["num_targets"],
-                    hidden_size=params["hidden_size"],
-                    num_layers=params["num_layers"],
-                    dropout = params['dropout'],
-                    num_heads = params["heads"],
-                    use_batchnorm = params['use_batchnorm'],
-                    use_skipcon = params['use_skipcon']
+                    num_node_features   = params["num_features"],
+                    num_edge_features   = params["num_edge_features"],
+                    num_targets     = params["num_targets"],
+                    hidden_size     = params["hidden_size"],
+                    num_layers      = params["num_layers"],
+                    dropout         = params['dropout'],
+                    dropout_temp    = params['dropout_temp'],
+                    num_heads       = params["heads"],
+                    use_batchnorm   = params['use_batchnorm'],
+                    use_skipcon     = params['use_skipcon'],
+                    reghead_size    = params['reghead_size'],
+                    reghead_layers  = params['reghead_layers']
                 )
             except NameError:
                 raise NameError("Unknown model selected. Change model in gnn/configuration.json")
