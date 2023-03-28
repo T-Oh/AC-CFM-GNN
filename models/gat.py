@@ -30,7 +30,7 @@ assert False
 """
 
 class GAT(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True, dropout_temp = 1.0, use_skipcon=False):
         super(GAT, self).__init__()
         #Params
         self.num_layers=num_layers
@@ -82,7 +82,7 @@ class GAT(Module):
         
         x = self.relu(x)
         #print(x)
-        #x = self.dropout(x)
+        x = self.dropout(x)
         #print(x)
         x = self.regHead(x)
         x=self.endLinear(x)
