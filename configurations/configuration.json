@@ -1,0 +1,82 @@
+{
+    "cfg_path": "",
+    "dataset": "hurricane_line_priority",
+    "dataset::path": "",
+    "task":"NodeReg",
+
+    "n_scenarios":4,
+    "epochs": 1,
+    "model": "GINE",
+    "supernode":false,
+    "output_freq" : 50,
+
+    "num_layers": 4,
+    "hidden_size": 30,
+    "reghead_size": 300,
+    "reghead_layers" : 4,
+    "num_heads" : 2,
+    "dropout": 0.0,
+    "dropout_temp": 1,
+    "gradclip" : 0.1,
+    "use_batchnorm" : false,
+    "use_skipcon" : false,
+    "use_masking" : true,
+    
+    "train_size":1,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 2,
+    "train_set::shuffle": false,
+
+    "accuracy_tolerance":0.15,
+
+    "optim::LR": 1e-3,
+    "optim::betas": [
+        0.9,
+        0.999
+    ],
+    "optim::epsilon": 1e-8,
+    "optim::loss": "MSE",
+    "optim::momentum": 0.99,
+    "optim::nesterov": false,
+    "optim::optimizer": "Adam",
+    "optim::weight_decay": 1e-9,
+    
+    "manual_seed" : 7,
+
+
+    "study::run" : false,
+    "study::n_trials" : 5,
+
+    "study::lr::lower" : 1e-4,
+    "study::lr::upper" : 1e-4,
+
+    "study::layers_lower" : 4,
+    "study::layers_upper" : 4,
+
+    "study::hidden_features_lower" : 30,
+    "study::hidden_features_upper" : 30,
+
+    "study::heads_lower" : 4,
+    "study::heads_upper" : 4,
+
+    "study::dropout_lower" : 0.0,
+    "study::dropout_upper" : 0.0,
+    "study::dropout_off_epoch_lower": 1000,
+    "study::dropout_off_epoch_upper": 1000,
+
+    "study::gradclip_lower" : 0.1,
+    "study::gradclip_upper" : 0.1,
+
+    "study::reghead_size_lower" : 50,
+    "study::reghead_size_upper" : 500,
+
+    "study::reghead_layers_lower" : 1,
+    "study::reghead_layers_upper" : 3,
+    
+    "study::batchnorm" : false,
+
+    "study::skipcon" : true
+
+
+
+}

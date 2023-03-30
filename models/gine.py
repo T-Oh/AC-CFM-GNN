@@ -2,6 +2,7 @@ from torch_geometric.nn import Sequential, GATv2Conv, global_add_pool, global_me
 from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh, BatchNorm1d, LeakyReLU
 import torch.nn as nn
 import torch
+import matplotlib.pyplot as plt
 
 
 #TESTING SUITE
@@ -32,13 +33,16 @@ assert False
 
 class GINE(Module):
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers =2,
-                 dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False):
+                 dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False, use_masking=False, mask_probs = None):
         super(GINE, self).__init__()
         #Params
         self.num_layers=num_layers
         self.use_skipcon = use_skipcon
         self.dropout_temp = dropout_temp
         self.reghead_layers = reghead_layers
+        self.use_masking = use_masking
+        self.mask_probs = mask_probs
+        plt.bar(range(2000), torch.bernoulli(mask_probs))
         
         #ConvLayers
         
@@ -104,7 +108,8 @@ class GINE(Module):
             print(x)
             print(edge_index)
             print(edge_weight)
-
+        
+            
         out = self.convLayer1(x, edge_index=edge_index, edge_attr=edge_weight)
         #print(out)
 
@@ -143,6 +148,11 @@ class GINE(Module):
         
         #out = self.relu(out)
         #print(x)
+        if self.use_masking:
+            for i in range(int(len(out)/2000)):
+                mask = torch.bernoulli(self.mask_probs)
+                out[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(out[i*2000:(i+1)*2000],0,1)*mask,0,1)
+
         self.dropout.p = self.dropout.p*self.dropout_temp
         out = self.dropout(out)
         #print(out)
@@ -150,20 +160,20 @@ class GINE(Module):
         #Regression Head
         if self.reghead_layers == 1:
                 out = self.singleLinear(out)
-                print(f'out single layer {out.shape}')
+
 
         elif self.reghead_layers > 1:
             out = self.regHead1(out)
-            print(f'out first layer {out.shape}')
+
             out = self.relu(out)
             for i in range(self.reghead_layers-2):
                 out = self.regHead2(out)
-                print(f'out {i}th layer {out.shape}')
+
                 #print(out)
                 out = self.relu(out)
                 #print(out)
             out = self.endLinear(out)
-            print(f'out last layer {out.shape}')
+
             #print(out)
         
         out.type(torch.DoubleTensor)

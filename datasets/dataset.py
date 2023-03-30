@@ -540,3 +540,26 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
     #logging.debug(f"Testset first batch labels: {next(iter(testloader)).y.tolist()}")
 
     return trainloader, testloader
+
+
+def calc_mask_probs(dataloader):
+    node_label_means = torch.zeros(2000)
+    node_label_vars = torch.zeros(2000)
+    #calc means
+    for i, batch in enumerate(dataloader):
+        batchsize = int(len(batch.node_labels)/2000)
+        for k in range(batchsize):
+            for j in range(2000):
+                node_label_means[j] += batch.node_labels[j+k*2000]
+    node_label_means /= (i+1)*batchsize
+    #calc vars
+    for i, batch in enumerate(dataloader):
+        batchsize = int(len(batch.node_labels)/2000)
+        for k in range(batchsize):
+            for j in range(2000):
+                node_label_vars[j] += (batch.node_labels[j+k*2000]-node_label_means[j])**2
+    node_label_vars = torch.sqrt(node_label_vars/((i+1)*batchsize))
+    #scale vars
+    node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
+    return node_label_probs
+    
