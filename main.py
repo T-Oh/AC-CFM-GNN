@@ -6,7 +6,7 @@ from numpy.random import seed as numpy_seed
 
 from training.engine import Engine
 from training.training import run_training, objective#, run_tuning
-from datasets.dataset import create_datasets, create_loaders
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
 from utils.utils import  plot_loss, plot_R2, ImbalancedSampler, discrete_loss
@@ -48,6 +48,9 @@ logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", fi
 trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None)
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
+#Calculate probabilities for masking of nodes if necessary
+if cfg['use_masking']:
+    mask_probs = calc_mask_probs(trainloader)
 
 #getting feature and target sizes
 num_features = trainset.__getitem__(0).x.shape[1]
@@ -117,6 +120,8 @@ else:
         "use_skipcon"   : cfg['use_skipcon'],
         "reghead_size"  : cfg['reghead_size'],
         "reghead_layers": cfg['reghead_layers'],
+        "use_masking"   : cfg['use_masking'],
+        "mask_probs"    : mask_probs,
         
         "num_features"  : num_features,
         "num_edge_features" : num_edge_features,

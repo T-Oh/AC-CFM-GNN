@@ -39,7 +39,9 @@ def get_model(cfg, params):
                     use_batchnorm   = params['use_batchnorm'],
                     use_skipcon     = params['use_skipcon'],
                     reghead_size    = params['reghead_size'],
-                    reghead_layers  = params['reghead_layers']
+                    reghead_layers  = params['reghead_layers'],
+                    use_masking     = params['use_masking'],
+                    mask_probs      =params['mask_probs']
                 )
             except NameError:
                 raise NameError("Unknown model selected. Change model in gnn/configuration.json")
