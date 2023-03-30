@@ -56,7 +56,9 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         "num_edge_features" : num_edge_features,
         "num_targets" : num_targets,
         "use_batchnorm" : config['use_batchnorm'],
-        "use_skipcon"   : config['use_skipcon']
+        "use_skipcon"   : config['use_skipcon'],
+        'reghead_size'  :config['reghead_size'],
+        'reghead_layers'  :config['reghead_layers']
     }
     print('\nCONFIG:\n')
     print(config)
