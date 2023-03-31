@@ -352,56 +352,69 @@ class HurricaneDataset(Dataset):
                         for k in range(len(adj_from)):  #check all appeareances of bus from in adj_from
                             if adj_from[k] == id_from and adj_to[k] == id_to: #if bus from and bus to are at the same entry update their edge features
                                 exists = True                       #mark as edge exists
-                                rating_feature[k] += rating[j]      #add the capacities (ratings)
-                                resistance_feature[k], reactance_feature[k] =self.calc_total_resistance_reactance(resistance_feature[k], resistance[j], reactance_feature[k], reactance[j])
                                 if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
-                                    status_feature[k] = status[j]                                
-                                if init_dmg_feature[k] != 1:
-                                    init_dmg_feature[k] = init_dmg[j]
-                                if status_feature[k] != 0:
+                                    status_feature[k] = status[j]
+                                if status_feature[k] == 0:
+                                    rating_feature[k] = 0
+                                    resistance_feature[k] = 1
+                                    reactance_feature[k] = 1
+                                    pf_feature[k] = 0
+                                    qf_feature[k] = 0
+                                else:
+                                    rating_feature[k] += rating[j]      #add the capacities (ratings)
+                                    resistance_feature[k], reactance_feature[k] =self.calc_total_resistance_reactance(resistance_feature[k], resistance[j], reactance_feature[k], reactance[j])
                                     pf_feature[k] += pf1[j]         #add PF
                                     qf_feature[k] += qf1[j]         #add PF
-                                else:
-                                    pf_feature[k] += 0              #if line is inactive set powerflows to 0         
-                                    qf_feature[k] += 0            
+         
+                                if init_dmg_feature[k] != 1:
+                                    init_dmg_feature[k] = init_dmg[j]
 
                     if (adj_to.count(id_from)>0):       #check other way
                         for k in range(len(adj_to)):
                             if adj_to[k] == id_from and adj_from[k] == id_to:
                                 exists = True
-                                rating_feature[k] += rating[j]      #add the capacities (ratings)
-                                resistance_feature[k], reactance_feature[k] = self.calc_total_resistance_reactance(resistance_feature[k],resistance[j],reactance_feature[k], reactance[j])
                                 if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
                                     status_feature[k] = status[j]
-                                if init_dmg_feature[k] != 1:
-                                    init_dmg_feature[k] = init_dmg[j]
-                                if status_feature[k] != 0:
+                                if status_feature[k] == 0:
+                                    rating_feature[k] = 0
+                                    resistance_feature[k] = 1
+                                    reactance_feature[k] = 1
+                                    pf_feature[k] = 0
+                                    qf_feature[k] = 0
+                                else:
+                                    rating_feature[k] += rating[j]      #add the capacities (ratings)
+                                    resistance_feature[k], reactance_feature[k] = self.calc_total_resistance_reactance(resistance_feature[k],resistance[j],reactance_feature[k], reactance[j])
                                     pf_feature[k] += qf2[j]
                                     qf_feature[k] += qf2[j]
-                                else:
-                                    pf_feature[k] += 0
-                                    qf_feature[k] += 0
+
+                                if init_dmg_feature[k] != 1:
+                                    init_dmg_feature[k] = init_dmg[j]
                                 
                     if exists: continue
                     #if edge does not exist yet add it in both directions
                     #First direction
                     adj_from.append(id_from)
                     adj_to.append(id_to)
-                    rating_feature.append(rating[j])
+
                     status_feature.append(status[j])
-                    resistance_feature.append(resistance[j])
-                    reactance_feature.append(reactance[j])
+
                     init_dmg_feature.append(init_dmg[j])
                     if status[j] !=0:
                         pf_feature.append(pf1[j])   #pf in first directiong
                         qf_feature.append(qf1[j])   #qf in first directiong
                         pf_feature.append(pf2[j])   #pf in opposite direction
                         qf_feature.append(qf2[j])   #qf in opposite direction
+                        resistance_feature.append(resistance[j])
+                        reactance_feature.append(reactance[j])
+                        rating_feature.append(rating[j])
                     else:
                         pf_feature.append(0)   #if line inactive set power flows to 0 for both directions
                         qf_feature.append(0)   
                         pf_feature.append(0)   
                         qf_feature.append(0)   
+                        resistance_feature.append(1)
+                        reactance_feature.append(1)
+                        rating_feature.append(0)
                     #Opposite direction
                     adj_from.append(id_to)
                     adj_to.append(id_from)
@@ -542,7 +555,7 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
     return trainloader, testloader
 
 
-def calc_mask_probs(dataloader):
+def calc_mask_probs(dataloader, bias=0.01):
     node_label_means = torch.zeros(2000)
     node_label_vars = torch.zeros(2000)
     #calc means
@@ -561,5 +574,8 @@ def calc_mask_probs(dataloader):
     node_label_vars = torch.sqrt(node_label_vars/((i+1)*batchsize))
     #scale vars
     node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
+    node_label_probs += bias
+    for i in range(len(node_label_probs)):
+        if node_label_probs[i] > 1.0: node_label_probs[i] = 1
     return node_label_probs
     
