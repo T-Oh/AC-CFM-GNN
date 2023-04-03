@@ -9,20 +9,42 @@ from torch import load
 import torch
 import numpy as np
 
+def analysis(folder):
+    plot_loss(folder+'losses.pt', 'inputmask')
+    
+    labels=torch.load(folder+'labels.pt',map_location=torch.device('cpu'))
+    output=torch.load(folder+'output.pt',map_location=torch.device('cpu'))
+    
+    for i in range(len(output)-1):
+        fig1,ax1=plt.subplots()
+        x_ticks = np.array(range(2000))
+        ax1.bar(x_ticks, labels[len(output)-1][i*2000:(i+1)*2000])
+        ax1.bar(x_ticks, output[len(output)-1][i*2000:(i+1)*2000].detach().numpy())
+        ax1.set_ylim(-0.1,1)
+        ax1.set_title("Load Shed at Node")
+        ax1.set_xlabel("Node ID")
+    
+        ax1.set_ylabel('Load Shed in p.U.')
+
+
+    
 def plot_train_test_loss(train_loss=None, test_loss = None):
     if train_loss == None:
-        train_loss=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/1500_subset/GC_BN_ministudy/train_losses_4L_30HF_4heads_0.001lr_0.0dropout.pt")
-        test_loss = load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/1500_subset/GC_BN_ministudy/test_losses_4L_30HF_4heads_0.001lr_0.0dropout.pt")
+        train_loss=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GINE/4000/New_R2/MaskingTests/lossmask/train_losses_5L_21HF_0.000lr_0.07GC_TrueSC.pt")
+        test_loss = load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GINE/4000/New_R2/mask_conv_test/test_losses_5L_21HF_0.000lr_0.07GC_TrueSC.pt")
     else:
         train_loss=load(train_loss)
         test_loss = load(test_loss)
+
     fig = plt.figure()
     ax = fig.add_subplot(111,label='train_loss')
     ax2 = fig.add_subplot(111,label='test_loss', frame_on=False)
     ax.plot(train_loss, color='orange', label='train_loss')
-    ax2.plot(test_loss, label='test_loss')
-    ax2.set_ylim(0.048,0.066)
-    ax.set_ylim(0.048,0.066)
+    ax2.plot([0,100,200,300,400,500,600],test_loss, label='test_loss')
+    ax2.set_ylim(0.047,0.06)
+    ax.set_ylim(0.047,0.06)
+    ax2.set_xlim(-50,750)
+    ax.set_xlim(-50,750)
     plt.title("4000 subset")
     plt.ylabel("MSE")
     plt.xlabel("Epoch")
@@ -31,7 +53,7 @@ def plot_train_test_loss(train_loss=None, test_loss = None):
     plt.show()
 
 
-def plot_loss(file=None):
+def plot_loss(file=None,title=None):
     if file == None:
         losses=load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/GAT/4000_subset/output_through_time_5000epochs/losses.pt")
     else:
@@ -39,7 +61,7 @@ def plot_loss(file=None):
     plt.plot(losses)
     #plt.xlim(1,100)
     #plt.ylim(1.705e6,1.710e6)
-    plt.title("SAGE LR=0.172, 1 layers")
+    plt.title(title)
     plt.ylabel("MSE")
     plt.xlabel("Epoch")
     plt.show()
