@@ -8,7 +8,7 @@
     "epochs": 1,
     "model": "GINE",
     "supernode":false,
-    "output_freq" : 50,
+    "output_freq" : 1,
 
     "num_layers": 4,
     "hidden_size": 30,
@@ -19,9 +19,9 @@
     "dropout_temp": 1,
     "gradclip" : 0.1,
     "use_batchnorm" : false,
-    "use_skipcon" : false,
-    "use_masking" : false,
-    "masking_bias" : 0.3,
+    "use_skipcon" : true,
+    "use_masking" : true,
+    "mask_bias" : 0.3,
     
     "train_size":1,
     "test_set::batchsize": 1,
@@ -45,39 +45,38 @@
     "manual_seed" : 7,
 
 
-    "study::run" : false,
+    "study::run" : true,
     "study::n_trials" : 5,
 
-    "study::lr::lower" : 1e-4,
-    "study::lr::upper" : 1e-4,
+    "study::lr::lower" : 4e-4,
+    "study::lr::upper" : 4e-4,
 
-    "study::layers_lower" : 4,
-    "study::layers_upper" : 4,
+    "study::layers_lower" : 5,
+    "study::layers_upper" : 5,
 
-    "study::hidden_features_lower" : 30,
-    "study::hidden_features_upper" : 30,
+    "study::hidden_features_lower" : 36,
+    "study::hidden_features_upper" : 36,
 
-    "study::heads_lower" : 4,
-    "study::heads_upper" : 4,
+    "study::heads_lower" : 5,
+    "study::heads_upper" : 5,
 
-    "study::dropout_lower" : 0.0,
-    "study::dropout_upper" : 0.0,
-    "study::dropout_off_epoch_lower": 1000,
-    "study::dropout_off_epoch_upper": 1000,
+    "study::dropout_lower" : 0.09,
+    "study::dropout_upper" : 0.09,
 
-    "study::gradclip_lower" : 0.1,
-    "study::gradclip_upper" : 0.1,
+    "study::gradclip_lower" : 0.08,
+    "study::gradclip_upper" : 0.08,
 
-    "study::reghead_size_lower" : 50,
-    "study::reghead_size_upper" : 500,
+    "study::reghead_size_lower" : 200,
+    "study::reghead_size_upper" : 200,
 
-    "study::reghead_layers_lower" : 1,
-    "study::reghead_layers_upper" : 3,
+    "study::reghead_layers_lower" : 2,
+    "study::reghead_layers_upper" : 2,
     
     "study::batchnorm" : false,
 
-    "study::skipcon" : true
+    "study::skipcon" : false,
 
-
-
+    "study::masking" : false,
+    "study::mask_bias_lower" : 0.0,
+    "study::mask_bias_upper" : 0.5
 }

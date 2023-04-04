@@ -6,6 +6,7 @@ import time
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
+from datasets.dataset import mask_probs_add_bias
 from ray import tune
 from ray.air import session
 from torchmetrics import R2Score
@@ -46,7 +47,8 @@ def run_training(trainloader, testloader, engine, cfg):
 
 
 
-def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, criterion):
+def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, criterion, mask_probs):
+    mask_probs_rescaled = mask_probs_add_bias(mask_probs, config['mask_bias'])
     params = {
         "num_layers" : config['layers'],
         "hidden_size" : config['HF'],
@@ -58,7 +60,9 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         "use_batchnorm" : config['use_batchnorm'],
         "use_skipcon"   : config['use_skipcon'],
         'reghead_size'  :config['reghead_size'],
-        'reghead_layers'  :config['reghead_layers']
+        'reghead_layers'  :config['reghead_layers'],
+        'use_masking'   :config['use_masking'],
+        
     }
     print('\nCONFIG:\n')
     print(config)
@@ -68,7 +72,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     model = get_model(cfg, params)
     model.to(device)
     optimizer = get_optimizer(cfg, model)
-    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'])
+    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], mask_probs=mask_probs_rescaled)
     engine.optimizer.lr = config['LR']
     
     logging.info(f"\n\nNew Parameters suggested:\n LR : {config['LR']} \n Layers : {config['layers']} \n HF : {config['HF']} \n Heads : {config['heads']}\n")
