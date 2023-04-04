@@ -42,7 +42,6 @@ class GINE(Module):
         self.reghead_layers = reghead_layers
         self.use_masking = use_masking
         self.mask_probs = mask_probs
-        plt.bar(range(2000), torch.bernoulli(mask_probs))
         
         #ConvLayers
         
@@ -109,7 +108,12 @@ class GINE(Module):
             print(edge_index)
             print(edge_weight)
         
-            
+        """masks = []
+        if self.use_masking and self.training:
+            for i in range(int(len(x)/2000)):
+                masks.append(torch.bernoulli(self.mask_probs))
+            for i in range(int(len(x)/2000)): 
+                x[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(x[i*2000:(i+1)*2000],0,1)*masks[i],0,1)"""
         out = self.convLayer1(x, edge_index=edge_index, edge_attr=edge_weight)
         #print(out)
 
@@ -135,12 +139,21 @@ class GINE(Module):
 
             else:
                 if i== 0:
+                    """if self.use_masking:
+                        for i in range(int(len(x)/2000)): 
+                            out[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(out[i*2000:(i+1)*2000],0,1)*masks[i],0,1)"""
                     out = self.convLayer2(x=out, edge_index=edge_index,edge_attr = edge_weight)
                 if i== 1:
                     out = self.convLayer3(x=out, edge_index=edge_index,edge_attr = edge_weight)
                 if i== 2:
+                    """if self.use_masking:
+                        for i in range(int(len(x)/2000)): 
+                            out[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(out[i*2000:(i+1)*2000],0,1)*masks[i],0,1)"""
                     out = self.convLayer4(x=out, edge_index=edge_index,edge_attr = edge_weight)
                 if i== 3:
+                    """if self.use_masking:
+                        for i in range(int(len(x)/2000)): 
+                            out[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(out[i*2000:(i+1)*2000],0,1)*masks[i],0,1)"""
                     out = self.convLayer5(x=out, edge_index=edge_index,edge_attr = edge_weight)
             
             #print(out)
@@ -148,10 +161,7 @@ class GINE(Module):
         
         #out = self.relu(out)
         #print(x)
-        if self.use_masking:
-            for i in range(int(len(out)/2000)):
-                mask = torch.bernoulli(self.mask_probs)
-                out[i*2000:(i+1)*2000] = torch.transpose(torch.transpose(out[i*2000:(i+1)*2000],0,1)*mask,0,1)
+
 
         self.dropout.p = self.dropout.p*self.dropout_temp
         out = self.dropout(out)

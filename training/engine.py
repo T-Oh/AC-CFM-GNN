@@ -17,13 +17,18 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1,task="NodeReg"):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", mask_probs=None):
         self.model = model
         self.optimizer = optimizer
         self.device = device
         self.criterion = criterion
         self.tol = tol
         self.task = task
+        if mask_probs == None:
+            self.mask_probs=torch.ones(2000)
+        else:
+            self.mask_probs = mask_probs
+        self.masks = torch.bernoulli(mask_probs)
 
     def train_epoch(self, dataloader, gradclip):
         
@@ -38,6 +43,7 @@ class Engine(object):
         first=True;
 
         count = 0
+        
         for (i, batch) in enumerate(dataloader):
             self.optimizer.zero_grad()
             count +=1
@@ -75,11 +81,17 @@ class Engine(object):
             #total_labels = labels
             #calc and backpropagate loss
 
+            for j in range(int(len(output)/2000)):
+               if j==0:
+                   self.masks=torch.bernoulli(self.mask_probs)
+                   print(torch.bincount(self.masks.to(int))[1]/2000)
+               else:
+                   self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs)))
+               #self.masks= self.masks.to('cuda:0')
 
-            temp_loss = self.criterion(output, labels)#.float()
-            print(f'Temp Loss:{temp_loss}') 
-
-
+            masked_output = output*self.masks
+            masked_labels = labels*self.masks
+            temp_loss = self.criterion(masked_output.to(self.device), masked_labels.to(self.device))#.float()
             
             temp_loss.backward()
             #print(temp_loss.grad)
@@ -154,6 +166,4 @@ class Engine(object):
         evaluation = [loss, R2, accuracy, discrete_measure/count]
         example_output = np.array(output[0:16000].cpu())
         example_labels = np.array(labels[0:16000].cpu())
-        del output
-        del labels
-        return evaluation, example_output, example_labels
+        return evaluation, output, labels

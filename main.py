@@ -50,7 +50,9 @@ trainloader, testloader = create_loaders(cfg, trainset, testset)                
 
 #Calculate probabilities for masking of nodes if necessary
 if cfg['use_masking']:
-    mask_probs = calc_mask_probs(trainloader)
+    mask_probs = calc_mask_probs(trainloader, cfg['masking_bias'])
+else:
+    mask_probs = torch.ones(2000)
 
 #getting feature and target sizes
 num_features = trainset.__getitem__(0).x.shape[1]
@@ -135,7 +137,7 @@ else:
     optimizer = get_optimizer(cfg, model)
 
     #Initializing engine
-    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"])
+    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"], mask_probs=mask_probs)
 
     losses, final_eval, output, labels = run_training(trainloader, testloader, engine, cfg)
     torch.save(list(output), "results/"  + f"output.pt") #saving train losses

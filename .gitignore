@@ -12,3 +12,7 @@ crash.log
 *.npz
 
 *.pt
+
+*.pyc
+
+training/engine_orig.py
