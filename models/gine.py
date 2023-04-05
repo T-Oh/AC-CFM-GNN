@@ -36,12 +36,15 @@ class GINE(Module):
                  dropout=0.0, dropout_temp=1.0, num_heads=1, use_batchnorm = True, use_skipcon=False, use_masking=False, mask_probs = None):
         super(GINE, self).__init__()
         #Params
-        self.num_layers=num_layers
+        self.num_layers=int(num_layers)
         self.use_skipcon = use_skipcon
         self.dropout_temp = dropout_temp
-        self.reghead_layers = reghead_layers
+        self.reghead_layers = int(reghead_layers)
         self.use_masking = use_masking
         self.mask_probs = mask_probs
+        hidden_size = int(hidden_size)
+        reghead_size = int(reghead_size)
+        
         
         #ConvLayers
         

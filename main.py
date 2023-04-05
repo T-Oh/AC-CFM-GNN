@@ -37,7 +37,7 @@ if cfg['study::run'] == True:
     N_cpus = int(argv[1])
     port_dashboard = int(argv[2])
     #init ray
-    #ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard) 
+    ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard) 
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
 
@@ -45,7 +45,6 @@ shutil.copyfile("configurations/configuration.json","results/configuration.json"
 logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", filemode="w", level=logging.INFO)
 
 #Loading and pre-transforming data
-#trainset, testset = create_datasets(cfg["dataset::path"], pre_transform=ToUndirected()) 
 trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None)
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
@@ -83,27 +82,27 @@ criterion.to(device)
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
     search_space = {
-        'layers'    : tune.qrandint(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
-        'HF'        : tune.lograndint(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
-        'heads'     : tune.qrandint(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
+        'layers'    : tune.quniform(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
+        'HF'        : tune.loguniform(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
+        'heads'     : tune.quniform(cfg["study::heads_lower"],cfg["study::heads_upper"]+1,1),
         'LR'        : tune.loguniform(cfg['study::lr::lower'],cfg['study::lr::upper']),
         'dropout'   : tune.quniform(cfg["study::dropout_lower"],cfg["study::dropout_upper"],0.01),
         'gradclip'  : tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'],0.01),
-        'dropout_off_epoch' : 1000,# tune.quniform(cfg['study::dropout_off_epoch_lower'], cfg['study::dropout_off_epoch_lower'], 100),
-        'reghead_size'      : tune.lograndint(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1),
-        'reghead_layers'    : tune.qrandint(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1,1),
-        'use_batchnorm'     : cfg['use_batchnorm'],
-        'use_skipcon'       : cfg['use_skipcon'],
-        'use_masking'       : cfg['use_masking'],
+        
+        'reghead_size'      : tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1),
+        'reghead_layers'    : tune.quniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1,1),
+        #'use_batchnorm'     : cfg['use_batchnorm'],
+        'use_skipcon'       : float(cfg['use_skipcon']),
+        'use_masking'       : float(cfg['use_masking']),
         'mask_bias'      : tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1)
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
     }
-    if cfg['study::batchnorm']:
-        search_space['use_batchnorm'] = tune.choice([True, False])
+    #if cfg['study::batchnorm']:
+    #    search_space['use_batchnorm'] = tune.choice([True, False])
     if cfg['study::skipcon']:
-        search_space['use_skipcon'] = tune.choice([True, False])
+        search_space['use_skipcon'] = tune.uniform(0,2)#tune.choice([True, False])
     if cfg['study::masking']:
-        search_space['use_masking'] = tune.choice([True, False])
+        search_space['use_masking'] = tune.uniform(0,2)#tune.choice([True, False])
     baysopt=BayesOptSearch(metric='r2', mode='max')
     tune_config = tune.tune_config.TuneConfig(num_samples = cfg['study::n_trials'], search_alg=baysopt)
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')

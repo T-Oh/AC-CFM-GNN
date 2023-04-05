@@ -50,19 +50,19 @@ def run_training(trainloader, testloader, engine, cfg):
 def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, criterion, mask_probs):
     mask_probs_rescaled = mask_probs_add_bias(mask_probs, config['mask_bias'])
     params = {
-        "num_layers" : config['layers'],
-        "hidden_size" : config['HF'],
-        "dropout" : config["dropout"],
-        "heads" : config['heads'],
-        "num_features" : num_features,
+        "num_layers"    : int(config['layers']),
+        "hidden_size"   : int(config['HF']),
+        "dropout"       : config["dropout"],
+        "heads"         : config['heads'],
+        "num_features"  : num_features,
         "num_edge_features" : num_edge_features,
-        "num_targets" : num_targets,
-        "use_batchnorm" : config['use_batchnorm'],
-        "use_skipcon"   : config['use_skipcon'],
-        'reghead_size'  :config['reghead_size'],
-        'reghead_layers'  :config['reghead_layers'],
-        'use_masking'   :config['use_masking'],
-        
+        "num_targets"   : num_targets,
+        "use_batchnorm" : False,#config['use_batchnorm'],
+        "use_skipcon"   : bool(int(config['use_skipcon'])),
+        'reghead_size'  : int(config['reghead_size']),
+        'reghead_layers': int(config['reghead_layers']),
+        'use_masking'   : bool(int(config['use_masking'])),
+        'dropout_temp'  : cfg['dropout_temp']
     }
     print('\nCONFIG:\n')
     print(config)
