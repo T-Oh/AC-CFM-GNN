@@ -28,7 +28,7 @@ class Engine(object):
             self.mask_probs=torch.ones(2000)
         else:
             self.mask_probs = mask_probs
-        self.masks = torch.bernoulli(mask_probs)
+        self.masks = torch.bernoulli(self.mask_probs)
 
     def train_epoch(self, dataloader, gradclip):
         
@@ -114,7 +114,7 @@ class Engine(object):
         #End TO
         return loss/count, R2, example_output, example_labels
 
-    def eval(self, dataloader):
+    def eval(self, dataloader, full_output=False):
         "Evaluates model"
         self.model.eval()
         with no_grad():
@@ -150,11 +150,11 @@ class Engine(object):
                     labels=cat((labels,temp_labels),0)
 
             #TO
-            R2torch=R2Score()#.to(self.device)
+            R2torch=R2Score().to(self.device)
             labels = labels.to(self.device)
             output = output.to(self.device)
             loss = self.criterion(output, labels)
-            #discrete_measure = discrete_loss(output.clone(), labels.clone())
+            discrete_measure = discrete_loss(output.clone(), labels.clone())
             print('Labels, Output before R2:')
             print(labels)
             print(output)
@@ -164,6 +164,9 @@ class Engine(object):
             accuracy = correct/len(dataloader.dataset)
             #TO end
         evaluation = [loss, R2, accuracy, discrete_measure/count]
-        example_output = np.array(output[0:16000].cpu())
-        example_labels = np.array(labels[0:16000].cpu())
-        return evaluation, output, labels
+        if not full_output:
+            example_output = np.array(output[0:16000].cpu())
+            example_labels = np.array(labels[0:16000].cpu())
+            return evaluation, example_output, example_labels
+        else:
+            return evaluation, output, labels
