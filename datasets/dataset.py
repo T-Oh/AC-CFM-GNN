@@ -555,27 +555,29 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
     return trainloader, testloader
 
 
-def calc_mask_probs(dataloader, bias=0.01):
-    node_label_means = torch.zeros(2000)
-    node_label_vars = torch.zeros(2000)
-    #calc means
+def calc_mask_probs(dataloader):
+
+    
+    #New way
+    node_label_vars=np.zeros(2000)
     for i, batch in enumerate(dataloader):
-        batchsize = int(len(batch.node_labels)/2000)
-        for k in range(batchsize):
-            for j in range(2000):
-                node_label_means[j] += batch.node_labels[j+k*2000]
-    node_label_means /= (i+1)*batchsize
-    #calc vars
-    for i, batch in enumerate(dataloader):
-        batchsize = int(len(batch.node_labels)/2000)
-        for k in range(batchsize):
-            for j in range(2000):
-                node_label_vars[j] += (batch.node_labels[j+k*2000]-node_label_means[j])**2
-    node_label_vars = torch.sqrt(node_label_vars/((i+1)*batchsize))
+        if i==0:
+            labels=batch.node_labels.clone()
+        else:
+            labels=torch.cat((labels,batch.node_labels))
+        
+    labels=labels.reshape( int(len(labels)/2000),2000)
+
+    for i in range(2000):
+        node_label_vars[i] = labels[:,i].var()
     #scale vars
+    print(f'MAX {node_label_vars.argmax()}')
     node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
-    node_label_probs += bias
-    for i in range(len(node_label_probs)):
-        if node_label_probs[i] > 1.0: node_label_probs[i] = 1
     return node_label_probs
+
+def mask_probs_add_bias(mask_probs, bias):
+    mask_probs_rescaled = mask_probs.clone() + bias
+    for i in range(len(mask_probs)):
+        if mask_probs_rescaled[i] > 1.0: mask_probs_rescaled[i] = 1
+    return mask_probs_rescaled
     
