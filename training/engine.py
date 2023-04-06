@@ -6,7 +6,7 @@ import logging
 #TO
 from torchmetrics import R2Score
 import torch
-from utils.utils import discrete_loss
+from utils.utils import discrete_loss, weighted_loss_by_label
 #from torchviz import make_dot
 import math
 
@@ -17,7 +17,7 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", mask_probs=None):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", mask_probs=None, weighted_loss_label =False):
         self.model = model
         self.optimizer = optimizer
         self.device = device
@@ -29,6 +29,7 @@ class Engine(object):
         else:
             self.mask_probs = mask_probs
         self.masks = torch.bernoulli(self.mask_probs)
+        self.weighted_loss_label = weighted_loss_label
 
     def train_epoch(self, dataloader, gradclip):
         
@@ -80,7 +81,7 @@ class Engine(object):
             #total_output = output    #REMOVE if total output of every epoch should be saved
             #total_labels = labels
             #calc and backpropagate loss
-
+            
             for j in range(int(len(output)/2000)):
                if j==0:
                    self.masks=torch.bernoulli(self.mask_probs)
@@ -91,7 +92,11 @@ class Engine(object):
 
             masked_output = output*self.masks
             masked_labels = labels*self.masks
-            temp_loss = self.criterion(masked_output.to(self.device), masked_labels.to(self.device))#.float()
+            
+            if self.weighted_loss_label:
+                temp_loss = weighted_loss_by_label(masked_output, masked_labels)
+            else:
+                temp_loss = self.criterion(masked_output.to(self.device), masked_labels.to(self.device))#.float()
             
             temp_loss.backward()
             #print(temp_loss.grad)

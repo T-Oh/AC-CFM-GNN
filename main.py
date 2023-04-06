@@ -9,7 +9,7 @@ from training.training import run_training, objective#, run_tuning
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, mask_probs_add_bias
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import  plot_loss, plot_R2, ImbalancedSampler, discrete_loss
+from utils.utils import  plot_loss, plot_R2, ImbalancedSampler, discrete_loss, weighted_loss_by_label
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -29,7 +29,7 @@ start =time.time()
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
 
-
+#initialize ray
 if cfg['study::run'] == True:
     #arguments for ray
     temp_dir ='/p/tmp/tobiasoh/ray_tmp'
@@ -38,10 +38,9 @@ if cfg['study::run'] == True:
     port_dashboard = int(argv[2])
     #init ray
     ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard) 
+    
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
-
-    
 logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", filemode="w", level=logging.INFO)
 
 #Loading and pre-transforming data
@@ -49,10 +48,11 @@ trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
 #Calculate probabilities for masking of nodes if necessary
-if cfg['use_masking']:
-    mask_probs = calc_mask_probs(trainloader)
+if cfg['use_masking'] or cfg['study::masking']:
+    mask_probs= calc_mask_probs(trainloader)
 else:
     mask_probs = torch.ones(2000)
+
 
 #getting feature and target sizes
 num_features = trainset.__getitem__(0).x.shape[1]
@@ -75,6 +75,7 @@ if device == "cuda":
     torch.backends.cudnn.benchmark = False
 
 #choosing criterion
+
 criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
 criterion.to(device)
 
@@ -143,7 +144,7 @@ else:
     optimizer = get_optimizer(cfg, model)
     
     #Initializing engine
-    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"], mask_probs=mask_probs)
+    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"], mask_probs=mask_probs, weighted_loss_label=cfg['weighted_loss_label'])
 
     losses, final_eval, output, labels = run_training(trainloader, testloader, engine, cfg)
     torch.save(list(output), "results/"  + f"output.pt") #saving train losses
