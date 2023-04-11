@@ -9,11 +9,11 @@ from training.training import run_training, objective#, run_tuning
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, mask_probs_add_bias
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import  plot_loss, plot_R2, ImbalancedSampler, discrete_loss, weighted_loss_by_label
 import matplotlib.pyplot as plt
 import numpy as np
 
 #TO
+from utils.utils import weighted_loss_label, weighted_loss_var
 import shutil
 import ray
 from ray import tune
@@ -48,10 +48,10 @@ trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
 #Calculate probabilities for masking of nodes if necessary
-if cfg['use_masking'] or cfg['study::masking']:
-    mask_probs= calc_mask_probs(trainloader)
-else:
-    mask_probs = torch.ones(2000)
+
+mask_probs= calc_mask_probs(trainloader)
+print(mask_probs[0:50])
+
 
 
 #getting feature and target sizes
@@ -75,8 +75,14 @@ if device == "cuda":
     torch.backends.cudnn.benchmark = False
 
 #choosing criterion
-
-criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
+assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
+    
+if cfg['weighted_loss_label']:
+    criterion = weighted_loss_label(factor = cfg['weighted_loss_factor'])
+elif cfg['weighted_loss_var']:
+    criterion = weighted_loss_var(mask_probs)    
+else:    
+    criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
 criterion.to(device)
 
 #Runs study if set in configuration file
@@ -95,7 +101,9 @@ if cfg["study::run"]:
         #'use_batchnorm'     : cfg['use_batchnorm'],
         'use_skipcon'       : float(cfg['use_skipcon']),
         'use_masking'       : float(cfg['use_masking']),
-        'mask_bias'      : tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1)
+        'mask_bias'      : tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1),
+            
+        'loss_weight' : tune.loguniform(cfg['study::loss_weight_lower'], cfg['study::loss_weight_upper'])
         #'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
     }
     #if cfg['study::batchnorm']:
@@ -117,7 +125,6 @@ run_config=run_config)
     
     
 else:
-    mask_probs = mask_probs_add_bias(mask_probs, cfg['mask_bias'])
     params = {
         "num_layers"    : cfg['num_layers'],
         "hidden_size"   : cfg['hidden_size'],
@@ -144,7 +151,7 @@ else:
     optimizer = get_optimizer(cfg, model)
     
     #Initializing engine
-    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"], mask_probs=mask_probs, weighted_loss_label=cfg['weighted_loss_label'])
+    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"],task=cfg["task"], var=mask_probs)
 
     losses, final_eval, output, labels = run_training(trainloader, testloader, engine, cfg)
     torch.save(list(output), "results/"  + f"output.pt") #saving train losses

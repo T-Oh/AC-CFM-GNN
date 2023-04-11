@@ -48,7 +48,6 @@ def run_training(trainloader, testloader, engine, cfg):
 
 
 def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, criterion, mask_probs):
-    mask_probs_rescaled = mask_probs_add_bias(mask_probs, config['mask_bias'])
     params = {
         "num_layers"    : int(config['layers']),
         "hidden_size"   : int(config['HF']),
@@ -72,7 +71,7 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
     model = get_model(cfg, params)
     model.to(device)
     optimizer = get_optimizer(cfg, model)
-    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], mask_probs=mask_probs_rescaled)
+    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs, loss_weight=config['loss_weight'],mask_bias=cfg['mask_bias'], weighted_loss_var=cfg['weighted_loss_var'], weighted_loss_labels=cfg['weighted_loss_label'])
     engine.optimizer.lr = config['LR']
     
     logging.info(f"\n\nNew Parameters suggested:\n LR : {config['LR']} \n Layers : {config['layers']} \n HF : {config['HF']} \n Heads : {config['heads']}\n")

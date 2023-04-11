@@ -5,7 +5,7 @@
     "task":"NodeReg",
 
     "n_scenarios":4,
-    "epochs": 1,
+    "epochs": 100,
     "model": "GINE",
     "supernode":false,
     "output_freq" : 1,
@@ -20,8 +20,11 @@
     "gradclip" : 0.1,
     "use_batchnorm" : false,
     "use_skipcon" : true,
-    "use_masking" : true,
+    "use_masking" : false,
     "mask_bias" : 0.3,
+    "weighted_loss_var" : true,
+    "weighted_loss_label" : true,
+    "weighted_loss_factor" : 10,
     
     "train_size":1,
     "test_set::batchsize": 1,
@@ -45,7 +48,7 @@
     "manual_seed" : 7,
 
 
-    "study::run" : true,
+    "study::run" : false,
     "study::n_trials" : 5,
 
     "study::lr::lower" : 4e-4,
@@ -77,6 +80,9 @@
     "study::skipcon" : false,
 
     "study::masking" : false,
-    "study::mask_bias_lower" : 0.0,
-    "study::mask_bias_upper" : 0.5
+    "study::mask_bias_lower" : 0.2,
+    "study::mask_bias_upper" : 0.2,
+
+    "study::loss_weight_lower" : 0.5,
+    "study::loss_weight_upper" : 50
 }

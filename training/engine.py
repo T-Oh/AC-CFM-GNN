@@ -6,9 +6,10 @@ import logging
 #TO
 from torchmetrics import R2Score
 import torch
-from utils.utils import discrete_loss, weighted_loss_by_label
+from utils.utils import discrete_loss
 #from torchviz import make_dot
 import math
+from datasets.dataset import mask_probs_add_bias
 
 
 class Engine(object):
@@ -17,19 +18,18 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", mask_probs=None, weighted_loss_label =False):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0):
         self.model = model
         self.optimizer = optimizer
         self.device = device
-        self.criterion = criterion
         self.tol = tol
         self.task = task
-        if mask_probs == None:
-            self.mask_probs=torch.ones(2000)
-        else:
-            self.mask_probs = mask_probs
+        self.vars = var.clone()
+        self.mask_probs = mask_probs_add_bias(var, mask_bias)
         self.masks = torch.bernoulli(self.mask_probs)
-        self.weighted_loss_label = weighted_loss_label
+        self.masking = masking
+        self.criterion = criterion
+
 
     def train_epoch(self, dataloader, gradclip):
         
@@ -81,22 +81,19 @@ class Engine(object):
             #total_output = output    #REMOVE if total output of every epoch should be saved
             #total_labels = labels
             #calc and backpropagate loss
-            
-            for j in range(int(len(output)/2000)):
-               if j==0:
-                   self.masks=torch.bernoulli(self.mask_probs)
-                   print(torch.bincount(self.masks.to(int))[1]/2000)
-               else:
-                   self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs)))
-               #self.masks= self.masks.to('cuda:0')
+            if self.masking:
+                for j in range(int(len(output)/2000)):
+                   if j==0:
+                       self.masks=torch.bernoulli(self.mask_probs)
+                       print(torch.bincount(self.masks.to(int))[1]/2000)
+                   else:
+                       self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs)))
+                   #self.masks= self.masks.to('cuda:0')
+                output = output*self.masks
+                labels = labels*self.masks
+               
 
-            masked_output = output*self.masks
-            masked_labels = labels*self.masks
-            
-            if self.weighted_loss_label:
-                temp_loss = weighted_loss_by_label(masked_output, masked_labels)
-            else:
-                temp_loss = self.criterion(masked_output.to(self.device), masked_labels.to(self.device))#.float()
+            temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
             
             temp_loss.backward()
             #print(temp_loss.grad)

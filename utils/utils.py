@@ -7,6 +7,7 @@ from torch_geometric.data import Data, Dataset, InMemoryDataset
 from torch.serialization import save
 from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected
+import torch.nn
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -317,13 +318,27 @@ def count_missclassified(output,target):
     plt.bar(range(2000),missclassified)
     return count
 
-def weighted_loss_by_label(output, label, factor=10):
-    loss = 0
-    for i in range(len(output)):
-       if label[i] > 0:
-           loss += (output[i]-label[i])**2*factor
-       else: 
-           loss += (output[i]-label[i])**2
-    return loss/2000
+
+
+class weighted_loss_label(torch.nn.Module):
+    def __init__(self, factor):
+        super(weighted_loss_label, self).__init__()
+        self.factor = factor
+    def forward(self, output, label):
+        loss = 0
+        for i in range(len(output)):
+           if label[i] > 0:
+               loss += (output[i]-label[i])**2*self.factor
+           else: 
+               loss += (output[i]-label[i])**2
+        return loss/len(output)
            
-    
+class weighted_loss_var(torch.nn.Module):
+    def __init__(self, var):
+        super(weighted_loss_var, self).__init__()
+        self.var = var
+    def forward(self, output ,label):
+        losses = (output-label)**2
+        for i in range(int(len(losses)/2000)):
+            losses[i*2000:(i+1)*2000] = losses[i*2000:(i+1)*2000]*(self.var+1)
+        return losses.sum()/2000
