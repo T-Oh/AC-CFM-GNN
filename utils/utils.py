@@ -323,22 +323,24 @@ def count_missclassified(output,target):
 class weighted_loss_label(torch.nn.Module):
     def __init__(self, factor):
         super(weighted_loss_label, self).__init__()
-        self.factor = factor
-    def forward(self, output, label):
-        loss = 0
-        for i in range(len(output)):
-           if label[i] > 0:
-               loss += (output[i]-label[i])**2*self.factor
-           else: 
-               loss += (output[i]-label[i])**2
-        return loss/len(output)
-           
+        self.factor = torch.sqrt(factor)
+        self.baseloss= torch.nn.MSELoss(reduction='mean')
+        
+    def forward(self, output, labels):
+        output_ = output.clone()
+        labels_ = labels.clone()
+        output_[labels>0] = output_[labels>0]*self.factor
+        labels_[labels>0] = labels_[labels>0].clone()*self.factor
+        return self.baseloss(self.factor*output_,self.factor*labels_)
+ 
+          
 class weighted_loss_var(torch.nn.Module):
-    def __init__(self, var):
+    def __init__(self, var, device):
         super(weighted_loss_var, self).__init__()
-        self.var = var
-    def forward(self, output ,label):
-        losses = (output-label)**2
-        for i in range(int(len(losses)/2000)):
-            losses[i*2000:(i+1)*2000] = losses[i*2000:(i+1)*2000]*(self.var+1)
-        return losses.sum()/2000
+        self.weights = torch.sqrt(var).to(device)
+        self.baseloss = torch.nn.MSELoss(reduction='mean').to(device)
+        
+    def forward(self, output ,labels):
+        output_ = output.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
+        labels_ = labels.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
+        return self.baseloss(output_.reshape(-1), labels_.reshape(-1))

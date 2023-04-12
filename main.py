@@ -78,9 +78,9 @@ if device == "cuda":
 assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
     
 if cfg['weighted_loss_label']:
-    criterion = weighted_loss_label(factor = cfg['weighted_loss_factor'])
+    criterion = weighted_loss_label(factor = torch.tensor(cfg['weighted_loss_factor']))
 elif cfg['weighted_loss_var']:
-    criterion = weighted_loss_var(mask_probs)    
+    criterion = weighted_loss_var(mask_probs, device)    
 else:    
     criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
 criterion.to(device)
