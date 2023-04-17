@@ -10,6 +10,7 @@ from datasets.dataset import mask_probs_add_bias
 from ray import tune
 from ray.air import session
 from torchmetrics import R2Score
+from utils.utils import weighted_loss_label, weighted_loss_var
 
 def run_training(trainloader, testloader, engine, cfg):
     train_loss = []
@@ -21,12 +22,11 @@ def run_training(trainloader, testloader, engine, cfg):
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
         temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
-        temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
-        print(f'\nTrainLabels{temp_labels}')
-        print(f'\nEvalLabels{eval_labels}')
-        
-        print(f'\nTrainOutput{temp_output}')
-        print(f'\nEvalOutput{eval_output}')
+        if cfg['train_size'] == 1:
+            temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
+        else:
+            temp_eval, eval_output, eval_labels = engine.eval(testloader)
+
 
         train_loss.append(temp_train_loss)
         test_loss.append(temp_eval[0])
@@ -35,8 +35,10 @@ def run_training(trainloader, testloader, engine, cfg):
             output.append(temp_output)  #can be added to return to save best output instead of last outpu
             labels.append(temp_labels)
             
-
-    final_eval, final_output, final_labels =  engine.eval(trainloader)  #TO change back to testloader if trainsiz<1
+    if cfg['train_size'] == 1:
+        final_eval, final_output, final_labels =  engine.eval(trainloader)  #TO change back to testloader if trainsiz<1
+    else:
+        final_eval, final_output, final_labels =  engine.eval(testloader)
     #print('USING TRAINLOADER FOR EVALUATION!')
 
     #logging.info("Final R2: ", final_eval[1])
@@ -47,7 +49,7 @@ def run_training(trainloader, testloader, engine, cfg):
 
 
 
-def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, criterion, mask_probs):
+def objective(config, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, mask_probs):
     params = {
         "num_layers"    : int(config['layers']),
         "hidden_size"   : int(config['HF']),
@@ -61,7 +63,8 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         'reghead_size'  : int(config['reghead_size']),
         'reghead_layers': int(config['reghead_layers']),
         'use_masking'   : bool(int(config['use_masking'])),
-        'dropout_temp'  : cfg['dropout_temp']
+        'dropout_temp'  : cfg['dropout_temp'],
+        'mask_probs'    : mask_probs_add_bias(mask_probs, config['mask_bias'])
     }
     print('\nCONFIG:\n')
     print(config)
@@ -70,8 +73,16 @@ def objective(config, trainloader, testloader, cfg, num_features, num_edge_featu
         tune.utils.wait_for_gpu(target_util=0.66)
     model = get_model(cfg, params)
     model.to(device)
+    #Choose Criterion
+    if cfg['weighted_loss_label']:
+        criterion = weighted_loss_label(factor = torch.tensor(config['loss_weight']))
+    elif cfg['weighted_loss_var']:
+        criterion = weighted_loss_var(mask_probs, device)    
+    else:    
+        criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
+    criterion.to(device)
     optimizer = get_optimizer(cfg, model)
-    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs, loss_weight=config['loss_weight'],mask_bias=cfg['mask_bias'], weighted_loss_var=cfg['weighted_loss_var'], weighted_loss_labels=cfg['weighted_loss_label'])
+    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs, masking =config['use_masking'], mask_bias=cfg['mask_bias'])
     engine.optimizer.lr = config['LR']
     
     logging.info(f"\n\nNew Parameters suggested:\n LR : {config['LR']} \n Layers : {config['layers']} \n HF : {config['HF']} \n Heads : {config['heads']}\n")

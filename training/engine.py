@@ -91,10 +91,10 @@ class Engine(object):
                    #self.masks= self.masks.to('cuda:0')
                 output = output*self.masks
                 labels = labels*self.masks
-               
+            
 
             temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
-            
+
             temp_loss.backward()
             #print(temp_loss.grad)
             if gradclip != 0:
@@ -155,13 +155,14 @@ class Engine(object):
             R2torch=R2Score().to(self.device)
             labels = labels.to(self.device)
             output = output.to(self.device)
-            loss = self.criterion(output, labels)
-            discrete_measure = discrete_loss(output.clone(), labels.clone())
-            print('Labels, Output before R2:')
-            print(labels)
-            print(output)
 
             R2=R2torch(output.reshape(-1), labels.reshape(-1))
+            loss = self.criterion(output, labels)
+
+            discrete_measure = discrete_loss(output.clone(), labels.clone())
+
+
+
             correct = ((labels-output).abs() < self.tol).sum().item()
             accuracy = correct/len(dataloader.dataset)
             #TO end

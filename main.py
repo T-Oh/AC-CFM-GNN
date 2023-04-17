@@ -28,7 +28,8 @@ start =time.time()
 #Loading training configuration
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
-
+#choosing criterion
+assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
 #initialize ray
 if cfg['study::run'] == True:
     #arguments for ray
@@ -48,11 +49,10 @@ trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
 #Calculate probabilities for masking of nodes if necessary
-
-mask_probs= calc_mask_probs(trainloader)
-print(mask_probs[0:50])
-
-
+if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+    mask_probs= calc_mask_probs(trainloader)
+else:
+    mask_probs = torch.ones(2000)
 
 #getting feature and target sizes
 num_features = trainset.__getitem__(0).x.shape[1]
@@ -74,16 +74,8 @@ if device == "cuda":
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-#choosing criterion
-assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
+
     
-if cfg['weighted_loss_label']:
-    criterion = weighted_loss_label(factor = torch.tensor(cfg['weighted_loss_factor']))
-elif cfg['weighted_loss_var']:
-    criterion = weighted_loss_var(mask_probs, device)    
-else:    
-    criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
-criterion.to(device)
 
 #Runs study if set in configuration file
 if cfg["study::run"]:
@@ -112,11 +104,13 @@ if cfg["study::run"]:
         search_space['use_skipcon'] = tune.uniform(0,2)#tune.choice([True, False])
     if cfg['study::masking']:
         search_space['use_masking'] = tune.uniform(0,2)#tune.choice([True, False])
+        
+   
     baysopt=BayesOptSearch(metric='r2', mode='max')
     tune_config = tune.tune_config.TuneConfig(num_samples = cfg['study::n_trials'], search_alg=baysopt)
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
     tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
-                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, criterion=criterion, mask_probs=mask_probs),resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}), param_space = search_space, 
+                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, mask_probs=mask_probs),resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}), param_space = search_space, 
 tune_config=tune_config, 
 run_config=run_config)
     results = tuner.fit()
@@ -143,6 +137,15 @@ else:
         "num_edge_features" : num_edge_features,
         "num_targets"   : num_targets
     }
+    
+    #Choose Criterion
+    if cfg['weighted_loss_label']:
+        criterion = weighted_loss_label(factor = torch.tensor(cfg['weighted_loss_factor']))
+    elif cfg['weighted_loss_var']:
+        criterion = weighted_loss_var(mask_probs, device)    
+    else:    
+        criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
+    criterion.to(device)
     #Loading GNN model
     model = get_model(cfg, params)   #TO get_model does not load an old model but create a new one 
     model.to(device)
