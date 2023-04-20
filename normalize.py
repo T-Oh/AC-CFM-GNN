@@ -18,6 +18,11 @@ def get_min_max_features(processed_dir):
     edge_attr_means = torch.zeros(5)
     node_count = 0
     edge_count = 0
+    
+    x_stds = torch.zeros(2)
+    edge_stds = torch.zeros(5)
+    node_count = 0
+    edge_count = 0
     for i in range(5):
         edge_attr_max[i] =  np.NINF
         edge_attr_min[i] = np.Inf
@@ -41,6 +46,8 @@ def get_min_max_features(processed_dir):
                 x_means[0] += x[i,0]
                 x_means[1] += x[i,1]
                 node_count += 1
+                
+                
                 #if x[i,2]>x_max[2]: x_max[2]=x[i,2]    can be used for a third node feature
                 #if x[i,2]<x_min[2]: x_min[2]=x[i,2]
             
@@ -98,34 +105,108 @@ def get_feature_stds(processed_dir, x_means, edge_means):
         return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count)
     
     
-processed_dir = 'processed'
+processed_dir = 'processed/'
+normalized_dir = 'processed/'
+data_stats_file = 'unnormalized_data_stats.npy'
 
-x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = get_min_max_features(processed_dir)
-x_stds, edge_stds = get_feature_stds(processed_dir, x_means, edge_attr_means)
+if os.path.isfile(data_stats_file):
+    print(f'Using presaved data stats of file: {data_stats_file} for normalization')
+    data_stats = np.load('unnormalized_data_stats.npy', allow_pickle=True).item()
+    x_min   = data_stats['x_min']
+    x_max   = data_stats['x_max']
+    x_means = data_stats['x_means']
+    x_stds  = data_stats['x_stds']
+    edge_attr_min   = data_stats['edge_attr_min']
+    edge_attr_max   = data_stats['edge_attr_max']
+    edge_attr_means = data_stats['edge_attr_means']
+    edge_stds       = data_stats['edge_attr_stds']
+    node_labels_min = data_stats['node_labels_min']
+    node_labels_max = data_stats['node_labels_max']
+    node_labels_means = data_stats['node_labels_means']
+else:
+    print('No presaved data stats found - Calculating data stats')
+    x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = get_min_max_features(processed_dir)
 
+    x_stds, edge_stds = get_feature_stds(processed_dir, x_means, edge_attr_means)
+    data_stats = {'x_min'   : x_min,
+                  'x_max'   : x_max,
+                  'x_means' : x_means,
+                  'x_stds'  : x_stds,
+                  'edge_attr_min'   : edge_attr_min,
+                  'edge_attr_max'   : edge_attr_max,
+                  'edge_attr_means' : edge_attr_means,
+                  'edge_attr_stds'  : edge_stds,
+                  'node_labels_min' : node_labels_min,
+                  'node_labels_max' : node_labels_max,
+                  'node_labels_means'   : node_labels_means}
+
+    np.save(processed_dir+'unnormalized_data_stats.npy', data_stats)
 for file in os.listdir(processed_dir):
     if file.startswith('data'):
         data = torch.load(processed_dir + '/' + file)
         #Node features
         x = data['x']
         #node power
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])):
+            print('NaN Before Normalization x:')
+            print(file)
+            for i in range(len(x[:,1])):
+                if torch.isnan(x[i,0]): print(f'Before, x0 {i}')
+                if torch.isnan(x[i,1]): print(f'Before, x1 {i}')
         x[:,0] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)
         #node voltage magnitude
-        x[:,1] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
-        
+        x[:,1] = torch.log(x[:,1]+1)/torch.log(x_max[1]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])):
+            print('NaN After Normalization x:')
+            print(file)
+            for i in range(len(x[:,1])):
+                if torch.isnan(x[i,0]): print(f'After, x0 {i}')
+                if torch.isnan(x[i,1]): print(f'After, x1 {i}')
         #Edge Features
         edge_attr = data['edge_attr']
         adj = data['edge_index']
         #capacity
         edge_attr[:,0] = torch.log(data['edge_attr'][:,0]+1)/torch.log(edge_attr_max[0]+1)
         #Pf, QF and resistance
+        if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
+            print('NaN in edges Before Normalization:')
+            print(file)
+            for i in range(len(edge_attr[:,1])):
+                if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'Before, edge0 {i}')
+                if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'Before, edge1 {i}')
+                if torch.isnan(edge_attr[i,3]): print(f'Before, edge3 {i}')
+                if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'Before, edge4 {i}')
+                if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'Before, edge5 {i}')
+                if torch.isnan(edge_attr[i,6]): print(f'Before, edge6 {i}')
+                if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'Before, edge2 {i}')
         edge_attr[:,1] = (data['edge_attr'][:,1]-edge_attr_means[1])/edge_stds[1]/((edge_attr_max[1]-edge_attr_means[1])/edge_stds[1])
         edge_attr[:,2] = (data['edge_attr'][:,2]-edge_attr_means[2])/edge_stds[2]/((edge_attr_max[2]-edge_attr_means[2])/edge_stds[2])
-        edge_attr[:,4] = (data['edge_attr'][:,4]-edge_attr_means[3])/edge_stds[3]/((edge_attr_max[3]-edge_attr_means[3])/edge_stds[3])
+        edge_attr[:,4] = torch.log(data['edge_attr'][:,4]+1)/torch.log(edge_attr_max[3]+1)# -edge_attr_means[3])/edge_stds[3]/((edge_attr_max[3]-edge_attr_means[3])/edge_stds[3])
         #reactance
         edge_attr[:,5] = torch.log(data['edge_attr'][:,5]+1)/torch.log(edge_attr_max[4]+1)
+        if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
+            print('NaN in edges after Normalization:')
+            print(file)
+            for i in range(len(edge_attr[:,1])):
+                if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'after, edge0 {i}')
+                if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'after, edge1 {i}')
+                if torch.isnan(edge_attr[i,3]): print(f'after, edge3 {i}')
+                if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'after, edge4 {i}')
+                if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'after, edge5 {i}')
+                if torch.isnan(edge_attr[i,6]): print(f'after, edge6 {i}')
+                if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'after, edge2 {i}')
         
         #Node Labels
+        if any(torch.isnan(data['node_labels'])):
+            print('NaN in node labels before norm:')
+            print(file)
+            for i in range(len(data['node_labels'])):
+                if torch.isnan(data['node_labels'][i]): print(f'Before, node_labels {i}')
         node_labels = torch.log(data['node_labels']+1)/torch.log(node_labels_max+1)
+        if any(torch.isnan(node_labels)):
+            print('NaN in node labels after norm:')
+            print(file)
+            for i in range(len(node_labels)):
+                if torch.isnan(node_labels[i]): print(f'Before, after {i}')
         data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
-        torch.save(data, os.path.join(processed_dir, file))
+        torch.save(data, os.path.join(normalized_dir, file))
