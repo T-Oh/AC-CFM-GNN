@@ -4,6 +4,7 @@ from models.gcn import GCN
 from models.gat import GAT
 from models.sage import SAGE
 from models.gine import GINE
+from models.nn import baseline
 
 
 def get_model(cfg, params):
@@ -25,6 +26,13 @@ def get_model(cfg, params):
                 num_channels = make_list_number_of_channels(cfg)
                 model = ArmaConvModule(num_layers=cfg["num_layers"], num_channels=num_channels, activation=cfg["activation"],
                                     num_internal_layers=num_internal_layers, num_internal_stacks=num_internal_stacks, batch_norm_index=cfg["batch_norm_index"], shared_weights=cfg["ARMA::shared_weights"], dropout=cfg["ARMA::dropout"], final_linear_layer=cfg["final_linear_layer"])
+        if cfg['model'] == 'Node2Vec':
+            model = baseline(
+                edge_index      = params['edge_index'],
+                embedding_dim   = params['embedding_dim'],
+                walk_length     = params['walk_length'],
+                context_size    = params['context_size'],
+                walks_per_node  = params['walks_per_node'])
         else:
             try:
                 model = eval(cfg["model"])(

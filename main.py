@@ -30,6 +30,8 @@ with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
 #choosing criterion
 assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
+
+
 #initialize ray
 if cfg['study::run'] == True:
     #arguments for ray
@@ -119,24 +121,34 @@ run_config=run_config)
     
     
 else:
-    params = {
-        "num_layers"    : cfg['num_layers'],
-        "hidden_size"   : cfg['hidden_size'],
-        "dropout"       : cfg["dropout"],
-        "dropout_temp"  : cfg["dropout_temp"],
-        "heads"         : cfg['num_heads'],
-        "use_batchnorm" : cfg['use_batchnorm'],
-        "gradclip"      : cfg['gradclip'],
-        "use_skipcon"   : cfg['use_skipcon'],
-        "reghead_size"  : cfg['reghead_size'],
-        "reghead_layers": cfg['reghead_layers'],
-        "use_masking"   : cfg['use_masking'],
-        "mask_probs"    : mask_probs,
+    if cfg['model'] == 'Node2Vec':
         
-        "num_features"  : num_features,
-        "num_edge_features" : num_edge_features,
-        "num_targets"   : num_targets
-    }
+        params={
+            "edge_index"      : next(iter(trainloader)).edge_index,
+            "embedding_dim"   : 128,
+            "walk_length"     : 10,
+            "context_size"    : 1,
+            "walks_per_node"  : 1
+            }
+    else:
+        params = {
+            "num_layers"    : cfg['num_layers'],
+            "hidden_size"   : cfg['hidden_size'],
+            "dropout"       : cfg["dropout"],
+            "dropout_temp"  : cfg["dropout_temp"],
+            "heads"         : cfg['num_heads'],
+            "use_batchnorm" : cfg['use_batchnorm'],
+            "gradclip"      : cfg['gradclip'],
+            "use_skipcon"   : cfg['use_skipcon'],
+            "reghead_size"  : cfg['reghead_size'],
+            "reghead_layers": cfg['reghead_layers'],
+            "use_masking"   : cfg['use_masking'],
+            "mask_probs"    : mask_probs,
+            
+            "num_features"  : num_features,
+            "num_edge_features" : num_edge_features,
+            "num_targets"   : num_targets
+        }
     
     #Choose Criterion
     if cfg['weighted_loss_label']:
