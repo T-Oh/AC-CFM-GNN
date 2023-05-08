@@ -32,12 +32,12 @@ class HurricaneDataset(Dataset):
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0):
         self.use_supernode=use_supernode
         super().__init__(root, transform, pre_transform, pre_filter)
+        self.stormsplit = stormsplit
         self.data_list=self.get_data_list(N_Scenarios)
         print(self.data_list)
-        #self.data_list=self.get_data_list(N_Scenarios)
         
         
     
@@ -51,28 +51,50 @@ class HurricaneDataset(Dataset):
         return [f for f in files if "data" in f]
     
     def get_data_list(self,N_scenarios):
+        #test_id is the id given to the storm when compiling the dataset of all storms (i.e. the first digit of the scenario (f.e. Claudette=1)) and is used to relate the data files to the storms
+        #To use the percentage based train test split stormsplit should be set to 0
         #N_scenario must be last Scenario that appears in raw (if scenario 1,2 and 100 are used N_scenarios must be 100)
         data_list=np.zeros((len(self.processed_file_names),2))
-        idx=0                           
-        for i in range(N_scenarios):
-            first=True
-            for file in self.processed_file_names:
-                if file.startswith(f'data_{i+1}_'):
+        idx=0  
+        test_idx=0  
+        if self.stormsplit == 0:                      
+            for i in range(N_scenarios):
+                first=True
+                for file in self.processed_file_names:
+                    if file.startswith(f'data_{i+1}_'):
+    
+                        _,step=self.get_scenario_step_of_file(file)
+                        if first:
+                            first=False
+                            scenario_list=[step]
+                        else:
+                            scenario_list.append(step)
+                if not first:
+    
+                    scenario_list=np.sort(np.array(scenario_list))
+    
+                    data_list[idx:idx+len(scenario_list),1]=scenario_list
+                    data_list[idx:idx+len(scenario_list),0]=i+1
+                    idx+=len(scenario_list)
+
+
                     
-                    _,step=self.get_scenario_step_of_file(file)
-                    if first:
-                        first=False                        
-                        scenario_list=[step]
+        #########################################################################################################################
+
+        else:   
+            test_idx = len(data_list)-1
+            for file in self.processed_file_names:           
+                if file.startswith(f'data'):
+                    scenario, step = self.get_scenario_step_of_file(file)
+                    if str(scenario).startswith(str(self.stormsplit)):
+                        data_list[test_idx,:] = [scenario, step]
+                        test_idx -= 1
                     else:
-                        scenario_list.append(step)
-            if not first:
-
-                scenario_list=np.sort(np.array(scenario_list))
-
-                data_list[idx:idx+len(scenario_list),1]=scenario_list
-                data_list[idx:idx+len(scenario_list),0]=i+1
-                idx+=len(scenario_list)
+                        data_list[idx,:] = [scenario, step]
+                        idx += 1
+            
         return data_list
+    
     
     def get_max_label(self):
         "Computes the max of all labels in the dataset"
@@ -271,6 +293,7 @@ class HurricaneDataset(Dataset):
         damages = self.get_initial_damages()
         #load initial network data
         init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
+        problems = [[0,0,0],[0,0,0]]
         #process data        
         for raw_path in self.raw_paths:
             #skip damage file
@@ -279,7 +302,7 @@ class HurricaneDataset(Dataset):
             scenario = self.get_scenario_of_file(raw_path)
             file=scipy.io.loadmat(raw_path)  #loads a full scenario   
             #loop through steps of scenario each step will be one processed data file
-            for i in [0,1,2,3,4,5,6,11,19,22]:#len(file['clusterresult'][0,:])):
+            for i in range(len(file['clusterresult'][0,:])):
                 #Node data
                 if i == 0:  #in first iteration load original pwsdata as initial data  
                     node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
@@ -287,7 +310,9 @@ class HurricaneDataset(Dataset):
                 else:
                     node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
                     edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
-                    
+                if np.isnan(file['clusterresult'][0,i][21]):
+                    #print('Skipping')
+                    continue
                 node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
                 P1 = node_data_pre[:,2] #P of all buses at initial condition - Node feature
                 Q1 = node_data_pre[:,3] #Q of all buses at initial condition - Node feature
@@ -315,6 +340,25 @@ class HurricaneDataset(Dataset):
                 pf2 = edge_data[:,15]
                 qf2 = edge_data[:,16]
                 sf2 = np.sqrt(pf2**2+qf2**2)
+                #Check for NaNs
+                if any(np.isnan(pf1[status==1])) or any(np.isnan(qf1[status==1])) or any(np.isnan(pf2[status==1])) or any(np.isnan(qf2[status==1])):
+                    print(raw_path)
+                    for j in np.where(np.isnan(pf1))[0]:
+                        if status[j]==1: 
+                            print(j)
+                            problems.append([scenario,i,j])
+                    for j in np.where(np.isnan(qf1))[0]:
+                        if status[j]==1: 
+                            print(j)
+                            problems.append([scenario,i,j])
+                    for j in np.where(np.isnan(pf2))[0]:
+                        if status[j]==1: 
+                            print(j)
+                            problems.append([scenario,i,j])
+                    for j in np.where(np.isnan(qf2))[0]:
+                        if status[j]==1: 
+                            print(j)
+                            problems.append([scenario,i,j])
                 
                 #initial damages
                 init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
@@ -437,6 +481,7 @@ class HurricaneDataset(Dataset):
                 #save unscaled data
                 data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels) 
                 torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+            np.save('problems',np.array(problems))
         
         #SCALING
         #get limits for scaling
@@ -499,22 +544,30 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None):
         trainset : the training set
         testset : the testset
     """
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"])
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=cfg['stormsplit'])
 
     if num_samples is None:
         len_dataset=len(dataset)
     else:
         print("Error: create_datasets can not accept num_samples as input yet")
     print(f'Len Dataset: {len_dataset}')
-    trainsize = cfg["train_size"]
-    last_train_sample = floor(trainsize * len_dataset)
-    if trainsize <1:
-        while dataset.data_list[last_train_sample-1,0]==dataset.data_list[last_train_sample,0]:
-            last_train_sample+=1
-        testset = Subset(dataset, range(last_train_sample, len_dataset))
-    else: testset= Subset(dataset,range(len_dataset,len_dataset))
-    trainset = Subset(dataset, range(0, last_train_sample))
+    if cfg['stormsplit'] != 0:
+        for i in range(len(dataset.data_list)):
+            if str(dataset.data_list[i,0]).startswith('1'):
+                last_train_sample=i-1
+                break
+    #last_train_sample = floor(trainsize * len_dataset)
+    else:   
+        trainsize = cfg["train_size"]
+        last_train_sample = len_dataset*trainsize
+        if trainsize <1:
+            while dataset.data_list[last_train_sample-1,0]==dataset.data_list[last_train_sample,0]:
+                last_train_sample+=1
+            testset = Subset(dataset, range(last_train_sample, len_dataset))
+        else: testset= Subset(dataset,range(len_dataset,len_dataset))
     
+    trainset = Subset(dataset, range(0, last_train_sample))
+    testset = Subset(dataset, range(last_train_sample, len_dataset))
 
     return trainset, testset
 
@@ -544,10 +597,10 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
 
     if pre_compute_mean:
         mean_labels = 0.
-        for batch in trainloader:   #change back to test
+        for batch in testloader:   #change back to test
             mean_labels += batch.y.sum().item()
-        mean_labels /= len(trainloader) #change back to test
-        trainloader.mean_labels = mean_labels#change back to test
+        mean_labels /= len(testloader) #change back to test
+        testloader.mean_labels = mean_labels#change back to test
 
     #logging.debug(f"Trainset first batch labels: {next(iter(trainloader)).y.tolist()}")
     #logging.debug(f"Testset first batch labels: {next(iter(testloader)).y.tolist()}")
