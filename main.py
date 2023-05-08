@@ -115,14 +115,20 @@ if cfg["study::run"]:
     if cfg['study::masking']:
         search_space['use_masking'] = tune.uniform(0,2)#tune.choice([True, False])
         
-   
+    #set up optimizer and scheduler
     baysopt=BayesOptSearch(metric='r2', mode='max')
-    tune_config = tune.tune_config.TuneConfig(num_samples = cfg['study::n_trials'], search_alg=baysopt)
+    scheduler = tune.schedulers.ASHAScheduler(time_attr='training_iteration', metric = 'r2', mode ='max', max_t=100, grace_period=10)
+    #configurations
+    tune_config = tune.tune_config.TuneConfig(num_samples = cfg['study::n_trials'], search_alg=baysopt, scheduler=scheduler)
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
-    tuner = tune.Tuner(tune.with_resources(tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
-                                            num_edge_features=num_edge_features, num_targets=num_targets, device=device, mask_probs=mask_probs),resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}), param_space = search_space, 
-tune_config=tune_config, 
-run_config=run_config)
+    #tuner
+    tuner = tune.Tuner(tune.with_resources(
+        tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features, 
+                             num_edge_features=num_edge_features, num_targets=num_targets, device=device, mask_probs=mask_probs),
+                            resources={"cpu": 1, "gpu":N_gpus/(N_cpus/1)}),
+        param_space = search_space, 
+        tune_config=tune_config, 
+        run_config=run_config)
     results = tuner.fit()
     print(results)
     
