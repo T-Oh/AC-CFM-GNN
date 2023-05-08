@@ -21,6 +21,7 @@ from ray import air
 from ray.tune.search.bayesopt import BayesOptSearch
 import time
 from sys import argv
+from os.path import isfile
 
 #get time
 start =time.time()
@@ -52,7 +53,13 @@ trainloader, testloader = create_loaders(cfg, trainset, testset)                
 
 #Calculate probabilities for masking of nodes if necessary
 if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
-    mask_probs= calc_mask_probs(trainloader)
+    if isfile('node_label_vars.pt'):
+        print('Using existing Node Label Variances for masking')
+        mask_probs = torch.load('node_label_vars.pt')
+    else:
+        print('No node label variance file found\nCalculating Node Variances for Masking')
+        mask_probs= calc_mask_probs(trainloader)
+        torch.save(mask_probs, 'node_label_vars.pt')
 else:
     mask_probs = torch.ones(2000)
 
@@ -82,6 +89,7 @@ if device == "cuda":
 #Runs study if set in configuration file
 if cfg["study::run"]:
     #uses ray to run a study, to see functionality check training.objective
+    #set up search space
     search_space = {
         'layers'    : tune.quniform(cfg["study::layers_lower"],cfg["study::layers_upper"]+1,1),
         'HF'        : tune.loguniform(cfg["study::hidden_features_lower"],cfg["study::hidden_features_upper"]+1),
@@ -122,14 +130,16 @@ run_config=run_config)
     
 else:
     if cfg['model'] == 'Node2Vec':
-        
+
         params={
             "edge_index"      : next(iter(trainloader)).edge_index,
-            "embedding_dim"   : 128,
+            "embedding_dim"   : 32,
             "walk_length"     : 10,
             "context_size"    : 1,
             "walks_per_node"  : 1
             }
+
+        
     else:
         params = {
             "num_layers"    : cfg['num_layers'],
@@ -149,7 +159,7 @@ else:
             "num_edge_features" : num_edge_features,
             "num_targets"   : num_targets
         }
-    
+
     #Choose Criterion
     if cfg['weighted_loss_label']:
         criterion = weighted_loss_label(factor = torch.tensor(cfg['weighted_loss_factor']))
@@ -158,10 +168,10 @@ else:
     else:    
         criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
     criterion.to(device)
+
     #Loading GNN model
     model = get_model(cfg, params)   #TO get_model does not load an old model but create a new one 
     model.to(device)
-
     #Choosing optimizer
     optimizer = get_optimizer(cfg, model)
     
