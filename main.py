@@ -20,8 +20,9 @@ from ray import tune
 from ray import air
 from ray.tune.search.bayesopt import BayesOptSearch
 import time
-from sys import argv
+from sys import argv, exit
 from os.path import isfile
+from torchmetrics import R2Score
 
 #get time
 start =time.time()
@@ -41,8 +42,8 @@ if cfg['study::run'] == True:
     N_cpus = int(argv[1])
     port_dashboard = int(argv[2])
     #init ray
-    ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard) 
-    
+    ray.init(_temp_dir=temp_dir, num_cpus=N_cpus, num_gpus = N_gpus, include_dashboard=True, dashboard_port=port_dashboard)
+
 #save config in results
 shutil.copyfile("configurations/configuration.json","results/configuration.json")
 logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", filemode="w", level=logging.INFO)
@@ -50,6 +51,7 @@ logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", fi
 #Loading and pre-transforming data
 trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None)
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
+
 
 #Calculate probabilities for masking of nodes if necessary
 if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
@@ -135,7 +137,45 @@ if cfg["study::run"]:
     
     
 else:
-    if cfg['model'] == 'Node2Vec':
+    if cfg['model'] == 'Mean':   #Model used as baseline that simply predicts the mean load shed of the training set
+
+        #calculate means to pass to model
+        means = torch.zeros(2000)
+        train_labels = torch.zeros(len(trainset), 2000)
+        train_output = torch.zeros(len(trainset), 2000)
+        index = 0
+        for i, batch in enumerate(trainloader):
+            N_instances = int(len(batch.node_labels)/2000)
+            train_labels[index:index+N_instances] = batch.node_labels.reshape(N_instances,2000)
+            index = index+N_instances
+        train_labels[7,:]+=0.00001
+        print(train_labels)
+        means = train_labels.mean(dim=0)
+        print(means)
+
+        #Init metrics
+        R2 = R2Score(num_outputs=2000)
+        criterion = torch.nn.MSELoss(reduction='mean')
+
+        #Compile labels and output
+        for i in range(len(trainset)):
+            train_output[i] = means
+        #calc loss and R2
+        trainloss = criterion(train_output.reshape(-1), train_labels.reshape(-1))
+        print(train_output)
+        print(train_labels)
+        trainR2 = R2(train_output, train_labels)
+        
+        torch.save(list(means), "results/"  + f"output.pt") #saving train losses
+        torch.save(list(train_labels), "results/"  + f"labels.pt") #saving train losses
+        print(trainR2)
+        logging.info("Final results of Mean Baseline:")
+        logging.info(f"Train Loss: {trainloss}")
+        logging.info(f"Train R2: {trainR2}")
+        logging.info(f'Test R2: ')
+        exit()
+        
+    elif cfg['model'] == 'Node2Vec':
 
         params={
             "edge_index"      : next(iter(trainloader)).edge_index,
@@ -144,7 +184,6 @@ else:
             "context_size"    : 1,
             "walks_per_node"  : 1
             }
-
         
     else:
         params = {
