@@ -37,10 +37,9 @@ class Engine(object):
         """print('\nBefore TRAINING\n')
         for param in self.model.parameters():
             print(param)"""
-            
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
-        R2score=R2Score().to(self.device)
+        R2score=R2Score(num_outputs=2000).to(self.device)
         first=True;
 
         count = 0
@@ -49,9 +48,10 @@ class Engine(object):
             self.optimizer.zero_grad()
             count +=1
             batch.to(self.device)
+            N_instances = int(len(batch.x)/2000)
 
 
-            output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
+            output = self.model.forward(batch)  #reshape used to make sure that output is 1 dimensional
             output.to(self.device)
             
             if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
@@ -64,16 +64,16 @@ class Engine(object):
                         
             if first:
                 if self.task == "NodeReg":
-                    total_output=output
-                    total_labels=labels
+                    total_output=output.reshape(N_instances,2000)
+                    total_labels=labels.reshape(N_instances,2000)
                 else:
                     total_output=output
                     total_labels=labels
                 first=False
             else:
                 if self.task == "NodeReg":
-                    total_output=cat((total_output,output),0)   
-                    total_labels=cat((total_labels,labels),0)
+                    total_output=cat((total_output,output.reshape(N_instances,2000)),0)   
+                    total_labels=cat((total_labels,labels.reshape(N_instances,2000)),0)
                 else:
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
@@ -102,7 +102,7 @@ class Engine(object):
             
             self.optimizer.step()
             loss += temp_loss.item()
-        R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        R2 = R2score(total_output, total_labels)
         example_output = total_output[0:16000]
         example_labels = total_labels[0:16000]
         del total_output
@@ -119,44 +119,46 @@ class Engine(object):
     def eval(self, dataloader, full_output=False):
         "Evaluates model"
         self.model.eval()
+        first = True
         with no_grad():
             loss = 0.
             discrete_measure = 0.
             correct = 0
-            
-            first = True
-            #second = True
+
             count = 0
+            index = 0
             for batch in dataloader:
+                N_instances = int(len(batch.x)/2000)
+                print(N_instances)
                 count += 1
                 batch.to(self.device)
                 if self.task == 'GraphReg':
                     temp_labels=batch.y
                 else:
-                    temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
-                if first:
-                    labels=temp_labels.clone()
-                    output= temp_output.clone()
-                    first = False
-                    """elif second:
+                    if first:
+                        output = self.model.forward(batch).reshape(N_instances, 2000)
+                        labels = batch.node_labels.reshape(N_instances, 2000)
+                        first = False
+                    else:
+                        output = torch.cat([output, self.model.forward(batch).reshape(N_instances,2000)], dim=0)
+                        labels = torch.cat([labels, batch.node_labels.reshape(N_instances, 2000)], dim=0)
+                            
                     print(labels.shape)
-                    print(temp_labels.shape)
-                    labels = torch.stack([labels,temp_labels])
-                    output = torch.stack([output, temp_output])
-                    second = False"""
-                else:
-                    #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
-                    #output = torch.cat([output, temp_output])     #.unsqueeze(0)
-                    output=cat((output,temp_output),0)  
-                    labels=cat((labels,temp_labels),0)
+                    print(batch.node_labels.reshape(N_instances, 2000).shape)
+                    #labels[index: index+N_instances] = batch.node_labels.reshape(N_instances, 2000).type(torch.FloatTensor)
+                    #output[index: index+N_instances] = self.model.forward(batch).reshape(N_instances, 2000)#.to(self.device)
+                    index += N_instances
+                    print('Labels and Output')
+                    print(labels)
+                    print(output)
+
 
             #TO
-            R2torch=R2Score().to(self.device)
+            R2torch = R2Score(num_outputs=2000,multioutput='raw_values').to(self.device)
             labels = labels.to(self.device)
             output = output.to(self.device)
 
-            R2=R2torch(output.reshape(-1), labels.reshape(-1))
+            R2=R2torch(output, labels)
             loss = self.criterion(output, labels)
 
             discrete_measure = discrete_loss(output.clone(), labels.clone())
