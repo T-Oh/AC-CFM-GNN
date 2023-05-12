@@ -76,11 +76,9 @@ class HurricaneDataset(Dataset):
                     data_list[idx:idx+len(scenario_list),1]=scenario_list
                     data_list[idx:idx+len(scenario_list),0]=i+1
                     idx+=len(scenario_list)
-
-
-                    
-        #########################################################################################################################
-
+             
+                
+        #Stormsplit
         else:   
             test_idx = len(data_list)-1
             for file in self.processed_file_names:           
@@ -529,7 +527,7 @@ class HurricaneDataset(Dataset):
         return data
     
 
-def create_datasets(root ,cfg, pre_transform=None, num_samples=None):
+def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0):
     """
     Helper function which loads the dataset, applies
     pre-transforms and splits it into a training and a
@@ -544,17 +542,17 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None):
         trainset : the training set
         testset : the testset
     """
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=cfg['stormsplit'])
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit)
 
     if num_samples is None:
         len_dataset=len(dataset)
     else:
         print("Error: create_datasets can not accept num_samples as input yet")
     print(f'Len Dataset: {len_dataset}')
-    if cfg['stormsplit'] != 0:
+    if stormsplit != 0:
         for i in range(len(dataset.data_list)):
-            if str(dataset.data_list[i,0]).startswith('1'):
-                last_train_sample=i-1
+            if str(dataset.data_list[i,0]).startswith(str(stormsplit)):
+                last_train_sample=i
                 break
     #last_train_sample = floor(trainsize * len_dataset)
     else:   
