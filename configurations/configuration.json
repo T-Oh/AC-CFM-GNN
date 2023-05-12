@@ -4,9 +4,11 @@
     "dataset::path": "",
     "task":"NodeReg",
 
-    "n_scenarios":4,
+    "n_scenarios":114,
+    "stormsplit" : 1,
+    "crossvalidation" : true,
     "epochs": 100,
-    "model": "GINE",
+    "model": "Mean",
     "supernode":false,
     "output_freq" : 1,
 
@@ -22,12 +24,12 @@
     "use_skipcon" : true,
     "use_masking" : false,
     "mask_bias" : 0.3,
-    "weighted_loss_var" : true,
-    "weighted_loss_label" : true,
-    "weighted_loss_factor" : 10,
+    "weighted_loss_var" : false,
+    "weighted_loss_label" : false,
+    "weighted_loss_factor" : 1,
     
     "train_size":1,
-    "test_set::batchsize": 1,
+    "test_set::batchsize": 2,
     "train_set::batchsize": 2,
     "train_set::shuffle": false,
 
@@ -42,14 +44,14 @@
     "optim::loss": "MSE",
     "optim::momentum": 0.99,
     "optim::nesterov": false,
-    "optim::optimizer": "Adam",
+    "optim::optimizer": "SGD",
     "optim::weight_decay": 1e-9,
     
     "manual_seed" : 7,
 
 
     "study::run" : false,
-    "study::n_trials" : 5,
+    "study::n_trials" : 4,
 
     "study::lr::lower" : 4e-4,
     "study::lr::upper" : 4e-4,
@@ -84,5 +86,7 @@
     "study::mask_bias_upper" : 0.2,
 
     "study::loss_weight_lower" : 0.5,
-    "study::loss_weight_upper" : 50
+    "study::loss_weight_upper" : 50,
+
+    "study::loss_type" : false
 }

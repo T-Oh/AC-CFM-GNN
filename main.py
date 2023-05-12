@@ -23,6 +23,7 @@ import time
 from sys import argv, exit
 from os.path import isfile
 from torchmetrics import R2Score
+from models.run_mean_baseline import run_mean_baseline
 
 #get time
 start =time.time()
@@ -31,8 +32,8 @@ start =time.time()
 with open("configurations/configuration.json", "r") as io:
     cfg = json.load(io)
 #choosing criterion
-assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var'])
-
+assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var']), 'can not use both weighted losses at once'
+assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
 
 #initialize ray
 if cfg['study::run'] == True:
@@ -49,7 +50,7 @@ shutil.copyfile("configurations/configuration.json","results/configuration.json"
 logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", filemode="w", level=logging.INFO)
 
 #Loading and pre-transforming data
-trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None)
+trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
 trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
 
 
@@ -65,17 +66,18 @@ if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg
 else:
     mask_probs = torch.ones(2000)
 
+    
 #getting feature and target sizes
 num_features = trainset.__getitem__(0).x.shape[1]
 num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
 num_targets = 1
 
 
-
 #choosing device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   #TO device represents the 'device' on which a torch.tensor is placed (cpu or cuda) -> cuda uses gpus
 #device = "cuda:0"
 print(device)
+
 
 #setting seeds
 torch.manual_seed(cfg["manual_seed"])
@@ -138,41 +140,20 @@ if cfg["study::run"]:
     
 else:
     if cfg['model'] == 'Mean':   #Model used as baseline that simply predicts the mean load shed of the training set
-
-        #calculate means to pass to model
-        means = torch.zeros(2000)
-        train_labels = torch.zeros(len(trainset), 2000)
-        train_output = torch.zeros(len(trainset), 2000)
-        index = 0
-        for i, batch in enumerate(trainloader):
-            N_instances = int(len(batch.node_labels)/2000)
-            train_labels[index:index+N_instances] = batch.node_labels.reshape(N_instances,2000)
-            index = index+N_instances
-        train_labels[7,:]+=0.00001
-        print(train_labels)
-        means = train_labels.mean(dim=0)
-        print(means)
-
-        #Init metrics
-        R2 = R2Score(num_outputs=2000)
-        criterion = torch.nn.MSELoss(reduction='mean')
-
-        #Compile labels and output
-        for i in range(len(trainset)):
-            train_output[i] = means
-        #calc loss and R2
-        trainloss = criterion(train_output.reshape(-1), train_labels.reshape(-1))
-        print(train_output)
-        print(train_labels)
-        trainR2 = R2(train_output, train_labels)
-        
-        torch.save(list(means), "results/"  + f"output.pt") #saving train losses
-        torch.save(list(train_labels), "results/"  + f"labels.pt") #saving train losses
-        print(trainR2)
+       
+        result = run_mean_baseline(cfg)
+        np.save('results/mean_result', result)
+        if cfg['crossvalidation']:
+            trainloss = result['trainloss'].mean()
+            trainR2 = result['trainR2'].mean()
+            testloss = result['testloss'].mean()
+            testR2 = result['testR2'].mean()
+            
         logging.info("Final results of Mean Baseline:")
         logging.info(f"Train Loss: {trainloss}")
+        logging.info(f"Test Loss: {testloss}")
         logging.info(f"Train R2: {trainR2}")
-        logging.info(f'Test R2: ')
+        logging.info(f'Test R2: {testR2}')
         exit()
         
     elif cfg['model'] == 'Node2Vec':
