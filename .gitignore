@@ -16,3 +16,7 @@ crash.log
 *.pyc
 
 training/engine_orig.py
+
+configurations/configuration-LAPTOP-NE62V7DS.json
+
+configurations/configurationArma.json
