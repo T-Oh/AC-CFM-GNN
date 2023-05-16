@@ -1,12 +1,11 @@
 import logging
 import torch
 import json
-#from torch_geometric.transforms import ToUndirected, Compose, RemoveIsolatedNodes, NormalizeScale
 from numpy.random import seed as numpy_seed
 
 from training.engine import Engine
-from training.training import run_training, objective  # , run_tuning
-from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, mask_probs_add_bias
+from training.training import run_training, objective  
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, mask_probs_add_bias#, save_node2vec
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
 import matplotlib.pyplot as plt
@@ -208,47 +207,101 @@ else:
         criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
     criterion.to(device)
 
-    # Loading GNN model
-    # TO get_model does not load an old model but create a new one
+    # Loadi GNN model
     model = get_model(cfg, params)
     model.to(device)
-    # Choosing optimizer
+    
+    # Init optimizer
     optimizer = get_optimizer(cfg, model)
 
     # Initializing engine
     engine = Engine(model, optimizer, device, criterion,
                     tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs)
+    
+    
+    if cfg['crossvalidation']:
+        folds = 7
+        del trainset
+        del testset
+        trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
+        trainloader, testloader = create_loaders(cfg, trainset, testset) 
+        trainlosses = torch.zeros(folds)
+        trainR2s = torch.zeros(folds)
+        testlosses = torch.zeros(folds)
+        testR2s = torch.zeros(folds)
+    else:
+        folds = 1
+        
+        
+    for fold in range(folds):
+        if fold > 0:
+            del trainset
+            del testset
+            del trainloader
+            del testloader
+            del model
+            del engine
+            del output
+            del labels
+            trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
+            trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
+            # ReInit GNN model
+            model = get_model(cfg, params)
+            model.to(device)
+            
+            # ReInit optimizer
+            optimizer = get_optimizer(cfg, model)
 
-    losses, final_eval, output, labels = run_training(
-        trainloader, testloader, engine, cfg)
-    torch.save(list(output), "results/" + f"output.pt")  # saving train losses
-    torch.save(list(labels), "results/" + f"labels.pt")  # saving train losses
-    torch.save(list(losses), "results/" + "losses1.pt")  # saving train losses
-    plt.plot(losses)
-
-    logging.info("Final results:")
-    logging.info(f"Accuracy: {final_eval[2]}")
-    logging.info(f"R2: {final_eval[1]}")
-    logging.info(f'Discrete loss: {final_eval[3]}')
-    print(f'Final R2: {final_eval[1]}')
+            # ReInitializing engine
+            engine = Engine(model, optimizer, device, criterion,
+                            tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs)
+        
+        #Run Training
+        metrics, final_eval, output, labels = run_training(
+            trainloader, testloader, engine, cfg)
+        
+        #Save outputs, labels and losses of first fold
+        if fold == 0:
+            torch.save(list(output), "results/" + "output.pt")  # saving train losses
+            torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
+            torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
+            torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
+            #Set variables for logging in case crossvalidation == False
+            trainloss = torch.tensor(metrics['train_loss']).min()
+            testloss = torch.tensor(metrics['test_loss']).min()
+            trainR2 = torch.tensor(metrics['train_R2']).min()
+            testR2 = torch.tensor(metrics['test_R2']).min()
+            
+            plt.plot(metrics['train_loss'])
+            plt.plot(metrics['test_loss'])
+        
+        #Add results of fold to lists
+        if cfg['crossvalidation']:
+            trainlosses[fold] = torch.tensor(metrics['train_loss']).min()
+            trainR2s[fold] = torch.tensor(metrics['train_R2']).max()
+            testlosses[fold] = torch.tensor(metrics['test_loss']).min()
+            testR2s[fold] = torch.tensor(metrics['test_R2']).max()
+            trainloss = trainlosses.mean()
+            trainR2 = trainR2s.mean()
+            testloss = testlosses.mean()
+            testR2 = testR2s.mean()
+            result = {'trainloss' : trainlosses,
+                      'trainR2' : trainR2s,
+                      'testloss' : testlosses,
+                      'testR2' : testR2s}
+            
+        #Save Metrics after last fold
+        if fold == folds-1:
+            logging.info("Final results:")
+            logging.info(f'Train Loss: {trainloss}')
+            logging.info(f"Train R2: {trainR2}")
+            logging.info(f'Test Loss: {testloss}')
+            logging.info(f'Test R2: {testR2}')
 
     save_model = True
     if save_model:
         torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
         # torch.onnx.export(model,data,"supernode.onnx")
 
-    torch.save(list(losses), "results/" + "losses.pt")  # saving train losses
-    plt.title(f'LR={cfg["optim::LR"]}')
-    plt.plot(losses)
-    """
-    fig1,ax1=plt.subplots()
-    x_ticks = np.array(range(2000))
-    ax1.bar(x_ticks, labels[0])
-    ax1.bar(x_ticks, output[0])
-    ax1.set_title("Load Shed at Node")
-    ax1.set_xlabel("Node ID")
-    ax1.set_ylabel('Load Shed in p.U.')
-    fig1.savefig("ac_node_feature_distr_active_power.png")
-    """
 end = time.time()
 logging.info(f'\nOverall Runtime: {(end-start)/60} min')
