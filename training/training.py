@@ -13,9 +13,28 @@ from torchmetrics import R2Score
 from utils.utils import weighted_loss_label, weighted_loss_var
 
 def run_training(trainloader, testloader, engine, cfg):
+    """
+    
+
+    Parameters
+    ----------
+    trainloader : Dataloader
+    testloader : Dataloader
+    engine : Engine
+    cfg : config file
+
+    Returns
+    -------
+    metrics : dict {train_loss, train_R2, test_loss, test_R2} each metric is a list of the metric at every epoch
+    final_eval : [testloss, testR2, testacc, testDM]
+    output : list of outputs through time (entries saved with output freq)
+    labels : list of labels through time
+
+    """
     train_loss = []
+    train_R2 = []
     test_loss = []
-    eval_scores = []
+    test_R2 = []
     output=[]
     labels=[]
 
@@ -29,23 +48,27 @@ def run_training(trainloader, testloader, engine, cfg):
 
 
         train_loss.append(temp_train_loss)
+        train_R2.append(R2)
         test_loss.append(temp_eval[0])
+        test_R2.append(temp_eval[2])
         if i % cfg['output_freq'] == 0:
             logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / train R2 {R2}/ test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
-            output.append(temp_output)  #can be added to return to save best output instead of last outpu
-            labels.append(temp_labels)
-            
-    if cfg['train_size'] == 1:
-        final_eval, final_output, final_labels =  engine.eval(trainloader)  #TO change back to testloader if trainsiz<1
+            #output.append(temp_output)  #can be added to return to save best output instead of last outpu
+            #labels.append(temp_labels)
+    
+    if cfg['train_size'] == 1 and cfg['stormsplit'] == 0 and cfg['crossvalidation'] == 0:
+        final_eval, final_output, final_labels =  engine.eval(trainloader)
     else:
         final_eval, final_output, final_labels =  engine.eval(testloader)
-    #print('USING TRAINLOADER FOR EVALUATION!')
-
-    #logging.info("Final R2: ", final_eval[1])
-    #logging.info("Final accuracy: ", final_eval[2])
-    eval_scores=0
-
-    return train_loss, final_eval, output, labels
+    metrics = {
+        'train_loss' : train_loss,
+        'train_R2' : train_R2,
+        'test_loss' : test_loss,
+        'test_R2' : test_R2
+        }
+    output = temp_output    #REMOVE TO SAVE FULL OUTPUT
+    labels = temp_labels
+    return metrics, final_eval, output, labels
 
 
 

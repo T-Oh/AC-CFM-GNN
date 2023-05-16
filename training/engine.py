@@ -64,8 +64,8 @@ class Engine(object):
                         
             if first:
                 if self.task == "NodeReg":
-                    total_output=output
-                    total_labels=labels
+                    total_output=output.clone()
+                    total_labels=labels.clone()
                 else:
                     total_output=output
                     total_labels=labels
@@ -117,7 +117,22 @@ class Engine(object):
         return loss/count, R2, example_output, example_labels
 
     def eval(self, dataloader, full_output=False):
-        "Evaluates model"
+        """
+        
+
+        Parameters
+        ----------
+        dataloader : Dataloader
+        full_output : boolean, optional
+            if True saves output of all instances. The default is False.
+
+        Returns
+        -------
+        evaluation :[loss, R2, accuracy, discrete_measure/count]
+        output : list of outputs
+        labels : list of labels
+
+        """
         self.model.eval()
         with no_grad():
             loss = 0.
