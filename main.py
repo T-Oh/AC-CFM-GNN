@@ -5,7 +5,7 @@ from numpy.random import seed as numpy_seed
 
 from training.engine import Engine
 from training.training import run_training, objective  
-from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, mask_probs_add_bias#, save_node2vec
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, save_node2vec
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
 import matplotlib.pyplot as plt
@@ -23,6 +23,7 @@ from sys import argv
 from os.path import isfile
 from torchmetrics import R2Score
 from models.run_mean_baseline import run_mean_baseline
+import os
 
 
 
@@ -55,10 +56,9 @@ shutil.copyfile("configurations/configuration.json",
 logging.basicConfig(filename=cfg['dataset::path'] +
                     "results/regression.log", filemode="w", level=logging.INFO)
 
-# Loading and pre-transforming data
-trainset, testset = create_datasets(
+# Create Datasets and Dataloaders
+trainset, testset, data_list = create_datasets(
     cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
-# TO the loaders contain the data and get batchsize and shuffle from cfg
 trainloader, testloader = create_loaders(cfg, trainset, testset)
 
 
@@ -153,6 +153,7 @@ else:
     if cfg['model'] == 'Mean':  # Model used as baseline that simply predicts the mean load shed of the training set
 
         result = run_mean_baseline(cfg)
+        
         np.save('results/mean_result', result)
         if cfg['crossvalidation']:
             trainloss = result['trainloss'].mean()
@@ -167,15 +168,30 @@ else:
         logging.info(f'Test R2: {testR2}')
         exit()
 
-    elif cfg['model'] == 'Node2Vec':
 
+
+    elif cfg['model'] == 'Node2Vec':
+        assert not cfg['train_set::shuffle'], 'Node2Vec can not be used with train_set::shuffle'
         params = {
             "edge_index": next(iter(trainloader)).edge_index,
             "embedding_dim": 32,
-            "walk_length": 10,
+            "walk_length": 30,
             "context_size": 1,
             "walks_per_node": 1
         }
+        model = get_model(cfg, params)
+        model.to(device)
+        for i, batch in enumerate(trainloader):
+            print(batch.batch)
+            if i > 1:
+                print('Running Node2Vec but found more than one batch in trainloader!')
+            embedding = model.forward(batch)
+            embedding = torch.cat([batch.x, embedding],1)
+            print(embedding.shape)
+            save_node2vec(embedding, data_list)
+        exit()
+            
+            
 
     else:
         params = {
@@ -243,6 +259,8 @@ else:
             del engine
             del output
             del labels
+            os.rename('processed/', f'processed{int(fold)}')
+            os.rename(f'processed{int(fold+1)}/', 'processed')
             trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
             trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
             # ReInit GNN model
