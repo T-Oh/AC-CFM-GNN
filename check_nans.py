@@ -14,13 +14,14 @@ import torch
 import shutil
 
 
-path_from_processed='/p/tmp/tobiasoh/machine_learning/Ike_ajusted_nonans/processed/'
-path_dump = '/p/tmp/tobiasoh/machine_learning/Ike_ajusted_nonans/dump/'
+path_from_processed='/p/tmp/tobiasoh/machine_learning/complete_datasets/large_set/processed/'
+path_dump = '/p/tmp/tobiasoh/machine_learning/complete_datasets/large_set/dump/'
 N_files_NaNs = 0
 N_files_outliers = 0
 
 
 for file in os.listdir(path_from_processed):
+    move = False
     if file.startswith('data'):
         data = torch.load(path_from_processed+file)
         
@@ -42,26 +43,26 @@ for file in os.listdir(path_from_processed):
             continue
             
         #Check for and remove data with outliers    
-        if any(data.x[:,1]>500):
-            print(file+' in x')
+        if (any(data.x[:,1]>1.12) or any(data.x[:,1]<0.88)):
             for i in range(len(data.x[:,1])):
-                if data.x[i,1]>500: print(f'{i}, VM={data.x[i,1]}')
-            shutil.move(path_from_processed+file, path_dump+file)
-            N_files_outliers += 1
-            continue
-        if any(data.edge_attr[:,1]>685484.75) or any(data.edge_attr[:,1]<-563764.75) or any(data.edge_attr[:,2]>231259.625) or any(data.edge_attr[:,2]<-152719.78125):
+                if (data.x[i,1]>1.12 or data.x[i,1]<0.88) and data.x[i,0] != 0: 
+                    print(file+' in x')
+                    print(f'{i}, VM={data.x[i,1]}, PD={data.x[i,0]}')
+                    move = True
+            if move:
+                shutil.move(path_from_processed+file, path_dump+file)
+                N_files_outliers += 1
+                continue
+        if any(torch.sqrt(data.edge_attr[:,1]**2+data.edge_attr[:,2]**2) > data.edge_attr[:,1]*1.01):
             print(file+ ' in edges')
             for i in range(len(data.edge_attr[:,1])):
-                if data.edge_attr[i,1]>685484.75 or data.edge_attr[i,1]<-563764.75:
+                if torch.sqrt(data.edge_attr[i,1]**2+data.edge_attr[i,2]**2) > data.edge_attr[i,1]*1.01:
                     print(f'{i}, PF={data.edge_attr[i,1]}')
-                    shutil.move(path_from_processed+file, path_dump+file)
-                    N_files_outliers += 1
-                    continue
-                if data.edge_attr[i,2]>231259.625 or data.edge_attr[i,2]<-152719:
-                    print(f'{i}, QF={data.edge_attr[i,2]}')  
-                    shutil.move(path_from_processed+file, path_dump+file)
-                    N_files_outliers += 1
-                    continue
+                    move = True
+            if move:
+                shutil.move(path_from_processed+file, path_dump+file)
+                N_files_outliers += 1
+                continue
                       
         elif any(torch.isnan(data.node_labels)):
             print(file + ' in node labels')
