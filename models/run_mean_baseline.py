@@ -5,6 +5,7 @@ Created on Fri May 12 10:02:30 2023
 @author: tobia
 """
 from datasets.dataset import create_datasets, create_loaders
+import os
 
 import torch
 from torchmetrics import R2Score
@@ -26,21 +27,23 @@ def run_mean_baseline(cfg):
     """
 
     if cfg['crossvalidation']:
-        iterations = 7
-        trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
+        folds = 7
+        trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
         trainloader, testloader = create_loaders(cfg, trainset, testset) 
-        trainlosses = torch.zeros(7)
-        trainR2s = torch.zeros(7)
-        testlosses = torch.zeros(7)
-        testR2s = torch.zeros(7)
+        trainlosses = torch.zeros(folds)
+        trainR2s = torch.zeros(folds)
+        testlosses = torch.zeros(folds)
+        testR2s = torch.zeros(folds)
     else:
-        iterations = 1
+        folds = 1
         
         
-    for fold in range(iterations):
+    for fold in range(folds):
         print(fold)
         if fold > 0:
-            trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
+            os.rename('processed/', f'processed{int(fold)}')
+            os.rename(f'processed{int(fold+1)}/', 'processed')
+            trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
             trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
             
         #calculate means to pass to model
@@ -78,8 +81,8 @@ def run_mean_baseline(cfg):
         test_output = train_output[:len(testset)]
         
         #save the means and some labels
-        torch.save(list(means), "results/"  + f"means.pt") #saving train losses
-        torch.save(list(train_labels[0:16000]), "results/"  + f"labels.pt") #saving train losses
+        torch.save(list(means), "results/"  + "means.pt") #saving train losses
+        torch.save(list(train_labels[0:16000]), "results/"  + "labels.pt") #saving train losses
     
         #calc loss and R2
         trainloss = criterion(train_output.reshape(-1), train_labels.reshape(-1))
@@ -89,7 +92,7 @@ def run_mean_baseline(cfg):
         
         
         #In case of crossvalidation save to tensors
-        if iterations > 1:
+        if folds > 1:
             trainlosses[fold] = trainloss
             trainR2s[fold] = trainR2
             testlosses[fold] = testloss
@@ -108,4 +111,4 @@ def run_mean_baseline(cfg):
                       'testloss' : testloss,
                       'testR2' : testR2}
             
-        return result
+    return result
