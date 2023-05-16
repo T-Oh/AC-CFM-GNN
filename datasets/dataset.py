@@ -49,6 +49,7 @@ class HurricaneDataset(Dataset):
     def processed_file_names(self):
         files = os.listdir(self.root + "/processed")
         return [f for f in files if "data" in f]
+        
     
     def get_data_list(self,N_scenarios):
         #test_id is the id given to the storm when compiling the dataset of all storms (i.e. the first digit of the scenario (f.e. Claudette=1)) and is used to relate the data files to the storms
@@ -543,6 +544,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
         testset : the testset
     """
     dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit)
+    data_list = dataset.data_list
 
     if num_samples is None:
         len_dataset=len(dataset)
@@ -550,8 +552,8 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
         print("Error: create_datasets can not accept num_samples as input yet")
     print(f'Len Dataset: {len_dataset}')
     if stormsplit != 0:
-        for i in range(len(dataset.data_list)):
-            if str(dataset.data_list[i,0]).startswith(str(stormsplit)):
+        for i in range(len(data_list)):
+            if str(data_list[i,0]).startswith(str(stormsplit)):
                 last_train_sample=i
                 break
     #last_train_sample = floor(trainsize * len_dataset)
@@ -559,7 +561,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
         trainsize = cfg["train_size"]
         last_train_sample = len_dataset*trainsize
         if trainsize <1:
-            while dataset.data_list[last_train_sample-1,0]==dataset.data_list[last_train_sample,0]:
+            while data_list[last_train_sample-1,0]==data_list[last_train_sample,0]:
                 last_train_sample+=1
             testset = Subset(dataset, range(last_train_sample, len_dataset))
         else: testset= Subset(dataset,range(len_dataset,len_dataset))
@@ -567,7 +569,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     trainset = Subset(dataset, range(0, last_train_sample))
     testset = Subset(dataset, range(last_train_sample, len_dataset))
 
-    return trainset, testset
+    return trainset, testset, data_list 
 
 def create_loaders(cfg, trainset, testset, pre_compute_mean=False): 
     """
@@ -606,9 +608,7 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
     return trainloader, testloader
 
 
-def calc_mask_probs(dataloader):
-
-    
+def calc_mask_probs(dataloader):    
     #New way
     node_label_vars=np.zeros(2000)
     for i, batch in enumerate(dataloader):
@@ -626,9 +626,20 @@ def calc_mask_probs(dataloader):
     node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
     return node_label_probs
 
+
 def mask_probs_add_bias(mask_probs, bias):
     mask_probs_rescaled = mask_probs.clone() + bias
     for i in range(len(mask_probs)):
         if mask_probs_rescaled[i] > 1.0: mask_probs_rescaled[i] = 1
     return mask_probs_rescaled
+
+
+def save_node2vec(embedding, data_list):
+    print(embedding.shape)
+    print(len(embedding))
+    embedding = embedding.reshape(int(len(embedding)/2000), 2000, embedding.shape[1])
+    if not os.path.exists('node2vec/'):
+        os.makedirs('node2vec/')
+    for i in range(len(embedding)):
+        torch.save(embedding[i], f'node2vec/data_{int(data_list[i,0])}_{int(data_list[i,1])}.pt')
     
