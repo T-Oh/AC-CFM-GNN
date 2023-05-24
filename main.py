@@ -24,6 +24,8 @@ from os.path import isfile
 from torchmetrics import R2Score
 from models.run_mean_baseline import run_mean_baseline
 import os
+from torch_geometric.nn import Node2Vec
+from models.run_node2vec import run_node2vec
 
 
 
@@ -57,9 +59,15 @@ logging.basicConfig(filename=cfg['dataset::path'] +
                     "results/regression.log", filemode="w", level=logging.INFO)
 
 # Create Datasets and Dataloaders
+print('Creating Datasets...')
 trainset, testset, data_list = create_datasets(
     cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
+t2 = time.time()
+print(f'Creating datasets took {(start-t2)/60} mins')
+print('Creating Dataloaders...')
 trainloader, testloader = create_loaders(cfg, trainset, testset)
+print(f'Creating dataloaders took {(t2-time.time())/60} mins')
+
 
 
 # Calculate probabilities for masking of nodes if necessary
@@ -171,26 +179,14 @@ else:
 
 
     elif cfg['model'] == 'Node2Vec':
+        
         assert not cfg['train_set::shuffle'], 'Node2Vec can not be used with train_set::shuffle'
-        params = {
-            "edge_index": next(iter(trainloader)).edge_index,
-            "embedding_dim": 32,
-            "walk_length": 30,
-            "context_size": 1,
-            "walks_per_node": 1
-        }
-        model = get_model(cfg, params)
-        model.to(device)
-        for i, batch in enumerate(trainloader):
-            print(batch.batch)
-            if i > 1:
-                print('Running Node2Vec but found more than one batch in trainloader!')
-            embedding = model.forward(batch)
-            embedding = torch.cat([batch.x, embedding],1)
-            print(embedding.shape)
-            save_node2vec(embedding, data_list)
+        print(f'Length training set:{len(trainset)}')
+        #assert cfg['train_set::batchsize'] == len(trainset), 'Node2Vec can only be used with batchsize = length of the trainingset'
+        embedding = run_node2vec(cfg, trainloader, device, data_list)
+
         exit()
-            
+        
             
 
     else:
