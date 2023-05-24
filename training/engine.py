@@ -18,7 +18,7 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False):
         self.model = model
         self.optimizer = optimizer
         self.device = device
@@ -29,6 +29,7 @@ class Engine(object):
         self.masks = torch.bernoulli(self.mask_probs)
         self.masking = masking
         self.criterion = criterion
+        self.return_full_output = return_full_output
 
 
     def train_epoch(self, dataloader, gradclip):
@@ -78,8 +79,7 @@ class Engine(object):
                     total_output=cat((total_output,output),0)  
                     total_labels=cat((total_labels,labels),0)
             
-            #total_output = output    #REMOVE if total output of every epoch should be saved
-            #total_labels = labels
+            
             #calc and backpropagate loss
             if self.masking:
                 for j in range(int(len(output)/2000)):
@@ -103,10 +103,12 @@ class Engine(object):
             self.optimizer.step()
             loss += temp_loss.item()
         R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
-        example_output = total_output[0:16000]
-        example_labels = total_labels[0:16000]
-        del total_output
-        del total_labels
+        if not self.return_full_output:
+            example_output = total_output[0:16000]
+            example_labels = total_labels[0:16000]
+            del total_output
+            del total_labels
+            return loss/count, R2, example_output, example_labels
             
         #TO print weight matrices for debugging
         """print('\nAFTER TRAINING\n')
@@ -114,7 +116,7 @@ class Engine(object):
             print(param)"""
 
         #End TO
-        return loss/count, R2, example_output, example_labels
+        return loss/count, R2, total_output, total_labels
 
     def eval(self, dataloader, full_output=False):
         """
