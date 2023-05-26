@@ -1,5 +1,5 @@
 from torch_geometric.nn import Sequential, GCNConv, global_add_pool, global_mean_pool, Node2Vec
-from torch.nn import Module, Sigmoid, ReLU, Dropout, Linear
+from torch.nn import Module, Sigmoid, LeakyReLU, Dropout, Linear
 import torch
 
 
@@ -14,33 +14,48 @@ class ridge(Module):
 
     def forward(self, data):
         x, batch, edge_index, edge_weight  = data.x, data.batch, data.edge_index, data.edge_attr
-   
+        
         x = self.linear(x.reshape(-1))
         #print(x)
         
         return x
     
-class node2vec(Module):
-    """Node2Vec Baseline (unfinished)"""
-
-    def __init__(self, edge_index, embedding_dim=128, walk_length=20, context_size=1, walks_per_node=1):
+class MLP(Module):
+    def __init__(self, num_node_features, hidden_size, num_layers):
         super().__init__()
-        self.node2vec = Node2Vec(edge_index=edge_index, embedding_dim=embedding_dim, walk_length=walk_length, context_size=context_size, walks_per_node=walks_per_node)
-        #self.linear = Linear(in_features=2000*embedding_dim, out_features=2000)
-
-
-    def forward(self, data):
-        x, batch, edge_index, edge_weight  = data.x, data.batch, data.edge_index, data.edge_attr
-        print(edge_index.shape)
-        print(x.shape)
-        x = self.node2vec(batch)  
-
-        print(x.shape)
+        assert num_layers <= 3, 'A maximum of 3 layers implemented for MLP'
+        self.num_layers = num_layers
+        self.lin_single = Linear(num_node_features*2000, 2000)
+        self.lin_in = Linear(in_features=2000*num_node_features, out_features = hidden_size)
+        self.lin_hidden = Linear(in_features=hidden_size, out_features = hidden_size)
+        self.lin_end = Linear(in_features=hidden_size, out_features = 2000)
+        self.ReLu = LeakyReLU()
         
+        
+        
+    def forward(self, data):
+        x = data.x
+        print(x.shape)
+        if self.num_layers == 1:
+            x = self.lin_single(x.reshape(-1))
+        elif self.num_layers > 1:
+            x = self.lin_in(x.reshape(-1))
+            x = self.ReLu(x)
+            if self.num_layers > 2:
+                x = self.lin_hidden(x)
+                x = self.ReLu(x)
+            x = self.lin_end(x)
         return x
+        
+        
+        
+        #for layer in range(self.num_layers-2):
+            #x = self.
+        
+        
     
-class mean(Module):
-    """Baseline which simply predicts the mean power outage at every node"""
+"""class mean(Module):
+
     
     def __init__(self, means):
         super().__init__()
@@ -48,4 +63,4 @@ class mean(Module):
         self.linear = Linear(in_features=1, out_features=1)
         
     def forward(self, data):
-        return self.means
+        return self.means"""
