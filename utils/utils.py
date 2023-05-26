@@ -342,38 +342,70 @@ def get_zero_buses():
     return all_instances_zero
 
 def setup_searchspace(cfg):
-    """if cfg['model'] == 'MLP':
+    if cfg['model'] == 'MLP':
         search_space = {
             'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
             'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
             }
-    else:"""
-    search_space = {
-        'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
-        'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
-        'heads': tune.quniform(cfg["study::heads_lower"], cfg["study::heads_upper"]+1, 1),
-        'LR': tune.loguniform(cfg['study::lr::lower'], cfg['study::lr::upper']),
-        'dropout': tune.quniform(cfg["study::dropout_lower"], cfg["study::dropout_upper"], 0.01),
-        'gradclip': tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'], 0.01),
+    elif cfg['model'] == 'Node2Vec':
+        search_space = {
+            #Params for MLP
+            'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
+            'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
+            #Params for Node2Vec
+            'embedding_dim'   :   tune.quniform(cfg["study::embedding_dim_lower"], cfg["study::embedding_dim_upper"]+1, 1),
+            'walk_length'     :   tune.quniform(cfg["study::walk_length_lower"], cfg["study::walk_length_upper"]+1, 1),
+            'context_size'    :   tune.quniform(cfg["study::context_size_lower"], cfg["study::context_size_upper"]+1, 1),
+            'walks_per_node'  :   tune.quniform(cfg["study::walks_per_node_lower"], cfg["study::walks_per_node_upper"]+1, 1),
+            'num_negative_samples'    :   tune.quniform(cfg["study::num_negative_samples_lower"], cfg["study::num_negative_samples_upper"]+1, 1),
+            'p'     :   tune.quniform(cfg["study::p_lower"], cfg["study::p_upper"]+1, 1),
+            'q'     :   tune.quniform(cfg["study::q_lower"], cfg["study::q_upper"]+1, 1),
+            }
+        
+    else:
+        search_space = {}
+        if cfg["study::layers_lower"] != cfg["study::layers_upper"]:
+            search_space['layers'] = tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1)
+        if cfg["study::hidden_features_lower"] != cfg["study::hidden_features_upper"]:
+            search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)
+        if cfg["study::heads_lower"] != cfg["study::heads_upper"]:
+            search_space['heads'] = tune.quniform(cfg["study::heads_lower"], cfg["study::heads_upper"]+1, 1)
+        if cfg['study::lr::lower'] != cfg['study::lr::upper']:
+            search_space['LR'] = tune.loguniform(cfg['study::lr::lower'], cfg['study::lr::upper'])
+        if cfg["study::dropout_lower"] != cfg["study::dropout_upper"]:
+            search_space['dropout'] = tune.quniform(cfg["study::dropout_lower"], cfg["study::dropout_upper"], 0.01)
+        if cfg['study::gradclip_lower'] != cfg['study::gradclip_upper']:
+            search_space['gradclip'] = tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'], 0.01)
+        if cfg['study::reghead_size_lower'] != cfg['study::reghead_size_upper']:
+            search_space['reghead_size'] = tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1)
+        if cfg["study::reghead_layers_lower"] != cfg['study::reghead_layers_upper']:
+            search_space['reghead_layers'] = tune.quniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1, 1)
+        if cfg['study::skipcon']:
+            search_space['use_skipcon'] = tune.uniform(0, 2)
+        if cfg['study::masking']:
+            search_space['use_masking'] = tune.uniform(0, 2)
+            if cfg['study::mask_bias_lower'] != cfg['study::mask_bias_upper']:
+                search_space['mask_bias'] = tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1)
+        if cfg['study::loss_weight_lower'] != cfg['study::loss_weight_upper']:
+            search_space['loss_weight'] = tune.loguniform(cfg['study::loss_weight_lower'], cfg['study::loss_weight_upper'])
+        #Node2Vec configuration
+        if cfg['study::embedding_dim_lower'] != cfg['study::embedding_dim_upper']:
+            search_space['embedding_dim'] = tune.quniform(cfg['study::embedding_dim_lower'], cfg['study::embedding_dim_upper']+1, 1)
+        if cfg['study::walk_length_lower'] != cfg['study::walk_length_upper']:
+            search_space['walk_length'] = tune.quniform(cfg['study::walk_length_lower'], cfg['study::walk_length_upper']+1, 1)
+        if cfg['study::context_size_lower'] != cfg['study::context_size_upper']:
+            search_space['context_size'] = tune.quniform(cfg['context_size_lower'], cfg['context_size_upper']+1, 1)
+        if cfg['study::walks_per_node_lower'] != cfg['study::walks_per_node_upper']:
+            search_space['walks_per_node'] = tune.quniform(cfg['study::walks_per_node_lower'], cfg['study::walks_per_node_upper']+1, 1)
+        if cfg['study::num_negative_samples_lower'] != cfg['study::num_negative_samples_upper']:
+            search_space['num_negative_samples_lower'] = tune.quniform(cfg['study::num_negative_samples_lower'], cfg['study::num_negative_samples_upper']+1, 1)
+        if cfg['study::p_lower'] != cfg['study::p_upper']:
+            search_space['p'] = tune.loguniform(cfg['study::p_lower'], cfg['study::p_upper'])
+        if cfg['study::q_lower'] != cfg['study::q_upper']:
+            search_space['q'] = tune.loguniform(cfg['study::q_lower'], cfg['study::q_upper'])
+            
+        
 
-        'reghead_size': tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1),
-        'reghead_layers': tune.quniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1, 1),
-        # 'use_batchnorm'     : cfg['use_batchnorm'],
-        'use_skipcon': float(cfg['use_skipcon']),
-        'use_masking': float(cfg['use_masking']),
-        'mask_bias': tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1),
-
-        'loss_weight': tune.loguniform(cfg['study::loss_weight_lower'], cfg['study::loss_weight_upper'])
-        # 'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
-    }
-    # if cfg['study::batchnorm']:
-    #    search_space['use_batchnorm'] = tune.choice([True, False])
-    if cfg['study::skipcon']:
-        search_space['use_skipcon'] = tune.uniform(
-            0, 2)  # tune.choice([True, False])
-    if cfg['study::masking']:
-        search_space['use_masking'] = tune.uniform(
-            0, 2)  # tune.choice([True, False])
             
     return search_space
 
