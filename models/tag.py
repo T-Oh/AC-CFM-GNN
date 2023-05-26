@@ -1,5 +1,5 @@
 from torch_geometric.nn import Sequential, TAGConv, global_add_pool, global_mean_pool
-from torch.nn import Module, ReLU, Dropout, Sigmoid, Linear, Tanh
+from torch.nn import Module, LeakyReLU, Dropout, Sigmoid, Linear, Tanh
 import torch
 
 
@@ -93,21 +93,26 @@ class TAGNet01(Module):
 
 
 class TAGNodeReg(Module):
-    def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15):
+    def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15, K = 4):
         super(TAGNodeReg, self).__init__()
-        self.convsingle = TAGConv(num_node_features, 1,bias=True,K=4).to(float)
-        self.conv1 = TAGConv(num_node_features,hidden_size,bias=True,K=4)
+        assert num_layers <= 5, 'A maximum of 5 layers implemented for TAG'
+        self.convsingle = TAGConv(num_node_features, 1,bias=True,K=K).to(float)
         
-        self.conv2 = TAGConv(hidden_size, hidden_size,bias=True,K=4).to(float)
-        self.endLinear = Linear(hidden_size,num_targets,bias=False).to(float)
+        self.conv1 = TAGConv(num_node_features,hidden_size,bias=True,K=K)
+        self.conv2 = TAGConv(hidden_size, hidden_size,bias=True,K=K).to(float)
+        self.conv3 = TAGConv(hidden_size, hidden_size,bias=True,K=K).to(float)
+        self.conv4 = TAGConv(hidden_size, hidden_size,bias=True,K=K).to(float)
+        self.conv5 = TAGConv(hidden_size, hidden_size,bias=True,K=K).to(float)
+        self.endLinear = Linear(hidden_size,num_targets,bias=True).to(float)
         self.endSigmoid = Sigmoid()
         self.endTanh=Tanh()
         self.dropout = Dropout(p=dropout)
-        self.relu = ReLU()
+        self.relu = LeakyReLU()
         self.num_layers = num_layers
 
     def forward(self, data):
         x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index.type(torch.int64), data.edge_attr.float()
+        edge_weight = edge_weight[:,6]
 
         PRINT=False
         
@@ -118,30 +123,34 @@ class TAGNodeReg(Module):
             print(edge_weight)
             
         #x = self.convsingle(x=x, edge_index=edge_index, edge_weight=edge_weight)
-        x=self.conv1(x=x, edge_index=edge_index, edge_weight=edge_weight)
-        print('XSHAPE AFTER CONV1')
-        print(x.shape)
+        x=self.conv1(x=x, edge_index=edge_index)
+        #print('XSHAPE AFTER CONV1')
+        #print(x.shape)
 
-        for _ in range(self.num_layers - 2):
+        for layer in range(self.num_layers - 1):
             x = self.relu(x)
             #print(x)
             #x = self.dropout(x)
             #print(x)
-            x = self.conv2(x=x, edge_index=edge_index, edge_weight=edge_weight)
-            print(x)
+            if layer == 0:
+                x = self.conv2(x=x, edge_index=edge_index)
+            if layer == 1:
+                x = self.conv3(x=x, edge_index=edge_index)
+            if layer == 2:
+                x = self.conv4(x=x, edge_index=edge_index)
+            if layer == 3:
+                x = self.conv5(x=x, edge_index=edge_index)
+                
+                #print(x)
 
         x = self.relu(x)
         #print(x)
         #x = self.dropout(x)
         #print(x)
         x=self.endLinear(x)
-        print(f'SHAPE AFTER ENDLINEAR {x.shape}')
-        #print("Pool")
-        #print(x)
-        x = self.endSigmoid(x)
         x.type(torch.FloatTensor)
         #print(x)
-        print("END")
+        #print("END")
         return x
 
 
