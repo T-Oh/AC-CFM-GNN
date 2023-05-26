@@ -13,7 +13,7 @@ class ridge(Module):
 
 
     def forward(self, data):
-        x, batch, edge_index, edge_weight  = data.x, data.batch, data.edge_index, data.edge_attr
+        x  = data.x
         
         x = self.linear(x.reshape(-1))
         #print(x)
@@ -35,7 +35,7 @@ class MLP(Module):
         
     def forward(self, data):
         x = data.x
-        print(x.shape)
+        #print(f'MLP input shape: {x.shape}')
         if self.num_layers == 1:
             x = self.lin_single(x.reshape(-1))
         elif self.num_layers > 1:
@@ -47,20 +47,3 @@ class MLP(Module):
             x = self.lin_end(x)
         return x
         
-        
-        
-        #for layer in range(self.num_layers-2):
-            #x = self.
-        
-        
-    
-"""class mean(Module):
-
-    
-    def __init__(self, means):
-        super().__init__()
-        self.means = means
-        self.linear = Linear(in_features=1, out_features=1)
-        
-    def forward(self, data):
-        return self.means"""
