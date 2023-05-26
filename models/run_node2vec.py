@@ -9,18 +9,17 @@ from utils.get_optimizers import get_optimizer
 from datasets.dataset import save_node2vec
 import torch
 
-def run_node2vec(cfg, trainloader, device, data_list):
+def run_node2vec(cfg, trainloader, device, params, trial):
     edge_index = next(iter(trainloader)).edge_index
     labels = next(iter(trainloader)).node_labels
     model = Node2Vec(edge_index,
-                     embedding_dim = 32,
-                     walk_length = 30,
-                     context_size = 10,
-                     walks_per_node = 10,
-                     num_negative_samples = 1,
-                     p=1,
-                     q=1
-        )
+                     embedding_dim = params['embedding_dim'],
+                     walk_length = params['walk_length'],
+                     context_size = params['context_size'],
+                     walks_per_node = params['walks_per_node'],
+                     num_negative_samples = params['num_negative_samples'],
+                     p=cfg['p'],
+                     q=cfg['q']        )
     
     model.to(device)
     loader = model.loader()
@@ -39,7 +38,7 @@ def run_node2vec(cfg, trainloader, device, data_list):
         
             
     #save_node2vec(embedding, labels, data_list)
-    torch.save(embedding, f'node2vec/data_{int(data_list[i,0])}_{int(data_list[i,1])}.pt')
+    torch.save(embedding, f'node2vec/embedding_{trial}.pt')
     return embedding
     
 def train_epoch(model, loader, optimizer, device):
