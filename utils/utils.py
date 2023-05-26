@@ -10,6 +10,8 @@ from torch_geometric.utils import to_undirected
 import torch.nn
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from ray import tune
 
 #from tabulate import tabulate
 
@@ -318,6 +320,101 @@ def count_missclassified(output,target):
     plt.bar(range(2000),missclassified)
     return count
 
+def get_zero_buses():
+    path_from_processed='processed/'#'/p/tmp/tobiasoh/machine_learning/Ike_ajusted_nonans/processed/'
+
+    #if all_instances_zero[i] == 0 it means that the nodelabel at node[i] is zero in all instances
+    all_instances_zero = torch.zeros(2000)
+    N_allzero = 2000
+    for file in os.listdir(path_from_processed):
+        if file.startswith('data'):
+            data = torch.load(path_from_processed+file)
+            
+            for i in range(2000):
+                if all_instances_zero[i] != 0:
+                    continue
+                elif data.node_labels[i] != 0:
+                    all_instances_zero[i] == 1
+                    N_allzero -= 1
+                if not any(all_instances_zero == 0):
+                    break
+    print(f'Number of Nodes that have always zero loadshed: {N_allzero}')
+    return all_instances_zero
+
+def setup_searchspace(cfg):
+    """if cfg['model'] == 'MLP':
+        search_space = {
+            'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
+            'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
+            }
+    else:"""
+    search_space = {
+        'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
+        'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
+        'heads': tune.quniform(cfg["study::heads_lower"], cfg["study::heads_upper"]+1, 1),
+        'LR': tune.loguniform(cfg['study::lr::lower'], cfg['study::lr::upper']),
+        'dropout': tune.quniform(cfg["study::dropout_lower"], cfg["study::dropout_upper"], 0.01),
+        'gradclip': tune.quniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'], 0.01),
+
+        'reghead_size': tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1),
+        'reghead_layers': tune.quniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1, 1),
+        # 'use_batchnorm'     : cfg['use_batchnorm'],
+        'use_skipcon': float(cfg['use_skipcon']),
+        'use_masking': float(cfg['use_masking']),
+        'mask_bias': tune.quniform(cfg['study::mask_bias_lower'], cfg['study::mask_bias_upper']+0.1, 0.1),
+
+        'loss_weight': tune.loguniform(cfg['study::loss_weight_lower'], cfg['study::loss_weight_upper'])
+        # 'batchsize' : tune.lograndint(cfg["study::batchsize_lower"],cfg["study::batchsize_upper"])
+    }
+    # if cfg['study::batchnorm']:
+    #    search_space['use_batchnorm'] = tune.choice([True, False])
+    if cfg['study::skipcon']:
+        search_space['use_skipcon'] = tune.uniform(
+            0, 2)  # tune.choice([True, False])
+    if cfg['study::masking']:
+        search_space['use_masking'] = tune.uniform(
+            0, 2)  # tune.choice([True, False])
+            
+    return search_space
+
+def setup_params(cfg, mask_probs, num_features, num_edge_features, config=None):
+    if config == None:
+        params = {
+            "num_features": num_features,
+            "num_edge_features": num_edge_features,
+            "num_targets": 1,
+            
+            "num_layers": cfg['num_layers'],
+            "hidden_size": cfg['hidden_size'],
+            
+            "reghead_size": cfg['reghead_size'],
+            "reghead_layers": cfg['reghead_layers'],
+            
+            "dropout": cfg["dropout"],
+            "dropout_temp": cfg["dropout_temp"],
+
+            "use_batchnorm": cfg['use_batchnorm'],
+            "gradclip": cfg['gradclip'],
+            "use_skipcon": cfg['use_skipcon'],
+            "use_masking": cfg['use_masking'],
+            "mask_probs": mask_probs,
+       
+            #Params for GAT
+            "heads": cfg['num_heads'],
+            
+            #Params for TAG
+            "K" : cfg['tag_jumps'], 
+            
+            #Params for Node2vec
+            'embedding_dim'   :   cfg['embedding_dim'],
+            'walk_length'     :   cfg['walk_length'],
+            'context_size'    :   cfg['context_size'],
+            'walks_per_node'  :   cfg['walks_per_node'],
+            'num_negative_samples'    :   cfg['num_negative_samples'],
+            'p'     :   cfg['p'],
+            'q'     :   cfg['q'],
+        }
+    return params
 
 
 class weighted_loss_label(torch.nn.Module):
@@ -344,3 +441,5 @@ class weighted_loss_var(torch.nn.Module):
         output_ = output.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         labels_ = labels.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         return self.baseloss(output_.reshape(-1), labels_.reshape(-1))
+    
+    
