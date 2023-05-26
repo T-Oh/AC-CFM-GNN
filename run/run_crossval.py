@@ -8,7 +8,9 @@ import torch
 import os
 import logging
 
-from datasets.dataset import create_datasets, create_loaders
+from os.path import isfile
+
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from models.get_models import get_model
 from utils.utils import setup_params, weighted_loss_label, weighted_loss_var
 from utils.get_optimizers import get_optimizer
@@ -16,16 +18,34 @@ from training.engine import Engine
 from training.training import run_training
 
 
-def run_crossval(cfg, device, mask_probs, num_features, num_edge_features):
+def run_crossval(cfg, device):
 
     FOLDS = 7
     
-    trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
-    trainloader, testloader = create_loaders(cfg, trainset, testset) 
     trainlosses = torch.zeros(FOLDS)
     trainR2s = torch.zeros(FOLDS)
     testlosses = torch.zeros(FOLDS)
     testR2s = torch.zeros(FOLDS)
+    
+    trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
+    trainloader, testloader = create_loaders(cfg, trainset, testset) 
+    # Calculate probabilities for masking of nodes if necessary
+    if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+        if isfile('node_label_vars.pt'):
+            print('Using existing Node Label Variances for masking')
+            mask_probs = torch.load('node_label_vars.pt')
+        else:
+            print('No node label variance file found\nCalculating Node Variances for Masking')
+            mask_probs = calc_mask_probs(trainloader)
+            torch.save(mask_probs, 'node_label_vars.pt')
+    else:
+        #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
+        mask_probs = torch.zeros(2000)+1
+
+    # getting feature and target sizes
+    num_features = trainset.__getitem__(0).x.shape[1]
+    num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+    
     params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     
     # Init Criterion
@@ -37,18 +57,11 @@ def run_crossval(cfg, device, mask_probs, num_features, num_edge_features):
         criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
     criterion.to(device)
 
-     
-     
+ 
+         
     for fold in range(FOLDS):
         if fold > 0:
-            del trainset, testset
-            del trainloader
-            del testloader
-            del model
-            del optimizer
-            del engine
-            del output
-            del labels
+            del trainset, testset, trainloader, testloader, model, optimizer, engine, output, labels
             os.rename('processed/', f'processed{int(fold)}')
             os.rename(f'processed{int(fold+1)}/', 'processed')
             trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)

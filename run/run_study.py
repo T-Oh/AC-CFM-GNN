@@ -6,17 +6,19 @@ Created on Fri May 26 10:18:09 2023
 """
 
 import ray
+import torch
 
 from sys import argv
 from ray import tune, air
+from os.path import isfile
 
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from utils.utils import setup_searchspace
 from ray.tune.search.bayesopt import BayesOptSearch
 from training.training import objective
 
 
-def run_study(cfg, trainloader, testloader, device, mask_probs, num_features, num_edge_features):
-
+def run_study(cfg, device):
     # arguments for ray
     TEMP_DIR = '/p/tmp/tobiasoh/ray_tmp'
     N_GPUS = 1
@@ -25,6 +27,28 @@ def run_study(cfg, trainloader, testloader, device, mask_probs, num_features, nu
     # init ray
     ray.init(_temp_dir=TEMP_DIR, num_cpus=N_CPUS, num_gpus=N_GPUS,
              include_dashboard=True, dashboard_port=port_dashboard)
+    
+    # Create Datasets and Dataloaders
+    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
+    trainloader, testloader = create_loaders(cfg, trainset, testset)
+    
+    # getting feature and target sizes
+    num_features = trainset.__getitem__(0).x.shape[1]
+    num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+
+    # Calculate probabilities for masking of nodes if necessary
+    if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+        if isfile('node_label_vars.pt'):
+            print('Using existing Node Label Variances for masking')
+            mask_probs = torch.load('node_label_vars.pt')
+        else:
+            print('No node label variance file found\nCalculating Node Variances for Masking')
+            mask_probs = calc_mask_probs(trainloader)
+            torch.save(mask_probs, 'node_label_vars.pt')
+    else:
+        #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
+        mask_probs = torch.zeros(2000)+1
+
     
     # uses ray to run a study, to see functionality check training.objective
     # set up search space
