@@ -44,6 +44,15 @@ def get_model(cfg, params):
             hidden_size     = params['hidden_size'],
             num_layers  =   params['num_layers']
             )
+        
+    #TAG    
+    elif cfg['model'] == 'TAG':
+        print('Using TAG!\n')
+        model = TAGNodeReg(
+            hidden_size     = params["hidden_size"],
+            num_layers      = params["num_layers"],
+            dropout         = params['dropout'],
+            K   = params['K'])
     
     #Other (mainly GINE)
     else:
