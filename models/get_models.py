@@ -1,10 +1,10 @@
 from models.arma import ArmaNet_ray, make_list_Arma_internal_layers, make_list_Arma_internal_stacks, make_list_number_of_channels, ArmaConvModule
-from models.tag import TAG, TAGNet01, TAGTest, TAGNodeReg
+from models.tag import TAGNodeReg
 from models.gcn import GCN
 from models.gat import GAT
 from models.sage import SAGE
 from models.gine import GINE
-from models.baselines import ridge, node2vec
+from models.baselines import ridge, MLP
 
 
 def get_model(cfg, params):
@@ -13,6 +13,7 @@ def get_model(cfg, params):
     initializes it with the parameters specified in
     params
     """
+    #Arma Conv
     if cfg["model"] == "ArmaConvModule":
             num_internal_layers = 1
             num_internal_stacks = 1
@@ -26,22 +27,27 @@ def get_model(cfg, params):
             num_channels = make_list_number_of_channels(cfg)
             model = ArmaConvModule(num_layers=cfg["num_layers"], num_channels=num_channels, activation=cfg["activation"],
                                 num_internal_layers=num_internal_layers, num_internal_stacks=num_internal_stacks, batch_norm_index=cfg["batch_norm_index"], shared_weights=cfg["ARMA::shared_weights"], dropout=cfg["ARMA::dropout"], final_linear_layer=cfg["final_linear_layer"])
-            
-    elif cfg['model'] == 'Node2Vec':
-        model = node2vec(
-            edge_index      = params['edge_index'],
-            embedding_dim   = params['embedding_dim'],
-            walk_length     = params['walk_length'],
-            context_size    = params['context_size'],
-            walks_per_node  = params['walks_per_node'])
-        
+    
+    #RIDGE
     elif cfg['model'] == 'Ridge':
+        print('Using RIDGE!\n')
         model = ridge(
             num_node_features = params["num_features"],
             hidden_size = params["hidden_size"],
             )
-
+    
+    #Multilayer Perceptron
+    elif cfg['model'] == 'MLP' or cfg['model'] == 'Node2Vec':
+        print('Using MLP or Node2Vec with MLP!\n')
+        model = MLP(
+            num_node_features   = params['num_features'],
+            hidden_size     = params['hidden_size'],
+            num_layers  =   params['num_layers']
+            )
+    
+    #Other (mainly GINE)
     else:
+        print('Using GINE!\n')
         try:
             model = eval(cfg["model"])(
                 num_node_features   = params["num_features"],
