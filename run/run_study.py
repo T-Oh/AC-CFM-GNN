@@ -8,7 +8,6 @@ Created on Fri May 26 10:18:09 2023
 import ray
 import torch
 
-from sys import argv
 from ray import tune, air
 from os.path import isfile
 
@@ -18,12 +17,12 @@ from ray.tune.search.bayesopt import BayesOptSearch
 from training.training import objective
 
 
-def run_study(cfg, device):
+def run_study(cfg, device, N_CPUS, port_dashboard):
     # arguments for ray
     TEMP_DIR = '/p/tmp/tobiasoh/ray_tmp'
     N_GPUS = 1
-    N_CPUS = int(argv[1])
-    port_dashboard = int(argv[2])
+    N_CPUS = N_CPUS
+    port_dashboard = port_dashboard
     # init ray
     ray.init(_temp_dir=TEMP_DIR, num_cpus=N_CPUS, num_gpus=N_GPUS,
              include_dashboard=True, dashboard_port=port_dashboard)
@@ -53,6 +52,7 @@ def run_study(cfg, device):
     # uses ray to run a study, to see functionality check training.objective
     # set up search space
     search_space = setup_searchspace(cfg)
+
 
     # set up optimizer and scheduler
     baysopt = BayesOptSearch(metric='r2', mode='max')

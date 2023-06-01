@@ -344,14 +344,14 @@ def get_zero_buses():
 def setup_searchspace(cfg):
     if cfg['model'] == 'MLP':
         search_space = {
-            'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
-            'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
+            'num_layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
+            'hidden_size': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
             }
     elif cfg['model'] == 'Node2Vec':
         search_space = {
             #Params for MLP
-            'layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
-            'HF': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
+            'num_layers': tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1),
+            'hidden_size': tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1),
             #Params for Node2Vec
             'embedding_dim'   :   tune.quniform(cfg["study::embedding_dim_lower"], cfg["study::embedding_dim_upper"]+1, 1),
             'walk_length'     :   tune.quniform(cfg["study::walk_length_lower"], cfg["study::walk_length_upper"]+1, 1),
@@ -365,7 +365,7 @@ def setup_searchspace(cfg):
     else:
         search_space = {}
         if cfg["study::layers_lower"] != cfg["study::layers_upper"]:
-            search_space['layers'] = tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1)
+            search_space['num_layers'] = tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1)
         if cfg["study::hidden_features_lower"] != cfg["study::hidden_features_upper"]:
             search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)
         if cfg["study::heads_lower"] != cfg["study::heads_upper"]:
@@ -409,43 +409,64 @@ def setup_searchspace(cfg):
             
     return search_space
 
-def setup_params(cfg, mask_probs, num_features, num_edge_features, config=None):
-    if config == None:
-        params = {
-            "num_features": num_features,
-            "num_edge_features": num_edge_features,
-            "num_targets": 1,
-            
-            "num_layers": cfg['num_layers'],
-            "hidden_size": cfg['hidden_size'],
-            
-            "reghead_size": cfg['reghead_size'],
-            "reghead_layers": cfg['reghead_layers'],
-            
-            "dropout": cfg["dropout"],
-            "dropout_temp": cfg["dropout_temp"],
+def setup_params_from_search_space(search_space, params):
+    """
+    params must already initiated by setup_params which will put the regular values from the cfg file 
+    setup_params_from_config then overrides the studied values with values from the search_space
 
-            "use_batchnorm": cfg['use_batchnorm'],
-            "gradclip": cfg['gradclip'],
-            "use_skipcon": cfg['use_skipcon'],
-            "use_masking": cfg['use_masking'],
-            "mask_probs": mask_probs,
-       
-            #Params for GAT
-            "heads": cfg['num_heads'],
-            
-            #Params for TAG
-            "K" : cfg['tag_jumps'], 
-            
-            #Params for Node2vec
-            'embedding_dim'   :   cfg['embedding_dim'],
-            'walk_length'     :   cfg['walk_length'],
-            'context_size'    :   cfg['context_size'],
-            'walks_per_node'  :   cfg['walks_per_node'],
-            'num_negative_samples'    :   cfg['num_negative_samples'],
-            'p'     :   cfg['p'],
-            'q'     :   cfg['q'],
-        }
+    Parameters
+    ----------
+    search_space : the search_space created by setup_searchspace
+    params : the parameters setup by setup_params
+
+    Returns:
+    -------
+    params
+
+    """
+    updated_params = params
+    print('Setup params from search space')
+    for key in search_space.keys():
+        updated_params[key] = search_space[key]
+    return updated_params
+
+def setup_params(cfg, mask_probs, num_features, num_edge_features):
+
+    params = {
+        "num_features": num_features,
+        "num_edge_features": num_edge_features,
+        "num_targets": 1,
+        
+        "num_layers": cfg['num_layers'],
+        "hidden_size": cfg['hidden_size'],
+        
+        "reghead_size": cfg['reghead_size'],
+        "reghead_layers": cfg['reghead_layers'],
+        
+        "dropout": cfg["dropout"],
+        "dropout_temp": cfg["dropout_temp"],
+
+        "use_batchnorm": cfg['use_batchnorm'],
+        "gradclip": cfg['gradclip'],
+        "use_skipcon": cfg['use_skipcon'],
+        "use_masking": cfg['use_masking'],
+        "mask_probs": mask_probs,
+   
+        #Params for GAT
+        "heads": cfg['num_heads'],
+        
+        #Params for TAG
+        "K" : cfg['tag_jumps'], 
+        
+        #Params for Node2vec
+        'embedding_dim'   :   cfg['embedding_dim'],
+        'walk_length'     :   cfg['walk_length'],
+        'context_size'    :   cfg['context_size'],
+        'walks_per_node'  :   cfg['walks_per_node'],
+        'num_negative_samples'    :   cfg['num_negative_samples'],
+        'p'     :   cfg['p'],
+        'q'     :   cfg['q'],
+    }
     return params
 
 

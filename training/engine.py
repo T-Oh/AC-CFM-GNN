@@ -51,7 +51,7 @@ class Engine(object):
             count +=1
             batch.to(self.device)
 
-
+            
             output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
             output.to(self.device)
             
