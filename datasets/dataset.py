@@ -4,17 +4,13 @@ Author : Jan Philipp Bohl
 File setting up training and test data as well as neural network models
 """
 import os
-import logging
-from math import floor
 import numpy as np
 import scipy.io
-
-from torch_geometric.data import Dataset, Data, HeteroData
-from torch_geometric.loader import DataLoader
-from torch_geometric.utils import to_undirected
-
-
+import time
 import torch
+
+from torch_geometric.data import Dataset, Data
+from torch_geometric.loader import DataLoader
 from torch.utils.data import Subset
 
 
@@ -32,8 +28,10 @@ class HurricaneDataset(Dataset):
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0, embedding=None, device=None):
         self.use_supernode=use_supernode
+        self.embedding = embedding
+        self.device = device
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list=self.get_data_list(N_Scenarios)
@@ -525,10 +523,12 @@ class HurricaneDataset(Dataset):
         step=int(self.data_list[idx,1])
         data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'
                                        f'_{step}.pt'))
+        if self.embedding != None:
+            data.x = torch.cat([data.x.to(self.device), self.embedding.to(self.device)], dim=1)
         return data
     
 
-def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0):
+def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None):
     """
     Helper function which loads the dataset, applies
     pre-transforms and splits it into a training and a
@@ -543,7 +543,9 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
         trainset : the training set
         testset : the testset
     """
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit)
+    print('Creating Datasets...')
+    t1 = time.time()
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding)
     data_list = dataset.data_list
 
     if num_samples is None:
@@ -568,6 +570,9 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     
     trainset = Subset(dataset, range(0, last_train_sample))
     testset = Subset(dataset, range(last_train_sample, len_dataset))
+    
+    t2 = time.time()
+    print(f'Creating datasets took {(t1-t2)/60} mins')
 
     return trainset, testset, data_list 
 
@@ -587,7 +592,8 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
         trainloader : the training set loader
         testloader : the testing set loader
     """
-
+    print('Creating Dataloaders...')
+    t1 = time.time()
     trainloader = DataLoader(trainset,
         batch_size=cfg["train_set::batchsize"],
         shuffle=cfg["train_set::shuffle"]
@@ -597,14 +603,12 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
 
     if pre_compute_mean:
         mean_labels = 0.
-        for batch in testloader:   #change back to test
+        for batch in testloader:   
             mean_labels += batch.y.sum().item()
-        mean_labels /= len(testloader) #change back to test
-        testloader.mean_labels = mean_labels#change back to test
+        mean_labels /= len(testloader) 
+        testloader.mean_labels = mean_labels
 
-    #logging.debug(f"Trainset first batch labels: {next(iter(trainloader)).y.tolist()}")
-    #logging.debug(f"Testset first batch labels: {next(iter(testloader)).y.tolist()}")
-
+    print(f'Creating dataloaders took {(t1-time.time())/60} mins')
     return trainloader, testloader
 
 
@@ -627,6 +631,7 @@ def calc_mask_probs(dataloader):
     return node_label_probs
 
 
+
 def mask_probs_add_bias(mask_probs, bias):
     mask_probs_rescaled = mask_probs.clone() + bias
     for i in range(len(mask_probs)):
@@ -634,12 +639,18 @@ def mask_probs_add_bias(mask_probs, bias):
     return mask_probs_rescaled
 
 
-def save_node2vec(embedding, data_list):
+def save_node2vec(embedding, labels, data_list):
     print(embedding.shape)
     print(len(embedding))
     embedding = embedding.reshape(int(len(embedding)/2000), 2000, embedding.shape[1])
+    labels = labels.reshape(int(len(labels)/2000),2000)
+    embedding = embedding.half()
     if not os.path.exists('node2vec/'):
         os.makedirs('node2vec/')
     for i in range(len(embedding)):
-        torch.save(embedding[i], f'node2vec/data_{int(data_list[i,0])}_{int(data_list[i,1])}.pt')
+        x = embedding[i].data.half()
+        y = labels[i].data.half()
+        
+        data=Data(x=x ,y=y)
+        torch.save(data, f'node2vec/data_{int(data_list[i,0])}_{int(data_list[i,1])}.pt')
     

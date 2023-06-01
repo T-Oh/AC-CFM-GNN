@@ -4,6 +4,7 @@ import json
 import shutil
 import time
 
+from sys import argv
 from numpy.random import seed as numpy_seed
 
 from run.run_single import run_single
@@ -48,7 +49,10 @@ if device == "cuda":
 
 # Runs study if set in configuration file
 if cfg["study::run"]:
-    model = run_study(cfg, device)
+    #N_CPUS = int(argv[1])
+    #port_dashboard = int(argv[2])
+    #model = run_study(cfg, device, N_CPUS, port_dashboard)
+    model = run_study(cfg, device, 1, 8123)
 
 #Runs crossvalidation
 elif cfg['crossvalidation']:
