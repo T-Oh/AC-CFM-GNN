@@ -1,19 +1,19 @@
 {
-    "cfg_path": "",
+    "cfg_path": "C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/",
     "dataset": "hurricane_line_priority",
-    "dataset::path": "",
+    "dataset::path": "C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/",
     "task":"NodeReg",
 
     "n_scenarios":114,
-    "stormsplit" : 0,
+    "stormsplit" : 1,
     "crossvalidation" : false,
     "epochs": 100,
-    "model": "Ridge",
+    "model": "MLP",
     "supernode":false,
-    "output_freq" : 1,
+    "output_freq" : 10,
 
     "num_layers": 3,
-    "hidden_size": 32,
+    "hidden_size": 64,
     "reghead_size": 300,
     "reghead_layers" : 1,
     "num_heads" : 2,
@@ -54,13 +54,13 @@
     "study::run" : true,
     "study::n_trials" : 4,
 
-    "study::lr::lower" : 4e-4,
+    "study::lr::lower" : 3e-4,
     "study::lr::upper" : 4e-4,
 
-    "study::layers_lower" : 5,
+    "study::layers_lower" : 4,
     "study::layers_upper" : 5,
 
-    "study::hidden_features_lower" : 36,
+    "study::hidden_features_lower" : 12,
     "study::hidden_features_upper" : 36,
 
     "study::heads_lower" : 5,
@@ -95,8 +95,23 @@
     "embedding_dim" : 32,
     "walk_length" : 30,
     "context_size" : 10,
-    "walks_per_node" : 10,
+    "walks_per_node" : 1,
     "num_negative_samples" : 1,
     "p" : 1,
-    "q" : 1
+    "q" : 1,
+
+    "study::embedding_dim_lower" : 32,
+    "study::embedding_dim_upper" : 32,
+    "study::walk_length_lower" : 30,
+    "study::walk_length_upper" : 30,
+    "study::context_size_lower" : 10,
+    "study::context_size_upper" : 10,
+    "study::walks_per_node_lower" : 1,
+    "study::walks_per_node_upper" : 1,
+    "study::num_negative_samples_lower" : 1,
+    "study::num_negative_samples_upper" : 1,
+    "study::p_lower" : 1,
+    "study::p_upper" : 1,
+    "study::q_lower" : 1,
+    "study::q_upper" : 1
 }
