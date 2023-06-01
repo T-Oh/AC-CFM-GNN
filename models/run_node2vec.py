@@ -15,13 +15,13 @@ from utils.get_optimizers import get_optimizer
 def run_node2vec(cfg, trainloader, device, params, trial):
     edge_index = next(iter(trainloader)).edge_index
     model = Node2Vec(edge_index,
-                     embedding_dim = params['embedding_dim'],
-                     walk_length = params['walk_length'],
-                     context_size = params['context_size'],
-                     walks_per_node = params['walks_per_node'],
-                     num_negative_samples = params['num_negative_samples'],
-                     p=cfg['p'],
-                     q=cfg['q']        )
+                     embedding_dim = int(params['embedding_dim']),
+                     walk_length = int(params['walk_length']),
+                     context_size = int(params['context_size']),
+                     walks_per_node = int(params['walks_per_node']),
+                     num_negative_samples = int(params['num_negative_samples']),
+                     p=params['p'],
+                     q=params['q']        )
     
     model.to(device)
     loader = model.loader()

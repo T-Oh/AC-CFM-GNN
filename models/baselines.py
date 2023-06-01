@@ -1,6 +1,5 @@
-from torch_geometric.nn import Sequential, GCNConv, global_add_pool, global_mean_pool, Node2Vec
-from torch.nn import Module, Sigmoid, LeakyReLU, Dropout, Linear
-import torch
+from torch.nn import Module, LeakyReLU, Linear
+
 
 
 
@@ -9,7 +8,7 @@ class ridge(Module):
 
     def __init__(self, num_node_features, hidden_size=128):
         super().__init__()
-        self.linear = Linear(in_features=2000*num_node_features, out_features=2000)
+        self.linear = Linear(in_features=2000*int(num_node_features), out_features=2000)
 
 
     def forward(self, data):
@@ -19,16 +18,16 @@ class ridge(Module):
         #print(x)
         
         return x
-    
+
 class MLP(Module):
     def __init__(self, num_node_features, hidden_size, num_layers):
         super().__init__()
         assert num_layers <= 3, 'A maximum of 3 layers implemented for MLP'
-        self.num_layers = num_layers
-        self.lin_single = Linear(num_node_features*2000, 2000)
-        self.lin_in = Linear(in_features=2000*num_node_features, out_features = hidden_size)
-        self.lin_hidden = Linear(in_features=hidden_size, out_features = hidden_size)
-        self.lin_end = Linear(in_features=hidden_size, out_features = 2000)
+        self.num_layers = int(num_layers)
+        self.lin_single = Linear(int(num_node_features)*2000, 2000)
+        self.lin_in = Linear(in_features=2000*int(num_node_features), out_features = int(hidden_size))
+        self.lin_hidden = Linear(in_features=int(hidden_size), out_features = int(hidden_size))
+        self.lin_end = Linear(in_features=int(hidden_size), out_features = 2000)
         self.ReLu = LeakyReLU()
         
         
