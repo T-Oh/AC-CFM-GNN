@@ -1,97 +1,105 @@
 import ray
 import ray.tune as tune
-import training.engine
-import utils.utils
-import training.training
-import json
+
+
 import matplotlib.pyplot as plt
-import torch
+
 import numpy as np
+import os
 from training.training import objective
 
-ray.init()
-path = '/p/tmp/tobiasoh/machine_learning/ajusted_subset_alllog/results/objective_2023-05-07_10-30-45/'
-tuner = tune.Tuner.restore(path, objective)
-result_grid=tuner.get_results()
-R2 = []
-DM = []
 
-HF = []
-layers = []
-LR = []
-dropout = []
-gc = []
-skipcon = []
-RHS = []
-RHL = []
-mask_bias = []
-loss_weight = []
-#print(result_grid.get_best_result())
-for i in range(26):
-    print(i)
-    print(result_grid[i].error)
-    #print(result_grid[i].metrics['r2'])
-    if not result_grid[i].error:
-        if 'r2' in result_grid[i].metrics.keys():
-            if result_grid[i].metrics['r2'] < -1e33:
-                continue
-            DM.append(result_grid[i].metrics['discrete_measure'])
-            R2.append(result_grid[i].metrics['r2'])
-            with open(result_grid[i].log_dir/'params.json', 'r') as f:
-                data = json.load(f)
-            LR.append(data['LR'])
-            print(type(data['LR']))
+name = 'Analyze_Ray_Test' #Name tag added to the plots and their filenames
+
+
+#ray.init()
+i_file = 0
+offset = 0
+path = 'C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/results/'
+for file in os.listdir(path):
+    if file.startswith('objective'):
+
+
+
+        tuner = tune.Tuner.restore(path+file, objective)
+        result_grid=tuner.get_results()
+        print(result_grid)
+        
+        N_trials = len(result_grid)
+
+        
+        if i_file == 0:
+            N_params = 0
+            params = {}
+            for key in result_grid[0].config.keys():
+                params[key] = np.zeros(N_trials)
+                N_params += 1
+            
+            metrics = {
+                'train_loss' :  np.zeros(N_trials),
+                'test_loss' :   np.zeros(N_trials),
+                'train_R2' :    np.zeros(N_trials),
+                'test_R2' :     np.zeros(N_trials)
+                }
+        else:
+            for key in metrics.keys():
+                metrics[key] = np.append(metrics[key],np.zeros(N_trials))
+            for key in params.keys():
+                params[key] = np.append(params[key], np.zeros(N_trials))
+        
+        
+        #print(result_grid.get_best_result())
+        for i in range(N_trials):
+            print(i)
+            print(result_grid[i].error)
+            #print(result_grid[i].metrics['r2'])
+            if not result_grid[i].error:
+                if 'test_R2' in result_grid[i].metrics.keys():
+                    for key in result_grid[i].config.keys():
+                        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads']:
+                            params[key][i+offset] = int(result_grid[i].config[key])
+                        else:
+                            params[key][i+offset] = result_grid[i].config[key]
+                    for key in metrics.keys():
+                        metrics[key][i+offset] = result_grid[i].metrics[key]
+                else: print(f'Skipped {i}')
+        offset = i+offset
+        i_file += 1
+        
+
+
+#PLOTTING
+#fig, axs = plt.subplots(N_params)
+plt.rcParams['font.size'] = 16
+plt.rcParams['figure.dpi'] = 300
+i = 0
+for key in params.keys():
+    fig = plt.figure(i)        
+    ax = plt.gca()
+    if key == 'LR':
+        ax.set_xscale('log')
+    ax.scatter(params[key],metrics['test_R2'])
+    ax.set_title(name)
+    ax.set_xlabel(key)
+    ax.set_ylabel('Train R2')
+    fig.savefig(key + name + ".png", bbox_inches='tight')
+    i += 1
     
-            layers.append(int(data['layers']))
-            HF.append(int(data['HF']))
-            gc.append(data['gradclip'])
-            dropout.append(data['dropout'])
-            skipcon.append(int(data['use_skipcon']))
-            RHS.append(int(data['reghead_size']))
-            RHL.append(int(data['reghead_layers']))
-            mask_bias.append(data['mask_bias'])
-            loss_weight.append(data['loss_weight'])
-        else: print(f'Skipped i')
-
-path = '/p/tmp/tobiasoh/machine_learning/ajusted_subset_alllog/results/objective_2023-05-08_08-27-20/'
-tuner = tune.Tuner.restore(path, objective)
-result_grid=tuner.get_results()
-for i in range(26):
-    print(i)
-    print(result_grid[i].error)
-    #print(result_grid[i].metrics['r2'])
-    if not result_grid[i].error:
-        if 'r2' in result_grid[i].metrics.keys():
-            if result_grid[i].metrics['r2'] < -1e33:
-                continue
-            DM.append(result_grid[i].metrics['discrete_measure'])
-            R2.append(result_grid[i].metrics['r2'])
-            with open(result_grid[i].log_dir/'params.json', 'r') as f:
-                data = json.load(f)
-            LR.append(data['LR'])
-            print(type(data['LR']))
-
-            layers.append(int(data['layers']))
-            HF.append(int(data['HF']))
-            gc.append(data['gradclip'])
-            dropout.append(data['dropout'])
-            skipcon.append(int(data['use_skipcon']))
-            RHS.append(int(data['reghead_size']))
-            RHL.append(int(data['reghead_layers']))
-            mask_bias.append(data['mask_bias'])
-            loss_weight.append(data['loss_weight'])
-        else: print(f'Skipped i')
+#3D Plot of layers and HF
+if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
+    fig = plt.figure(i+1)        
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(params['num_layers'], params['hidden_size'], metrics['test_R2'], c=metrics['test_R2'])
+    ax.set_title(name)
+    ax.set_xlabel('num_layers')
+    ax.set_ylabel('hidden_size')
+    ax.set_zlabel('Train R2')
+    fig.savefig('Layers_HF_R2' + name + ".png", bbox_inches='tight')
+    
+    
 
 
-
-
-print(HF)
-print(R2)
-print(DM)
-print(gc)
-
-name = 'lognorm'
-
+"""
 fig1,ax1=plt.subplots()
 ax1.scatter(gc,R2)
 ax1.set_title("")
@@ -186,3 +194,4 @@ ax6.set_xlabel("N Reghead Layers")
 ax6.set_ylabel('N Reghead Features')
 ax6.set_zlabel('R2')
 fig6.savefig("RHL_RHS_R2_25_" + name + ".png")
+"""
