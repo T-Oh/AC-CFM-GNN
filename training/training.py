@@ -1,14 +1,18 @@
 import torch
-import numpy as np
+
 import logging
 import time
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from datasets.dataset import mask_probs_add_bias
+
 from ray import tune
 from ray.air import session
+from os.path import isfile
+
 from utils.utils import weighted_loss_label, weighted_loss_var, setup_params, setup_params_from_search_space
+from models.run_node2vec import run_node2vec
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 
 def run_training(trainloader, testloader, engine, cfg):
     """
@@ -63,7 +67,7 @@ def run_training(trainloader, testloader, engine, cfg):
         final_eval, final_output, final_labels =  engine.eval(testloader)
     metrics = {
         'train_loss' : train_loss,
-        'Train R2' : train_R2,
+        'train_R2' : train_R2,
         'test_loss' : test_loss,
         'test_R2' : test_R2
         }
@@ -77,6 +81,48 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     params = setup_params_from_search_space(search_space, params)
     print(params)
+    
+    
+    
+    if cfg['model'] == 'Node2Vec':
+        print('Creating Node2Vec Embedding')
+        
+        embedding = run_node2vec(cfg, trainloader, device, params, 0)
+        normalized_embedding = embedding.data
+        #Normalize the Embedding
+        print(embedding.shape)
+        for i in range(embedding.shape[1]):
+            normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
+            
+        # Create Datasets and Dataloaders
+        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
+        trainloader, testloader = create_loaders(cfg, trainset, testset)
+
+
+        # Calculate probabilities for masking of nodes if necessary
+        if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+            if isfile('node_label_vars.pt'):
+                print('Using existing Node Label Variances for masking')
+                mask_probs = torch.load('node_label_vars.pt')
+            else:
+                print('No node label variance file found\nCalculating Node Variances for Masking')
+                mask_probs = calc_mask_probs(trainloader)
+                torch.save(mask_probs, 'node_label_vars.pt')
+        else:
+            #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
+            mask_probs = torch.zeros(2000)+1
+    
+    
+        # getting feature and target sizes
+        num_features = trainset.__getitem__(0).x.shape[1]
+        print(f'New number of features: {num_features}')
+        num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+        
+        #Setup params for following task (MLP)
+        params['num_features'] = num_features
+        
+    
+    
     
     print('\nSEARCH_SPACE:\n')
     print(search_space)
@@ -121,11 +167,11 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
             train_R2.append(temp_train_R2.cpu())
             logging.info(f"Epoch {i}: Train Loss: {train_loss} // Test Loss: {eval_score[0]} // Train R2: {temp_train_R2} // Test R2: {eval_score[1]} // accuracy {eval_score[2]} // discrete measure {eval_score[3]}")
             result = {
-                'discrete_measure' : eval_score[3],
+                'discrete_measure' : eval_score[3].detach(),
                 'train_loss' : train_loss,
-                'test_loss' : eval_score[0],
-                'train_R2' : temp_train_R2,
-                'test_R2' : eval_score[1]
+                'test_loss' : eval_score[0].detach(),
+                'train_R2' : temp_train_R2.detach(),
+                'test_R2' : eval_score[1].detach()
                 }
             session.report(result)
 
