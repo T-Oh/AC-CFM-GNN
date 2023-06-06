@@ -70,11 +70,14 @@ for file in os.listdir(path):
 np.savez("total_step_outage_distribution",node_label_hist=node_label_hist, node_label_bins=node_label_bins)
 
 #Plotting
+plt.rcParams['figure.dpi'] = 300
+plt.rcParams['font.size'] = 16
 fig5,ax5=plt.subplots()
-ax5.bar(node_label_bins[0:10],node_label_hist,width=node_label_bins[1]-node_label_bins[0],align='edge')
-ax5.set_title("Power Outage at Nodes (NodeLabel)")
-ax5.set_xlabel("")
-fig5.savefig("ac_node_label_distr.png")
+ax5.bar(node_label_bins[0:10]/10,node_label_hist,width=(node_label_bins[1]-node_label_bins[0])/10,align='edge')
+ax5.set_title("")
+ax5.set_xlabel("Total Grid Power Outage [GW]")
+ax5.set_ylabel('Number of instaces')
+fig5.savefig("ac_node_label_distr.png", bbox_inches='tight')
 
 
 

@@ -34,7 +34,7 @@ class MLP(Module):
         
     def forward(self, data):
         x = data.x
-        #print(f'MLP input shape: {x.shape}')
+        print(f'MLP input shape: {x.shape}')
         if self.num_layers == 1:
             x = self.lin_single(x.reshape(-1))
         elif self.num_layers > 1:
