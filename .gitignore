@@ -22,3 +22,11 @@ configurations/configuration-LAPTOP-NE62V7DS.json
 configurations/configurationArma.json
 
 crossvalidation_result.npy
+
+datasets/dataset-LAPTOP-NE62V7DS.py
+
+Good Parameters SAGE.txt
+
+main_before_rework.py
+
+main_oldN2V.py

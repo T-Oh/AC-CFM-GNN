@@ -7,10 +7,10 @@
     "n_scenarios":114,
     "stormsplit" : 1,
     "crossvalidation" : false,
-    "epochs": 100,
-    "model": "MLP",
+    "epochs": 2,
+    "model": "Node2Vec",
     "supernode":false,
-    "output_freq" : 10,
+    "output_freq" : 1,
 
     "num_layers": 3,
     "hidden_size": 64,
@@ -54,14 +54,14 @@
     "study::run" : true,
     "study::n_trials" : 4,
 
-    "study::lr::lower" : 3e-4,
-    "study::lr::upper" : 4e-4,
+    "study::lr::lower" : -9,
+    "study::lr::upper" : -3,
 
-    "study::layers_lower" : 4,
+    "study::layers_lower" : 1,
     "study::layers_upper" : 5,
 
     "study::hidden_features_lower" : 12,
-    "study::hidden_features_upper" : 36,
+    "study::hidden_features_upper" : 48,
 
     "study::heads_lower" : 5,
     "study::heads_upper" : 5,
@@ -72,10 +72,10 @@
     "study::gradclip_lower" : 0.08,
     "study::gradclip_upper" : 0.08,
 
-    "study::reghead_size_lower" : 200,
-    "study::reghead_size_upper" : 200,
+    "study::reghead_size_lower" : 48,
+    "study::reghead_size_upper" : 300,
 
-    "study::reghead_layers_lower" : 2,
+    "study::reghead_layers_lower" : 1,
     "study::reghead_layers_upper" : 2,
     
     "study::batchnorm" : false,
@@ -86,8 +86,11 @@
     "study::mask_bias_lower" : 0.2,
     "study::mask_bias_upper" : 0.2,
 
-    "study::loss_weight_lower" : 0.5,
-    "study::loss_weight_upper" : 50,
+    "study::loss_weight_lower" : 1,
+    "study::loss_weight_upper" : 1,
+
+    "study::tag_jumps_lower" : 1,
+    "study::tag_jumps_upper" : 9,
 
     "study::loss_type" : false,
 
@@ -100,18 +103,18 @@
     "p" : 1,
     "q" : 1,
 
-    "study::embedding_dim_lower" : 32,
+    "study::embedding_dim_lower" : 2,
     "study::embedding_dim_upper" : 32,
-    "study::walk_length_lower" : 30,
+    "study::walk_length_lower" : 2,
     "study::walk_length_upper" : 30,
-    "study::context_size_lower" : 10,
+    "study::context_size_lower" : 1,
     "study::context_size_upper" : 10,
     "study::walks_per_node_lower" : 1,
-    "study::walks_per_node_upper" : 1,
+    "study::walks_per_node_upper" : 2,
     "study::num_negative_samples_lower" : 1,
-    "study::num_negative_samples_upper" : 1,
+    "study::num_negative_samples_upper" : 2,
     "study::p_lower" : 1,
-    "study::p_upper" : 1,
+    "study::p_upper" : 2,
     "study::q_lower" : 1,
-    "study::q_upper" : 1
+    "study::q_upper" : 2
 }
