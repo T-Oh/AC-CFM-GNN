@@ -30,24 +30,36 @@ assert False
 """
 
 class GAT(Module):
-    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reg_head_size=500, dropout=0.0, num_heads=1, use_batchnorm = True, dropout_temp = 1.0, use_skipcon=False):
+    def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers=1, dropout=0.0, num_heads=1):
         super(GAT, self).__init__()
+        
+        assert num_layers <= 5, 'A maximum of 5 layers implemented for GAT'
         #Params
-        self.num_layers=num_layers
-        self.use_batchnorm = use_batchnorm
+        self.num_layers = int(num_layers)
+        self.hidden_size = int(hidden_size)
+        self.reghead_size = int(reghead_size)
+        self.reghead_layers = int(reghead_layers)
+        self.num_heads = int(num_heads)
+        
         
         #Conv Layers
-        self.conv1=GATv2Conv(num_node_features,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout, heads=num_heads).to(float)
-        self.conv2=GATv2Conv(hidden_size*num_heads,hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=num_heads).to(float)
+        self.conv1=GATv2Conv(num_node_features,self.hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout, heads=self.num_heads).to(float)
+        self.conv2=GATv2Conv(self.hidden_size*self.num_heads,self.hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=self.num_heads).to(float)
+        self.conv3=GATv2Conv(self.hidden_size*self.num_heads,self.hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=self.num_heads).to(float)
+        self.conv4=GATv2Conv(self.hidden_size*self.num_heads,self.hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=self.num_heads).to(float)
+        self.conv5=GATv2Conv(self.hidden_size*self.num_heads,self.hidden_size, edge_dim = num_edge_features, add_self_loops=True, dropout = dropout,heads=self.num_heads).to(float)
+        
 
         #Additional Layers
         self.relu = LeakyReLU()
-        self.regHead = Linear(hidden_size*num_heads, reg_head_size)
-        self.endLinear = Linear(reg_head_size ,num_targets,bias=True)
+        self.regHead1 = Linear(self.hidden_size*self.num_heads, self.reghead_size)
+        self.regHead2 = Linear(self.reghead_size, self.reghead_size)
+        self.endLinear = Linear(self.reghead_size ,num_targets,bias=True)
+        self.singleLinear = Linear(self.hidden_size*self.num_heads, num_targets)
         self.endSigmoid = Sigmoid()
         self.pool = global_mean_pool    #global add pool does not work for it produces too large negative numbers
         self.dropout = Dropout(p=dropout)       
-        self.batchnorm = BatchNorm(hidden_size*num_heads,track_running_stats=False)
+        self.batchnorm = BatchNorm(self.hidden_size*self.num_heads,track_running_stats=True)
 
     def forward(self, data):
         
@@ -68,24 +80,38 @@ class GAT(Module):
 
         
         #print(f'Before:\n {x}')
-        for _ in range(self.num_layers - 1):
-            if self.use_batchnorm:
-                print('USING BATCHNORM')
-                x = self.batchnorm(x)
-                print(f'After:\n{x}')
+        for layer in range(self.num_layers - 1):
             x = self.relu(x)
             #print(x)
             #x = self.dropout(x)
             #print(x)
-            x = self.conv2(x=x, edge_index=edge_index,edge_attr = edge_weight)
+            if layer == 0:
+                x = self.conv2(x=x, edge_index=edge_index,edge_attr = edge_weight)
+            elif layer == 1:
+                x = self.conv3(x=x, edge_index=edge_index,edge_attr = edge_weight)
+            elif layer == 2:
+                x = self.conv4(x=x, edge_index=edge_index,edge_attr = edge_weight)
+            elif layer == 3:
+                x = self.conv5(x=x, edge_index=edge_index,edge_attr = edge_weight)
             #print(x)
-        
-        x = self.relu(x)
-        #print(x)
+            
         x = self.dropout(x)
-        #print(x)
-        x = self.regHead(x)
-        x=self.endLinear(x)
+        
+        if self.reghead_layers == 1:
+                x = self.singleLinear(x)
+        
+        
+        elif self.reghead_layers > 1:
+            x = self.regHead1(x)
+        
+            x = self.relu(x)
+            for i in range(self.reghead_layers-2):
+                x = self.regHead2(x)
+        
+                #print(out)
+                x = self.relu(x)
+                #print(out)
+            x = self.endLinear(x)
         #print(f'SHAPE AFTER ENDLINEAR {x.shape}')
         #print("Pool")
         #print(x)

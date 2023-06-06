@@ -52,7 +52,25 @@ def get_model(cfg, params):
             hidden_size     = params["hidden_size"],
             num_layers      = params["num_layers"],
             dropout         = params['dropout'],
-            K   = params['K'])
+            K               = params['K'],
+            reghead_size    = params['reghead_size'],
+            reghead_layers  = params['reghead_layers']
+            )
+        
+    #GAT
+    elif cfg['model'] == 'GAT':
+        print('Using GAT!\n')
+        model = GAT(
+            num_node_features = params['num_features'],
+            num_edge_features   = params["num_edge_features"],
+            num_targets     = params["num_targets"],
+            hidden_size     = params["hidden_size"],
+            num_layers      = params["num_layers"],
+            reghead_size    = params['reghead_size'],
+            reghead_layers  = params['reghead_layers'], 
+            dropout         = params['dropout'],
+            num_heads       = params["heads"],
+            )
     
     #Other (mainly GINE)
     else:
@@ -66,7 +84,6 @@ def get_model(cfg, params):
                 num_layers      = params["num_layers"],
                 dropout         = params['dropout'],
                 dropout_temp    = params['dropout_temp'],
-                num_heads       = params["heads"],
                 use_batchnorm   = params['use_batchnorm'],
                 use_skipcon     = params['use_skipcon'],
                 reghead_size    = params['reghead_size'],
