@@ -48,7 +48,7 @@ def run_training(trainloader, testloader, engine, cfg):
             temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
         else:
             temp_eval, eval_output, eval_labels = engine.eval(testloader)
-
+        LRScheduler.step(temp_eval[2])
         print(f'Train R2: {R2}')
         train_loss.append(temp_train_loss)
         train_R2.append(R2)

@@ -7,9 +7,10 @@ Created on Thu May 25 16:29:21 2023
 import numpy as np
 import torch
 import logging
+import matplotlib.pyplot as plt
 
 from os.path import isfile
-
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
@@ -112,8 +113,6 @@ def run_single(cfg, device):
         if cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
                 factor=torch.tensor(cfg['weighted_loss_factor']))
-        elif cfg['weighted_loss_var']:
-            criterion = weighted_loss_var(mask_probs, device)
         else:
             criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
         criterion.to(device)
@@ -124,14 +123,17 @@ def run_single(cfg, device):
         
         # Init optimizer
         optimizer = get_optimizer(cfg, model)
+        
+        #Init LR Scheduler
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
     
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,
-                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs)
+                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
         
         #Run Training
         metrics, final_eval, output, labels = run_training(
-            trainloader, testloader, engine, cfg)
+            trainloader, testloader, engine, cfg, LRScheduler)
         
         #Save outputs, labels and losses of first fold
         torch.save(list(output), "results/" + "output.pt")  # saving train losses
@@ -146,3 +148,7 @@ def run_single(cfg, device):
             
             
         torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
+        
+        if device.type != 'cuda':
+            plt.plot(trainloss)
+            plt.plot(testloss)
