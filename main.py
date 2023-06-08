@@ -21,8 +21,7 @@ configfile = "configurations/configuration.json"
 with open(configfile, "r") as io:
     cfg = json.load(io)
     
-# choosing criterion
-assert not (cfg['weighted_loss_label'] and cfg['weighted_loss_var']), 'can not use both weighted losses at once'
+
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
 
 

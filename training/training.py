@@ -136,8 +136,6 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     #Choose Criterion
     if cfg['weighted_loss_label']:
         criterion = weighted_loss_label(factor = torch.tensor(params['loss_weight']))
-    elif cfg['weighted_loss_var']:
-        criterion = weighted_loss_var(mask_probs, device)    
     else:    
         criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
     criterion.to(device)
