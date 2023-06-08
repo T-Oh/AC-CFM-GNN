@@ -50,7 +50,7 @@ def run_single(cfg, device):
 
 
         # Calculate probabilities for masking of nodes if necessary
-        if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+        if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
             if isfile('node_label_vars.pt'):
                 print('Using existing Node Label Variances for masking')
                 mask_probs = torch.load('node_label_vars.pt')

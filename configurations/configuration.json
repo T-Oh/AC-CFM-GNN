@@ -3,36 +3,37 @@
     "dataset": "hurricane_line_priority",
     "dataset::path": "C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/",
     "task":"NodeReg",
-
     "n_scenarios":114,
-    "stormsplit" : 1,
+    "stormsplit" : 0,
     "crossvalidation" : false,
     "epochs": 2,
-    "model": "Node2Vec",
+    "model": "GINE",
     "supernode":false,
     "output_freq" : 1,
 
     "num_layers": 3,
     "hidden_size": 64,
     "reghead_size": 300,
-    "reghead_layers" : 1,
-    "num_heads" : 2,
-    "tag_jumps" : 4,
-    "dropout": 0.0,
-    "dropout_temp": 1,
-    "gradclip" : 0.0,
-    "use_batchnorm" : false,
+    "reghead_layers" : 2,
+   
+    "dropout": 0.1,
+    "gradclip" : 0.1,
+    "use_batchnorm" : true,
     "use_skipcon" : true,
-    "use_masking" : false,
-    "mask_bias" : 0.3,
-    "weighted_loss_var" : false,
-    "weighted_loss_label" : false,
-    "weighted_loss_factor" : 1,
+    "use_masking" : true,
+    "mask_bias" : 0.4,
+    "weighted_loss_label" : true,
+    "weighted_loss_factor" : 1.1,
+
+    "num_heads" : 2,
+    "gat_dropout" : 0.1,
+
+    "tag_jumps" : 6,
     
     "train_size":1,
     "test_set::batchsize": 1,
-    "train_set::batchsize": 1,
-    "train_set::shuffle": false,
+    "train_set::batchsize": 4,
+    "train_set::shuffle": true,
 
     "accuracy_tolerance":0.15,
 
@@ -63,36 +64,39 @@
     "study::hidden_features_lower" : 12,
     "study::hidden_features_upper" : 48,
 
-    "study::heads_lower" : 5,
-    "study::heads_upper" : 5,
+    "study::dropout_lower" : 0.0,
+    "study::dropout_upper" : 0.3,
 
-    "study::dropout_lower" : 0.09,
-    "study::dropout_upper" : 0.09,
-
-    "study::gradclip_lower" : 0.08,
-    "study::gradclip_upper" : 0.08,
+    "study::gradclip_lower" : -0.2,
+    "study::gradclip_upper" : 0.2,
 
     "study::reghead_size_lower" : 48,
     "study::reghead_size_upper" : 300,
 
     "study::reghead_layers_lower" : 1,
-    "study::reghead_layers_upper" : 2,
+    "study::reghead_layers_upper" : 3,
     
-    "study::batchnorm" : false,
+    "study::batchnorm" : true,
 
-    "study::skipcon" : false,
+    "study::skipcon" : true,
 
-    "study::masking" : false,
-    "study::mask_bias_lower" : 0.2,
-    "study::mask_bias_upper" : 0.2,
+    "study::masking" : true,
+    "study::mask_bias_lower" : 0.0,
+    "study::mask_bias_upper" : 0.5,
 
-    "study::loss_weight_lower" : 1,
-    "study::loss_weight_upper" : 1,
+    "study::loss_weight_lower" : 0.5,
+    "study::loss_weight_upper" : 10,
+
+    "study::heads_lower" : 5,
+    "study::heads_upper" : 5,
+
+    "study::gat_dropout_lower" : 0.5,
+    "study::gat_dropout_upper" : 0.5,
 
     "study::tag_jumps_lower" : 1,
     "study::tag_jumps_upper" : 9,
 
-    "study::loss_type" : false,
+    "study::loss_type" : true,
 
 
     "embedding_dim" : 32,
