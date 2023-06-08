@@ -17,7 +17,9 @@ from ray.tune.search.bayesopt import BayesOptSearch
 from training.training import objective
 
 
+
 def run_study(cfg, device, N_CPUS, port_dashboard):
+    print('\n\nRUN STUDY OUTPUT\n')
     # arguments for ray
     TEMP_DIR = '/p/tmp/tobiasoh/ray_tmp'
     N_GPUS = 1
@@ -55,13 +57,18 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
 
 
     # set up optimizer and scheduler
-    baysopt = BayesOptSearch(metric='train_R2', mode='max')
+    baysopt = BayesOptSearch(metric='test_R2', mode='max')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='train_R2', mode='max', max_t=100, grace_period=10)
+        time_attr='training_iteration', metric='test_R2', mode='max', max_t=100, grace_period=10)
+
+    
     # configurations
     tune_config = tune.tune_config.TuneConfig(
         num_samples=cfg['study::n_trials'], search_alg=baysopt, scheduler=scheduler)
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
+    
+
+    
     # tuner
     tuner = tune.Tuner(tune.with_resources(
         tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features,
