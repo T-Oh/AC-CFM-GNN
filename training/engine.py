@@ -1,14 +1,12 @@
-from torch import no_grad
-from torch import sum as torch_sum
-from torch import cat, save, mean, stack
-import numpy as np
-import logging
-#TO
-from torchmetrics import R2Score
 import torch
+import numpy as np
+
+from torch import no_grad, cat
+from torch.cuda.amp import GradScaler, autocast
+from torchmetrics import R2Score
+
+
 from utils.utils import discrete_loss
-#from torchviz import make_dot
-import math
 from datasets.dataset import mask_probs_add_bias
 
 
@@ -25,95 +23,110 @@ class Engine(object):
         self.tol = tol
         self.task = task
         self.vars = var.clone()
+        print(f'Mask Probs Before adding Bias:\n{var[0:50]}')
         self.mask_probs = mask_probs_add_bias(var, mask_bias)
+        print(f'Mask Probs after adding Bias:\n{self.mask_probs[0:50]}')
         self.masks = torch.bernoulli(self.mask_probs)
-        self.masking = masking
+        self.masking = bool(int(masking))
         self.criterion = criterion
         self.return_full_output = return_full_output
+        
+        self.scaler = GradScaler()  #necessary for mixed precision learning
+
+        
 
 
     def train_epoch(self, dataloader, gradclip):
         
-        #TO print weight matrices for debugging
-        """print('\nBefore TRAINING\n')
-        for param in self.model.parameters():
-            print(param)"""
+        print('\nENGINE OUTPUT')
             
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
-        R2score=R2Score().to(self.device)
+        R2score=R2Score()
         first=True;
 
         count = 0
-        
+        self.optimizer.zero_grad()
         for (i, batch) in enumerate(dataloader):
             self.optimizer.zero_grad()
             count +=1
             batch.to(self.device)
 
-            
+            #with autocast(dtype=torch.float16):
             output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
             output.to(self.device)
-            
+        
             if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
                 labels = batch.y
             elif self.task == "NodeReg":
                 labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
 
-            
-            #compile outputs and labels for saving
-                        
-            if first:
-                if self.task == "NodeReg":
-                    total_output=output.clone()
-                    total_labels=labels.clone()
-                else:
-                    total_output=output
-                    total_labels=labels
-                first=False
-            else:
-                if self.task == "NodeReg":
-                    total_output=cat((total_output,output),0)   
-                    total_labels=cat((total_labels,labels),0)
-                else:
-                    total_output=cat((total_output,output),0)  
-                    total_labels=cat((total_labels,labels),0)
-            
-            
+ 
             #calc and backpropagate loss
             if self.masking:
+                print('Applying Masking')
                 for j in range(int(len(output)/2000)):
                    if j==0:
                        self.masks=torch.bernoulli(self.mask_probs)
                        print(torch.bincount(self.masks.to(int))[1]/2000)
                    else:
-                       self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs)))
-                   #self.masks= self.masks.to('cuda:0')
+                       self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
+                   self.masks= self.masks.to('cuda:0')
+                   #self.masks.to(self.device)
+                print('Masks:')
+                print(self.masks)
+                print(f'Output before masking:\n{output}')
                 output = output*self.masks
                 labels = labels*self.masks
+                print(f'Output after masking:\n{output}')
             
 
             temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
+            """self.scaler.scale(temp_loss).backward() 
+            self.scaler.step(self.optimizer)
+            self.scaler.update()"""
+ 
+            #compile outputs and labels for saving                        
+            if first:
+                if self.task == "NodeReg":
+                    total_output=output.detach().cpu()
+                    total_labels=labels.detach().cpu()
+                else:
+                    total_output=output.detach().cpu()
+                    total_labels=labels.detach().cpu()
+                first=False
+            else:
+                if self.task == "NodeReg":
+                    total_output=cat((total_output,output.detach().cpu()),0)   
+                    total_labels=cat((total_labels,labels.detach().cpu()),0)
+                else:
+                    total_output=cat((total_output,output.detach().cpu()),0)  
+                    total_labels=cat((total_labels,labels.detach().cpu()),0)
 
+                      
             temp_loss.backward()
             #print(temp_loss.grad)
-            if gradclip != 0:
+            if gradclip >= 0.02:
+                print(f'Using Gradclip with treshold: {gradclip}')
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
-            
             self.optimizer.step()
+            #Gradient accumulation
+            """
+            if (i+1)%8 == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+            """
             loss += temp_loss.item()
         R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        
         if not self.return_full_output:
             example_output = total_output[0:16000]
             example_labels = total_labels[0:16000]
             del total_output
             del total_labels
             return loss/count, R2, example_output, example_labels
-            
-        #TO print weight matrices for debugging
-        """print('\nAFTER TRAINING\n')
-        for param in self.model.parameters():
-            print(param)"""
+        
+
 
         #End TO
         return loss/count, R2, total_output, total_labels
@@ -153,8 +166,8 @@ class Engine(object):
                     temp_labels = batch.node_labels.type(torch.FloatTensor)
                     temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
                 if first:
-                    labels=temp_labels.clone()
-                    output= temp_output.clone()
+                    labels=temp_labels.detach().cpu()
+                    output= temp_output.detach().cpu()
                     first = False
                     """elif second:
                     print(labels.shape)
@@ -165,13 +178,12 @@ class Engine(object):
                 else:
                     #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
                     #output = torch.cat([output, temp_output])     #.unsqueeze(0)
-                    output=cat((output,temp_output),0)  
-                    labels=cat((labels,temp_labels),0)
+                    output=cat((output,temp_output.detach().cpu()),0)  
+                    labels=cat((labels,temp_labels.detach().cpu()),0)
 
             #TO
-            R2torch=R2Score().to(self.device)
-            labels = labels.to(self.device)
-            output = output.to(self.device)
+            R2torch=R2Score()
+
 
             R2=R2torch(output.reshape(-1), labels.reshape(-1))
             loss = self.criterion(output, labels)
