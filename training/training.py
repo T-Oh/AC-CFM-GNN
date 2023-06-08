@@ -8,13 +8,13 @@ from utils.get_optimizers import get_optimizer
 
 from ray import tune
 from ray.air import session
-from os.path import isfile
 
-from utils.utils import weighted_loss_label, weighted_loss_var, setup_params, setup_params_from_search_space
+from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space
 from models.run_node2vec import run_node2vec
-from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
+from datasets.dataset import create_datasets, create_loaders
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-def run_training(trainloader, testloader, engine, cfg):
+def run_training(trainloader, testloader, engine, cfg, LRScheduler):
     """
     
 
@@ -41,6 +41,7 @@ def run_training(trainloader, testloader, engine, cfg):
     output=[]
     labels=[]
 
+
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}')
         temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
@@ -60,7 +61,7 @@ def run_training(trainloader, testloader, engine, cfg):
             print(f'Train R2: {R2}')
             #output.append(temp_output)  #can be added to return to save best output instead of last outpu
             #labels.append(temp_labels)
-    
+            
     if cfg['train_size'] == 1 and cfg['stormsplit'] == 0 and cfg['crossvalidation'] == 0:
         final_eval, final_output, final_labels =  engine.eval(trainloader)
     else:
@@ -77,7 +78,8 @@ def run_training(trainloader, testloader, engine, cfg):
 
 
 
-def objective(search_space, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device, mask_probs):
+def objective(search_space, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device,
+              mask_probs):
     params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     params = setup_params_from_search_space(search_space, params)
     print(params)
@@ -98,21 +100,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
         trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
         trainloader, testloader = create_loaders(cfg, trainset, testset)
 
-
-        # Calculate probabilities for masking of nodes if necessary
-        if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
-            if isfile('node_label_vars.pt'):
-                print('Using existing Node Label Variances for masking')
-                mask_probs = torch.load('node_label_vars.pt')
-            else:
-                print('No node label variance file found\nCalculating Node Variances for Masking')
-                mask_probs = calc_mask_probs(trainloader)
-                torch.save(mask_probs, 'node_label_vars.pt')
-        else:
-            #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
-            mask_probs = torch.zeros(2000)+1
-    
-    
+       
         # getting feature and target sizes
         num_features = trainset.__getitem__(0).x.shape[1]
         print(f'New number of features: {num_features}')
@@ -122,8 +110,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
         params['num_features'] = num_features
         
     
-    
-    
+        
     print('\nSEARCH_SPACE:\n')
     print(search_space)
     print('PARAMS')
@@ -134,13 +121,23 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     model = get_model(cfg, params)
     model.to(device)
     #Choose Criterion
-    if cfg['weighted_loss_label']:
-        criterion = weighted_loss_label(factor = torch.tensor(params['loss_weight']))
-    else:    
-        criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
+    if cfg['study::loss_type']:
+        if int(params['loss_type']) == 0:
+            criterion = weighted_loss_label(factor = torch.tensor(params['loss_weight'])) 
+        else:
+            criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
+    else:
+        if cfg['weighted_loss_label']:
+            criterion = weighted_loss_label(factor = torch.tensor(params['loss_weight']))   
+        else:    
+            criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
     criterion.to(device)
     optimizer = get_optimizer(cfg, model)
-    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs, masking = params['use_masking'], mask_bias=cfg['mask_bias'])
+    #Init LR Scheduler
+    LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
+    
+    engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs,
+                    masking = params['use_masking'], mask_bias=params['mask_bias'])
     engine.optimizer.lr = params['LR']
     
     logging.info('New parameters suggested:')
@@ -173,9 +170,8 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
                 }
             session.report(result)
 
-        """if trial.should_prune():
-            logging.warning("Trial pruned")
-            raise optuna.exceptions.TrialPruned()"""
+        #LR Scheduler
+        LRScheduler.step(eval_score[1].cpu())
     
     final_eval, output, labels = engine.eval(testloader) 
     torch.save(list(test_losses), cfg['dataset::path'] + "results/" + f"test_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
