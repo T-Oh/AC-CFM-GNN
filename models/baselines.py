@@ -1,4 +1,4 @@
-from torch.nn import Module, LeakyReLU, Linear
+from torch.nn import Module, LeakyReLU, Linear, ModuleList, Dropout, BatchNorm1d
 
 
 
@@ -8,41 +8,76 @@ class ridge(Module):
 
     def __init__(self, num_node_features, hidden_size=128):
         super().__init__()
-        self.linear = Linear(in_features=2000*int(num_node_features), out_features=2000)
+        self.linear = Linear(in_features=int(num_node_features), out_features=1)
 
 
     def forward(self, data):
         x  = data.x
+        print(f'Shape of data in ridge: {x.shape}')
         
-        x = self.linear(x.reshape(-1))
+        x = self.linear(x)
         #print(x)
         
         return x
 
 class MLP(Module):
-    def __init__(self, num_node_features, hidden_size, num_layers):
+    def __init__(self, num_node_features, hidden_size, num_layers, dropout, use_batchnorm, use_skipcon):
         super().__init__()
-        assert num_layers <= 3, 'A maximum of 3 layers implemented for MLP'
+        #Parameters
         self.num_layers = int(num_layers)
-        self.lin_single = Linear(int(num_node_features)*2000, 2000)
-        self.lin_in = Linear(in_features=2000*int(num_node_features), out_features = int(hidden_size))
-        self.lin_hidden = Linear(in_features=int(hidden_size), out_features = int(hidden_size))
-        self.lin_end = Linear(in_features=int(hidden_size), out_features = 2000)
+        self.hidden_size = int(hidden_size)
+        self.use_batchnorm = bool(int(use_batchnorm))
+        self.use_skipcon = bool(int(use_skipcon))
+        
+        #Linear Layers
+        self.lin_single = Linear(int(num_node_features), 1)
+        self.lin_in = Linear(in_features=int(num_node_features), out_features = int(hidden_size))
+        self.layers = ModuleList([Linear(in_features=int(hidden_size), out_features = int(hidden_size)) for i in range(self.num_layers-2)])
+        self.lin_end = Linear(in_features=int(hidden_size), out_features = 1)
+        
+        #Other Layers
         self.ReLu = LeakyReLU()
+        self.dropout = Dropout(p=dropout)
+        self.batchnorm = BatchNorm1d(self.hidden_size)
+        
+        print(f'Dropout Rate {dropout}')
+        print(f'Num Layers {self.num_layers}')
+        print(f'Hidden Size {self.hidden_size}')
+
         
         
         
     def forward(self, data):
         x = data.x
-        print(f'MLP input shape: {x.shape}')
+        
         if self.num_layers == 1:
-            x = self.lin_single(x.reshape(-1))
-        elif self.num_layers > 1:
-            x = self.lin_in(x.reshape(-1))
+            x = self.lin_single(x)
+            
+            
+        else:           
+            x = self.lin_in(x)
+            if self.use_batchnorm:
+                x = self.batchnorm(x)
             x = self.ReLu(x)
-            if self.num_layers > 2:
-                x = self.lin_hidden(x)
-                x = self.ReLu(x)
+            x = self.dropout(x)
+            
+            for i in range(self.num_layers-2):               
+                if self.use_skipcon:   
+                    print('Using Skipcon')
+                    x_ = self.layers[i](x)
+                    if self.use_batchnorm:
+                        print('Using Batchnorm')
+                        x_ = self.batchnorm(x_)
+                    x = (self.ReLu(x_)+x)/2
+                    x = self.dropout(x)
+                else:                
+                    x = self.layers[i](x)
+                    if self.use_batchnorm:
+                        print('Using Batchnorm')
+                        x = self.batchnorm(x)
+                    x = self.ReLu(x)
+                    x = self.dropout(x)
+                    
             x = self.lin_end(x)
         return x
         
