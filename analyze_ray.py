@@ -56,8 +56,11 @@ for file in os.listdir(path):
             if not result_grid[i].error:
                 if 'test_R2' in result_grid[i].metrics.keys():
                     for key in result_grid[i].config.keys():
-                        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads']:
+                        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
+                                   'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
                             params[key][i+offset] = int(result_grid[i].config[key])
+                        elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
+                            params[key][i+offset] = 0
                         else:
                             params[key][i+offset] = result_grid[i].config[key]
                     for key in metrics.keys():
@@ -66,7 +69,8 @@ for file in os.listdir(path):
         offset = i+offset
         i_file += 1
         
-
+print(result_grid[np.argmax(metrics['test_R2'])].config)
+print(result_grid[np.argmax(metrics['test_R2'])].metrics)
 
 #PLOTTING
 #fig, axs = plt.subplots(N_params)
@@ -78,10 +82,16 @@ for key in params.keys():
     ax = plt.gca()
     if key == 'LR':
         ax.set_xscale('log')
-    ax.scatter(params[key],metrics['test_R2'])
+        ax.scatter(10**params[key],metrics['test_R2'])
+    elif key == 'loss_weight':
+        ax.scatter(params[key],metrics['test_R2'], c=params['loss_type'])
+    elif key == 'mask_bias':
+        ax.scatter(params[key],metrics['test_R2'], c=params['use_masking'])
+    else:
+        ax.scatter(params[key],metrics['test_R2'])
     ax.set_title(name)
     ax.set_xlabel(key)
-    ax.set_ylabel('Train R2')
+    ax.set_ylabel('Test R2')
     fig.savefig(key + name + ".png", bbox_inches='tight')
     i += 1
     
