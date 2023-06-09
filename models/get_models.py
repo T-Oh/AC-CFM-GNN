@@ -41,8 +41,11 @@ def get_model(cfg, params):
         print('Using MLP or Node2Vec with MLP!\n')
         model = MLP(
             num_node_features   = params['num_features'],
-            hidden_size     = params['hidden_size'],
-            num_layers  =   params['num_layers']
+            hidden_size         = params['hidden_size'],
+            num_layers      =   params['num_layers'],
+            dropout         =   params['dropout'],
+            use_skipcon     = params['use_skipcon'],
+            use_batchnorm   = params['use_batchnorm']
             )
         
     #TAG    
@@ -54,7 +57,9 @@ def get_model(cfg, params):
             dropout         = params['dropout'],
             K               = params['K'],
             reghead_size    = params['reghead_size'],
-            reghead_layers  = params['reghead_layers']
+            reghead_layers  = params['reghead_layers'],
+            use_skipcon     = params['use_skipcon'],
+            use_batchnorm   = params['use_batchnorm']
             )
         
     #GAT
@@ -69,7 +74,10 @@ def get_model(cfg, params):
             reghead_size    = params['reghead_size'],
             reghead_layers  = params['reghead_layers'], 
             dropout         = params['dropout'],
+            gat_dropout     = params['gat_dropout'],
             num_heads       = params["heads"],
+            use_skipcon     = params['use_skipcon'],
+            use_batchnorm   = params['use_batchnorm']
             )
     
     #Other (mainly GINE)
@@ -83,13 +91,9 @@ def get_model(cfg, params):
                 hidden_size     = params["hidden_size"],
                 num_layers      = params["num_layers"],
                 dropout         = params['dropout'],
-                dropout_temp    = params['dropout_temp'],
-                use_batchnorm   = params['use_batchnorm'],
                 use_skipcon     = params['use_skipcon'],
                 reghead_size    = params['reghead_size'],
                 reghead_layers  = params['reghead_layers'],
-                use_masking     = params['use_masking'],
-                mask_probs      =params['mask_probs']
             )
         except NameError:
             raise NameError("Unknown model selected. Change model in gnn/configuration.json")

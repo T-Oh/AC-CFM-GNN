@@ -39,16 +39,11 @@ class MLP(Module):
         self.ReLu = LeakyReLU()
         self.dropout = Dropout(p=dropout)
         self.batchnorm = BatchNorm1d(self.hidden_size)
-        
-        print(f'Dropout Rate {dropout}')
-        print(f'Num Layers {self.num_layers}')
-        print(f'Hidden Size {self.hidden_size}')
-
-        
-        
+               
         
     def forward(self, data):
         x = data.x
+        print(f'MLP Shape {x.shape}')
         
         if self.num_layers == 1:
             x = self.lin_single(x)
