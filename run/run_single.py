@@ -11,11 +11,12 @@ import matplotlib.pyplot as plt
 
 from os.path import isfile
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import weighted_loss_label, weighted_loss_var, setup_params
+from utils.utils import weighted_loss_label, setup_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
@@ -84,20 +85,6 @@ def run_single(cfg, device):
             # Create Datasets and Dataloaders
             trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
             trainloader, testloader = create_loaders(cfg, trainset, testset)
-
-
-            # Calculate probabilities for masking of nodes if necessary
-            if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
-                if isfile('node_label_vars.pt'):
-                    print('Using existing Node Label Variances for masking')
-                    mask_probs = torch.load('node_label_vars.pt')
-                else:
-                    print('No node label variance file found\nCalculating Node Variances for Masking')
-                    mask_probs = calc_mask_probs(trainloader)
-                    torch.save(mask_probs, 'node_label_vars.pt')
-            else:
-                #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
-                mask_probs = torch.zeros(2000)+1
         
         
             # getting feature and target sizes
@@ -150,5 +137,5 @@ def run_single(cfg, device):
         torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
         
         if device.type != 'cuda':
-            plt.plot(trainloss)
-            plt.plot(testloss)
+            plt.plot(metrics['train_loss'])
+            plt.plot(metrics['test_loss'])

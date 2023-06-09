@@ -14,6 +14,9 @@ from utils.get_optimizers import get_optimizer
 
 def run_node2vec(cfg, trainloader, device, params, trial):
     edge_index = next(iter(trainloader)).edge_index
+
+    #edge_index = edge_index[:,:int(len(edge_index[0])/trainloader.batch_size)]
+    
     model = Node2Vec(edge_index,
                      embedding_dim = int(params['embedding_dim']),
                      walk_length = int(params['walk_length']),
@@ -35,7 +38,7 @@ def run_node2vec(cfg, trainloader, device, params, trial):
         print(f'Loss: {loss}')
                
     embedding = model()
-        
+
             
     if not os.path.exists('node2vec/'):
         os.makedirs('node2vec/')
