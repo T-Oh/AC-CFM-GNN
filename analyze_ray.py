@@ -12,12 +12,21 @@ from training.training import objective
 name = 'Analyze_Ray_Test' #Name tag added to the plots and their filenames
 
 
-#ray.init()
+ray.init()
 i_file = 0
 offset = 0
 path = 'C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/results/'
+unusable_trials = 0
+usable_trials = 0
+experiments_evaluated = 0
+fastest_time = 9999999
+slowest_time = 0
+fastest_result = 0
+slowest_result = 0
 for file in os.listdir(path):
     if file.startswith('objective'):
+
+        experiments_evaluated += 1
 
 
 
@@ -31,15 +40,19 @@ for file in os.listdir(path):
         if i_file == 0:
             N_params = 0
             params = {}
-            for key in result_grid[0].config.keys():
-                params[key] = np.zeros(N_trials)
-                N_params += 1
+            for i in range(N_trials):
+                if not result_grid[i].error and 'test_R2' in result_grid[i].metrics.keys():
+                        for key in result_grid[i].config.keys():
+                            params[key] = np.zeros(N_trials)
+                            N_params += 1
+                        break
             
             metrics = {
                 'train_loss' :  np.zeros(N_trials),
                 'test_loss' :   np.zeros(N_trials),
                 'train_R2' :    np.zeros(N_trials),
-                'test_R2' :     np.zeros(N_trials)
+                'test_R2' :     np.zeros(N_trials),
+                'time_total_s'  :   np.zeros(N_trials)
                 }
         else:
             for key in metrics.keys():
@@ -55,6 +68,7 @@ for file in os.listdir(path):
             #print(result_grid[i].metrics['r2'])
             if not result_grid[i].error:
                 if 'test_R2' in result_grid[i].metrics.keys():
+                    usable_trials += 1
                     for key in result_grid[i].config.keys():
                         if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
                                    'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
@@ -65,12 +79,57 @@ for file in os.listdir(path):
                             params[key][i+offset] = result_grid[i].config[key]
                     for key in metrics.keys():
                         metrics[key][i+offset] = result_grid[i].metrics[key]
-                else: print(f'Skipped {i}')
+                        
+                    if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
+                        fastest_result = result_grid[i]
+                        fastest = result_grid[i].metrics['time_total_s']
+                        
+                    if result_grid[i].metrics['time_total_s'] > slowest_time and result_grid[i].metrics['time_total_s'] != 0:
+                        slowest_result = result_grid[i]
+                        slowest = result_grid[i].metrics['time_total_s']
+                        
+                else: 
+                    print(f'Skipped {i} because Test R2 not in Metrics')
+                    unusable_trials += 1
+            else: 
+                print(f'Skipped {i} because of Error')
+                unusable_trials += 1
+        
+        #Find best result, fastest result and slowest result
+        if i_file == 0:
+            best_result = result_grid[np.argmax(metrics['test_R2'])]
+
+
+
+        else:
+            if metrics['test_R2'].max() > best_result.metrics['test_R2']:
+                best_result = result_grid[np.argmax(metrics['test_R2'])-offset]
+
+                
+        
         offset = i+offset
         i_file += 1
+
         
-print(result_grid[np.argmax(metrics['test_R2'])].config)
-print(result_grid[np.argmax(metrics['test_R2'])].metrics)
+print(f'{experiments_evaluated} experiments evaluated/n')
+print(f'{usable_trials} trials evaluated')
+print(f'{unusable_trials} trials unusable (Error)')
+#print(result_grid[np.argmax(metrics['test_R2'])].config)
+#print(result_grid[np.argmax(metrics['test_R2'])].metrics)
+print('Best Result:/n')
+print(best_result.config)
+print(best_result.metrics)
+
+print('Slowest Result:/n')
+print(slowest_result.config)
+print(slowest_result.metrics)
+
+print('Fastest Result:/n')
+print(fastest_result.config)
+print(fastest_result.metrics)
+
+
+
 
 #PLOTTING
 #fig, axs = plt.subplots(N_params)
@@ -105,6 +164,15 @@ if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
     ax.set_ylabel('hidden_size')
     ax.set_zlabel('Train R2')
     fig.savefig('Layers_HF_R2' + name + ".png", bbox_inches='tight')
+    
+#History Plot (R2 vs trials)
+fig = plt.figure(i+2)
+ax = fig.add_subplot()
+ax.scatter(range(len(metrics['test_R2'])), metrics['test_R2'])
+ax.set_title(name)
+ax.set_xlabel('Trial')
+ax.set_ylabel('Test R2')
+fig.savefig('history_plot_' + name + '.png', bbox_inches='tight')
     
     
 
