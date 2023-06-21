@@ -9,10 +9,12 @@ import os
 import logging
 
 from os.path import isfile
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from models.get_models import get_model
-from utils.utils import setup_params, weighted_loss_label, weighted_loss_var
+from models.run_node2vec import run_node2vec
+from utils.utils import setup_params, weighted_loss_label
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
@@ -30,7 +32,7 @@ def run_crossval(cfg, device):
     trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
     trainloader, testloader = create_loaders(cfg, trainset, testset) 
     # Calculate probabilities for masking of nodes if necessary
-    if cfg['use_masking'] or cfg['weighted_loss_var'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+    if cfg['use_masking']:
         if isfile('node_label_vars.pt'):
             print('Using existing Node Label Variances for masking')
             mask_probs = torch.load('node_label_vars.pt')
@@ -48,11 +50,31 @@ def run_crossval(cfg, device):
     
     params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     
+    #Node2Vec
+    if cfg['model'] == 'Node2Vec':
+        
+        embedding = run_node2vec(cfg, trainloader, device, params, 0)
+        normalized_embedding = embedding.data
+        #Normalize the Embedding
+        print(embedding.shape)
+        for i in range(embedding.shape[1]):
+            normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
+            
+        # Create Datasets and Dataloaders
+        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
+        trainloader, testloader = create_loaders(cfg, trainset, testset)
+    
+    
+        # getting feature and target sizes
+        num_features = trainset.__getitem__(0).x.shape[1]
+        num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+        
+        #Setup params for following task (MLP)
+        params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+    
     # Init Criterion
     if cfg['weighted_loss_label']:
         criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
-    elif cfg['weighted_loss_var']:
-        criterion = weighted_loss_var(mask_probs, device)
     else:
         criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
     criterion.to(device)
@@ -64,7 +86,10 @@ def run_crossval(cfg, device):
             del trainset, testset, trainloader, testloader, model, optimizer, engine, output, labels
             os.rename('processed/', f'processed{int(fold)}')
             os.rename(f'processed{int(fold+1)}/', 'processed')
-            trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
+            if cfg['model'] == 'Node2Vec':
+                trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1, embedding=normalized_embedding.to(device))
+            else:
+                trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
             trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
             # ReInit GNN model
         model = get_model(cfg, params)
@@ -72,14 +97,17 @@ def run_crossval(cfg, device):
         
         # ReInit optimizer
         optimizer = get_optimizer(cfg, model)
-
+        
+        #Init LR Scheduler
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
+        
         # ReInitializing engine
         engine = Engine(model, optimizer, device, criterion,
-                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs)
+                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
         
         #Run Training
         metrics, final_eval, output, labels = run_training(
-            trainloader, testloader, engine, cfg)
+            trainloader, testloader, engine, cfg, LRScheduler)
         
         #Save outputs, labels and losses of first fold
         if fold == 0:
