@@ -49,12 +49,12 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
             temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
         else:
             temp_eval, eval_output, eval_labels = engine.eval(testloader)
-        LRScheduler.step(temp_eval[2])
+        LRScheduler.step(temp_eval[1])
         print(f'Train R2: {R2}')
         train_loss.append(temp_train_loss)
         train_R2.append(R2)
         test_loss.append(temp_eval[0])
-        test_R2.append(temp_eval[2])
+        test_R2.append(temp_eval[1])
         if i % cfg['output_freq'] == 0:
             logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / train R2 {R2}/ test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
             print(f'TrainLoss: {temp_train_loss}')
@@ -84,30 +84,6 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     params = setup_params_from_search_space(search_space, params)
     print(params)
     
-    
-    
-    if cfg['model'] == 'Node2Vec':
-        print('Creating Node2Vec Embedding')
-        
-        embedding = run_node2vec(cfg, trainloader, device, params, 0)
-        normalized_embedding = embedding.data
-        #Normalize the Embedding
-        print(embedding.shape)
-        for i in range(embedding.shape[1]):
-            normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
-            
-        # Create Datasets and Dataloaders
-        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
-        trainloader, testloader = create_loaders(cfg, trainset, testset)
-
-       
-        # getting feature and target sizes
-        num_features = trainset.__getitem__(0).x.shape[1]
-        print(f'New number of features: {num_features}')
-        num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
-        
-        #Setup params for following task (MLP)
-        params['num_features'] = num_features
         
     
         
@@ -174,10 +150,24 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
         LRScheduler.step(eval_score[1].cpu())
     
     final_eval, output, labels = engine.eval(testloader) 
+    
+    savename = '.pt'
+    for key in search_space.keys():
+        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
+                   'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
+            savename = '_' + key + '_' + str(int(params[key])) + savename
+        else:
+            savename = '_' + key + '_' + f'{params[key]:.3}'  + savename
+    torch.save(list(test_losses), cfg['dataset::path'] + "results/" + 'test_losses' + savename) #saving train losses
+    torch.save(list(train_losses), cfg['dataset::path'] + "results/" + 'train_losses' + savename) #saving train losses
+    torch.save(list(output), cfg['dataset::path'] + "results/" + 'output' + savename) #saving train losses
+    torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels' + savename) #saving train losses
+    """  
     torch.save(list(test_losses), cfg['dataset::path'] + "results/" + f"test_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
     torch.save(list(train_losses), cfg['dataset::path'] + "results/" + f"train_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
     torch.save(list(output), cfg['dataset::path'] + "results/" + f"output_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
     torch.save(list(labels), cfg['dataset::path'] + "results/" + f"labels_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
+    """
     #tune.report(np.array(discrete_measure).min())  #only necessary for intermediate results
 
 
