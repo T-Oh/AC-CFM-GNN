@@ -108,14 +108,16 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
         else:    
             criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
     criterion.to(device)
-    optimizer = get_optimizer(cfg, model)
+    optimizer = get_optimizer(cfg, model, params)
     #Init LR Scheduler
     LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
     
     engine = Engine(model,optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task = cfg['task'], var=mask_probs,
                     masking = params['use_masking'], mask_bias=params['mask_bias'])
-    engine.optimizer.lr = params['LR']
-    
+    used_lr=engine.optimizer.param_groups[0]['lr']
+    used_weight_decay = engine.optimizer.param_groups[0]['weight_decay']
+    print(f'LR: {used_lr}')
+    print(f'Weight Decay: {used_weight_decay}')
     logging.info('New parameters suggested:')
     for key in search_space.keys():
         logging.info(f"{key}: {search_space[key]}")
