@@ -345,12 +345,15 @@ def setup_searchspace(cfg):
 
     search_space = {}
     #General Architecture
+    if cfg['study::lr::lower'] != cfg['study::lr::upper']:
+        search_space['LR'] = tune.uniform(cfg['study::lr::lower'], cfg['study::lr::upper'])
+    if cfg['study::weight_decay_upper'] != cfg['study::weight_decay_lower']:
+        search_space['weight_decay'] = tune.uniform(cfg['study::weight_decay_lower'], cfg['study::weight_decay_upper'])
+        
     if cfg["study::layers_lower"] != cfg["study::layers_upper"]:
         search_space['num_layers'] = tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1)
     if cfg["study::hidden_features_lower"] != cfg["study::hidden_features_upper"]:
-        search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)
-    if cfg['study::lr::lower'] != cfg['study::lr::upper']:
-        search_space['LR'] = tune.uniform(cfg['study::lr::lower'], cfg['study::lr::upper'])
+        search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)   
     if cfg["study::dropout_lower"] != cfg["study::dropout_upper"]:
         search_space['dropout'] = tune.quniform(cfg["study::dropout_lower"], cfg["study::dropout_upper"], 0.01)
     if cfg['study::skipcon']:
@@ -422,7 +425,7 @@ def setup_params_from_search_space(search_space, params):
     updated_params = params
     print('Setup params from search space')
     for key in search_space.keys():
-        if key == 'LR':
+        if key in ['LR', 'weight_decay']:
             updated_params[key] = 10**search_space[key]
         else:
             updated_params[key] = search_space[key]
@@ -432,6 +435,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
 
     params = {
         'LR' :  cfg['optim::LR'],
+        'weight_decy'   :   cfg['optim::weight_decay'],
         
         "num_features"          :   num_features,
         "num_edge_features"     :   num_edge_features,
