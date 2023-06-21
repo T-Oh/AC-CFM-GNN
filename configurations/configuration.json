@@ -4,12 +4,13 @@
     "dataset::path": "C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/",
     "task":"NodeReg",
     "n_scenarios":114,
-    "stormsplit" : 0,
+    "stormsplit" : 1,
     "crossvalidation" : false,
-    "epochs": 40,
-    "model": "Node2Vec",
+    "epochs": 2,
+    "model": "Ridge",
     "supernode":false,
     "output_freq" : 1,
+    
 
     "num_layers": 3,
     "hidden_size": 64,
@@ -41,7 +42,7 @@
     "train_size":1,
     "test_set::batchsize": 1,
     "train_set::batchsize": 1,
-    "train_set::shuffle": true,
+    "train_set::shuffle": false,
 
     "accuracy_tolerance":0.15,
 
@@ -60,39 +61,42 @@
     "manual_seed" : 7,
 
 
-    "study::run" : false,
+    "study::run" : true,
     "study::n_trials" : 4,
 
     "study::lr::lower" : -9,
     "study::lr::upper" : -3,
 
+    "study::weight_decay_lower" : -9,
+    "study::weight_decay_upper" : -3,
+
     "study::layers_lower" : 1,
-    "study::layers_upper" : 5,
+    "study::layers_upper" : 1,
 
     "study::hidden_features_lower" : 12,
-    "study::hidden_features_upper" : 48,
+    "study::hidden_features_upper" : 12,
 
     "study::dropout_lower" : 0.0,
-    "study::dropout_upper" : 0.3,
+    "study::dropout_upper" : 0.0,
 
-    "study::gradclip_lower" : -0.2,
+    "study::gradclip_lower" : 0.2,
     "study::gradclip_upper" : 0.2,
 
-    "study::reghead_size_lower" : 48,
+    "study::reghead_size_lower" : 300,
     "study::reghead_size_upper" : 300,
 
-    "study::reghead_layers_lower" : 1,
+    "study::reghead_layers_lower" : 3,
     "study::reghead_layers_upper" : 3,
     
-    "study::batchnorm" : true,
+    "study::batchnorm" : false,
 
-    "study::skipcon" : true,
+    "study::skipcon" : false,
 
-    "study::masking" : true,
-    "study::mask_bias_lower" : 0.0,
+    "study::masking" : false,
+    "study::mask_bias_lower" : 0.5,
     "study::mask_bias_upper" : 0.5,
 
-    "study::loss_weight_lower" : 0.5,
+    "study::loss_weight_lower" : 10,
     "study::loss_weight_upper" : 10,
 
     "study::heads_lower" : 5,
@@ -101,23 +105,23 @@
     "study::gat_dropout_lower" : 0.5,
     "study::gat_dropout_upper" : 0.5,
 
-    "study::tag_jumps_lower" : 1,
+    "study::tag_jumps_lower" : 9,
     "study::tag_jumps_upper" : 9,
 
-    "study::loss_type" : true,
+    "study::loss_type" : false,
 
-    "study::embedding_dim_lower" : 2,
+    "study::embedding_dim_lower" : 32,
     "study::embedding_dim_upper" : 32,
-    "study::walk_length_lower" : 2,
+    "study::walk_length_lower" : 30,
     "study::walk_length_upper" : 30,
-    "study::context_size_lower" : 1,
+    "study::context_size_lower" : 2,
     "study::context_size_upper" : 2,
-    "study::walks_per_node_lower" : 1,
+    "study::walks_per_node_lower" : 2,
     "study::walks_per_node_upper" : 2,
-    "study::num_negative_samples_lower" : 1,
+    "study::num_negative_samples_lower" : 2,
     "study::num_negative_samples_upper" : 2,
-    "study::p_lower" : 1,
+    "study::p_lower" : 2,
     "study::p_upper" : 2,
-    "study::q_lower" : 1,
+    "study::q_lower" : 2,
     "study::q_upper" : 2
 }
