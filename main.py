@@ -23,6 +23,7 @@ with open(configfile, "r") as io:
     
 
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
+assert not (cfg['data'] == 'DC' and cfg['stormsplit']>0), 'Stormsplit can only be used with AC data'
 
 
 # save config in results

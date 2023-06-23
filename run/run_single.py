@@ -47,7 +47,7 @@ def run_single(cfg, device):
     else:
         
         # Create Datasets and Dataloaders
-        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
+        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
         trainloader, testloader = create_loaders(cfg, trainset, testset)
 
 
@@ -109,7 +109,7 @@ def run_single(cfg, device):
         model.to(device)
         
         # Init optimizer
-        optimizer = get_optimizer(cfg, model)
+        optimizer = get_optimizer(cfg, model, params)
         
         #Init LR Scheduler
         LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)

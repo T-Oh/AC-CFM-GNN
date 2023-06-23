@@ -15,7 +15,7 @@ from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from utils.utils import setup_searchspace, setup_params
 from ray.tune.search.bayesopt import BayesOptSearch
 from training.training import objective
-from baselines.run_node2vec import run_node2vec
+from models.run_node2vec import run_node2vec
 
 
 
