@@ -4,8 +4,6 @@ import torch
 from torch import Tensor
 
 from torch_geometric.data import Data, Dataset, InMemoryDataset
-from torch.serialization import save
-from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected
 import torch.nn
 import numpy as np
@@ -435,7 +433,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
 
     params = {
         'LR' :  cfg['optim::LR'],
-        'weight_decy'   :   cfg['optim::weight_decay'],
+        'weight_decay'   :   cfg['optim::weight_decay'],
         
         "num_features"          :   num_features,
         "num_edge_features"     :   num_edge_features,
