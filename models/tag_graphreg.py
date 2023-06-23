@@ -1,13 +1,13 @@
-from torch_geometric.nn import  TAGConv, BatchNorm
+from torch_geometric.nn import  TAGConv, BatchNorm, global_mean_pool
 from torch.nn import Module, LeakyReLU, Dropout, Linear, ModuleList
 import torch
 
 
 
-class TAGNodeReg(Module):
+class TAGGraphReg(Module):
     def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15, K = 4, reghead_size = 64, reghead_layers = 1,
                  use_batchnorm=False, use_skipcon=False):
-        super(TAGNodeReg, self).__init__()
+        super(TAGGraphReg, self).__init__()
         
         self.num_layers = int(num_layers)
         self.reghead_layers = int(reghead_layers)
@@ -42,7 +42,7 @@ class TAGNodeReg(Module):
         
 
     def forward(self, data):
-        x, edge_index, edge_weight = data.x, data.edge_index.type(torch.int64), data.edge_attr.float()
+        x, edge_index, edge_weight, batch = data.x, data.edge_index.type(torch.int64), data.edge_attr.float(), data.batch
         edge_weight = edge_weight[:,6]
 
         PRINT=False
@@ -75,6 +75,9 @@ class TAGNodeReg(Module):
                     x = self.batchnorm(x)
                 x = self.relu(x)
                 x = self.dropout(x)
+                
+        #Pooling
+        x = global_mean_pool(x, batch)
         
         if self.reghead_layers == 1:
                 x = self.singleLinear(x)
@@ -89,4 +92,5 @@ class TAGNodeReg(Module):
                 x = self.relu(x)
 
             x = self.endLinear(x)
+        print(f'Output of TAGGraphReg_ {x}')
         return x
