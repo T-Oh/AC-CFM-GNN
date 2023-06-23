@@ -19,8 +19,7 @@ def get_min_max_features(processed_dir):
     node_count = 0
     edge_count = 0
     
-    x_stds = torch.zeros(2)
-    edge_stds = torch.zeros(5)
+
     node_count = 0
     edge_count = 0
     for i in range(5):
@@ -32,10 +31,15 @@ def get_min_max_features(processed_dir):
     node_labels_max=0
     node_labels_min=1e6
     node_labels_mean = 0
+    graph_labels_min = np.Inf
+    graph_labels_max = np.NINF
+    graph_labels_mean = 0
+    graph_count = 0
     
     
     for file in os.listdir(processed_dir):
         if file.startswith('data'):
+            graph_count = graph_count+1
             data = torch.load(processed_dir +'/' + file)
             x = data['x']
             for i in range(x.shape[0]):
@@ -73,21 +77,30 @@ def get_min_max_features(processed_dir):
     
             node_labels = data['node_labels']
             for i in range(len(node_labels)):
-                if node_labels[i]>node_labels_max: node_labels_max=node_labels[i]
-                if node_labels[i]<node_labels_min: node_labels_min=node_labels[i]
+                if node_labels[i] > node_labels_max: node_labels_max = node_labels[i]
+                if node_labels[i] < node_labels_min: node_labels_min = node_labels[i]
                 node_labels_mean += node_labels[i]
+                
+            graph_label = data['y']
+            if graph_label > graph_labels_max: graph_labels_max = graph_label
+            if graph_label < graph_labels_min: graph_labels_min = graph_label
+            graph_labels_mean += graph_label
+            
         
 
-    return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count
+    return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count, graph_labels_min, graph_labels_max, graph_labels_mean/graph_count
 
 
-def get_feature_stds(processed_dir, x_means, edge_means):
+def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
     x_stds = torch.zeros(2)
     edge_stds = torch.zeros(5)
+    graph_label_std =0
     node_count = 0
     edge_count = 0
+    graph_count = 0
     for file in os.listdir(processed_dir):
         if file.startswith('data'):
+            graph_count += 1
             data = torch.load(processed_dir +'/' + file)
             x = data['x']
             for i in range(x.shape[0]):
@@ -102,7 +115,9 @@ def get_feature_stds(processed_dir, x_means, edge_means):
                 edge_stds[3] += (edge_attr[i,4] - edge_means[3])**2
                 edge_stds[4] += (edge_attr[i,5] - edge_means[4])**2
                 edge_count += 1
-        return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count)
+            graph_label = data['y']
+            graph_label_std += (graph_label - graph_label_mean)**2
+        return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count), np.sqrt(graph_label_std/graph_count)
     
     
 processed_dir = 'processed/'
@@ -116,29 +131,43 @@ if os.path.isfile(data_stats_file):
     x_max   = data_stats['x_max']
     x_means = data_stats['x_means']
     x_stds  = data_stats['x_stds']
+    
     edge_attr_min   = data_stats['edge_attr_min']
     edge_attr_max   = data_stats['edge_attr_max']
     edge_attr_means = data_stats['edge_attr_means']
     edge_stds       = data_stats['edge_attr_stds']
+    
     node_labels_min = data_stats['node_labels_min']
     node_labels_max = data_stats['node_labels_max']
     node_labels_means = data_stats['node_labels_means']
+    
+    graph_label_min = data_stats['graph_label_min']
+    graph_label_max = data_stats['graph_label_max']
+    graph_label_mean = data_stats['graph_label_mean']
+    graph_label_std = data_stats['graph_label_std']
 else:
     print('No presaved data stats found - Calculating data stats')
-    x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = get_min_max_features(processed_dir)
+    x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = get_min_max_features(processed_dir)
 
-    x_stds, edge_stds = get_feature_stds(processed_dir, x_means, edge_attr_means)
+    x_stds, edge_stds, graph_label_std= get_feature_stds(processed_dir, x_means, edge_attr_means, graph_label_mean)
     data_stats = {'x_min'   : x_min,
                   'x_max'   : x_max,
                   'x_means' : x_means,
                   'x_stds'  : x_stds,
+                  
                   'edge_attr_min'   : edge_attr_min,
                   'edge_attr_max'   : edge_attr_max,
                   'edge_attr_means' : edge_attr_means,
                   'edge_attr_stds'  : edge_stds,
+                  
                   'node_labels_min' : node_labels_min,
                   'node_labels_max' : node_labels_max,
-                  'node_labels_means'   : node_labels_means}
+                  'node_labels_means'   : node_labels_means,
+                  
+                  'graph_label_min'     : graph_label_min,
+                  'graph_label_max'     : graph_label_max,
+                  'graph_label_mean'    : graph_label_mean,
+                  'graph_label_std'     : graph_label_std}
 
     np.save(processed_dir+'unnormalized_data_stats.npy', data_stats)
 for file in os.listdir(processed_dir):
@@ -208,5 +237,7 @@ for file in os.listdir(processed_dir):
             print(file)
             for i in range(len(node_labels)):
                 if torch.isnan(node_labels[i]): print(f'Before, after {i}')
-        data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
+                
+        graph_label = torch.log(data['y']+1)/torch.log(graph_label_max+1)
+        data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
         torch.save(data, os.path.join(normalized_dir, file))

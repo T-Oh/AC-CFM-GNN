@@ -38,7 +38,7 @@ class Engine(object):
 
     def train_epoch(self, dataloader, gradclip):
         
-        print('\nENGINE OUTPUT')
+
             
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
@@ -57,28 +57,28 @@ class Engine(object):
             output.to(self.device)
         
             if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
-                labels = batch.y
+                labels = batch.y.type(torch.FloatTensor).to(self.device)
             elif self.task == "NodeReg":
                 labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
 
  
             #calc and backpropagate loss
             if self.masking:
-                print('Applying Masking')
+
                 for j in range(int(len(output)/2000)):
                    if j==0:
                        self.masks=torch.bernoulli(self.mask_probs)
-                       print(torch.bincount(self.masks.to(int))[1]/2000)
+
                    else:
                        self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
                    self.masks= self.masks.to('cuda:0')
                    #self.masks.to(self.device)
-                print('Masks:')
-                print(self.masks)
-                print(f'Output before masking:\n{output}')
+
+
+
                 output = output*self.masks
                 labels = labels*self.masks
-                print(f'Output after masking:\n{output}')
+
             
 
             temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
@@ -107,7 +107,7 @@ class Engine(object):
             temp_loss.backward()
             #print(temp_loss.grad)
             if gradclip >= 0.02:
-                print(f'Using Gradclip with treshold: {gradclip}')
+
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
             self.optimizer.step()
             #Gradient accumulation
@@ -164,7 +164,7 @@ class Engine(object):
                     temp_labels=batch.y
                 else:
                     temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
+                temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
                 if first:
                     labels=temp_labels.detach().cpu()
                     output= temp_output.detach().cpu()
