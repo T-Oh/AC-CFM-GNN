@@ -12,6 +12,7 @@ import torch
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
 from torch.utils.data import Subset
+from torch_geometric.utils import to_undirected
 
 
 
@@ -28,10 +29,11 @@ class HurricaneDataset(Dataset):
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0, embedding=None, device=None):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC'):
         self.use_supernode=use_supernode
         self.embedding = embedding
         self.device = device
+        self.data_type = data_type
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list=self.get_data_list(N_Scenarios)
@@ -81,7 +83,7 @@ class HurricaneDataset(Dataset):
         else:   
             test_idx = len(data_list)-1
             for file in self.processed_file_names:           
-                if file.startswith(f'data'):
+                if file.startswith('data'):
                     scenario, step = self.get_scenario_step_of_file(file)
                     if str(scenario).startswith(str(self.stormsplit)):
                         data_list[test_idx,:] = [scenario, step]
@@ -216,19 +218,21 @@ class HurricaneDataset(Dataset):
             for i in range(len(edge_attr)):
                 if edge_attr[i,0]>edge_attr_max[0]: edge_attr_max[0]=edge_attr[i,0]
                 if edge_attr[i,0]<edge_attr_min[0]: edge_attr_min[0]=edge_attr[i,0]
-                if edge_attr[i,1]>edge_attr_max[1]: edge_attr_max[1]=edge_attr[i,1]
-                if edge_attr[i,1]<edge_attr_min[1]: edge_attr_min[1]=edge_attr[i,1]
-                if edge_attr[i,2]>edge_attr_max[2]: edge_attr_max[2]=edge_attr[i,2]
-                if edge_attr[i,2]<edge_attr_min[2]: edge_attr_min[2]=edge_attr[i,2]
-                if edge_attr[i,4]>edge_attr_max[3]: edge_attr_max[3]=edge_attr[i,4]
-                if edge_attr[i,4]<edge_attr_min[3]: edge_attr_min[3]=edge_attr[i,4]
-                if edge_attr[i,5]>edge_attr_max[4]: edge_attr_max[4]=edge_attr[i,5]
-                if edge_attr[i,5]<edge_attr_min[4]: edge_attr_min[4]=edge_attr[i,5]
                 edge_attr_means[0] += edge_attr[i,0]
-                edge_attr_means[1] += edge_attr[i,1]
-                edge_attr_means[2] += edge_attr[i,2]
-                edge_attr_means[3] += edge_attr[i,4]
-                edge_attr_means[4] += edge_attr[i,5]
+                if self.data_type == 'AC':
+                    if edge_attr[i,1]>edge_attr_max[1]: edge_attr_max[1]=edge_attr[i,1]
+                    if edge_attr[i,1]<edge_attr_min[1]: edge_attr_min[1]=edge_attr[i,1]
+                    if edge_attr[i,2]>edge_attr_max[2]: edge_attr_max[2]=edge_attr[i,2]
+                    if edge_attr[i,2]<edge_attr_min[2]: edge_attr_min[2]=edge_attr[i,2]
+                    if edge_attr[i,4]>edge_attr_max[3]: edge_attr_max[3]=edge_attr[i,4]
+                    if edge_attr[i,4]<edge_attr_min[3]: edge_attr_min[3]=edge_attr[i,4]
+                    if edge_attr[i,5]>edge_attr_max[4]: edge_attr_max[4]=edge_attr[i,5]
+                    if edge_attr[i,5]<edge_attr_min[4]: edge_attr_min[4]=edge_attr[i,5]
+
+                    edge_attr_means[1] += edge_attr[i,1]
+                    edge_attr_means[2] += edge_attr[i,2]
+                    edge_attr_means[3] += edge_attr[i,4]
+                    edge_attr_means[4] += edge_attr[i,5]
                 edge_count += 1
                 
 
@@ -256,10 +260,11 @@ class HurricaneDataset(Dataset):
             edge_attr = data['edge_attr']
             for i in range(len(edge_attr)):
                 edge_stds[0] += (edge_attr[i,0] - edge_means[0])**2
-                edge_stds[1] += (edge_attr[i,1] - edge_means[1])**2
-                edge_stds[2] += (edge_attr[i,2] - edge_means[2])**2
-                edge_stds[3] += (edge_attr[i,4] - edge_means[3])**2
-                edge_stds[4] += (edge_attr[i,5] - edge_means[4])**2
+                if self.data_type == 'AC':
+                    edge_stds[1] += (edge_attr[i,1] - edge_means[1])**2
+                    edge_stds[2] += (edge_attr[i,2] - edge_means[2])**2
+                    edge_stds[3] += (edge_attr[i,4] - edge_means[3])**2
+                    edge_stds[4] += (edge_attr[i,5] - edge_means[4])**2
                 edge_count += 1
         return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count)
                 
@@ -278,7 +283,17 @@ class HurricaneDataset(Dataset):
         x_new = B/(G**2 + B**2)
         return r_new, x_new
     
+    
     def process(self):
+        if self.data_type == 'AC':
+            self.process_ac()
+        elif self.data_type == 'DC':
+            self.process_dc()
+        else:
+            assert False, 'Datatype must be AC or DC!'
+            
+            
+    def process_ac(self):
         """
         Loads the raw matlab data, converts it to torch
         tensors which are then saved. Then the torch data is reloaded and normalized 
@@ -474,9 +489,11 @@ class HurricaneDataset(Dataset):
                 edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, status_feature, resistance_feature, reactance_feature, init_dmg_feature])
                 node_feature = torch.tensor([S1,Vm])
                 node_labels = torch.tensor(node_labels)
+                #Graph Label
+                graph_label = node_labels.sum()
 
                 #save unscaled data
-                data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels) 
+                data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
                 torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             np.save('problems',np.array(problems))
         
@@ -511,7 +528,84 @@ class HurricaneDataset(Dataset):
             data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
             torch.save(data, os.path.join(self.processed_dir, file))"""
             
+    def process_dc(self):
+        """
+        Loads the raw numpy data, converts it to torch
+        tensors and normalizes the labels to lie in
+        the interval [0,1].
+        Then pre-filters and pre-transforms are applied
+        and the data is saved in the processed directory.
+        """
+        #get limits for scaling
+
+        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = self.get_min_max_features()
+        x_stds, edge_stds = self.get_feature_stds(x_means, edge_attr_means)
+        ymax=torch.log(self.get_max_label()+1)
         
+        #process data
+        for raw_path in self.raw_paths:
+            # Read data from `raw_path`.
+            raw_data = np.load(raw_path)
+            
+            #scale node features
+            x = torch.from_numpy(raw_data["x"]).float()
+            x[:,0]=(x[:,0]-x_means[0])/x_stds[0]/((x_max[0]-x_means[0])/x_stds[0])
+            x[:,1]=(x[:,1]-x_means[1])/x_stds[1]/((x_max[1]-x_means[1])/x_stds[1])
+            
+            #add supernode
+            if self.use_supernode:
+                x=torch.cat((x,torch.tensor([[1,1]])),0)            
+            
+            #get and scale labels according to task (GraphReg or NodeReg)
+            y = torch.log(torch.tensor([raw_data["y"].item()]).float()+1)/ymax
+            if 'node_labels' in raw_data.keys():
+                node_labels=torch.from_numpy(raw_data['node_labels'])
+                node_labels= torch.log(node_labels+1)/torch.log(node_labels_max+1)
+                node_labels.type(torch.FloatTensor)
+            
+            #get and scale edges and adjacency matrix
+            adj = torch.from_numpy(raw_data["adj"])  
+            print(adj)
+            edge_attr = torch.from_numpy(raw_data["edge_weights"])
+
+            if edge_attr.shape[0]<3:    #multidimensional edge features 
+                edge_attr[0]=torch.log(edge_attr[0]+1)/torch.log(edge_attr_max+1)                
+                adj, edge_attr = to_undirected(adj,[edge_attr[0].float(),edge_attr[1].float()])
+                edge_attr=torch.stack(edge_attr)
+
+                
+            else:                
+                #transform to undirected graph            
+                adj, edge_attr = to_undirected(adj, edge_attr)
+            
+
+            #add supernode edges
+            if self.use_supernode:
+                Nnodes=len(x)
+                supernode_edges=torch.zeros(2,Nnodes-1)
+                for i in range(len(x)-1):
+                    supernode_edges[0,i]=i
+                    supernode_edges[1,i]=Nnodes-1
+                adj = torch.cat((adj,supernode_edges),1)
+                supernode_edge_attr=torch.zeros(supernode_edges.shape[1])+1
+                edge_attr=torch.cat((edge_attr,supernode_edge_attr),0)
+            
+
+            print('Using Homogenous Data')
+            if 'node_labels' in raw_data.keys():
+                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1),node_labels=node_labels)
+            else:
+                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1))
+            
+
+            if self.pre_filter is not None and not self.pre_filter(data):
+                continue
+
+            if self.pre_transform is not None:
+                data = self.pre_transform(data)
+            print(data)
+            #torch.save(data, os.path.join(self.processed_dir, f'data_{idx}.pt'))
+            torch.save(data, os.path.join(self.processed_dir, 'data_'+raw_path[15:-4]+'.pt'))        
            
 
     def len(self):
@@ -528,7 +622,7 @@ class HurricaneDataset(Dataset):
         return data
     
 
-def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None):
+def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None, data_type = 'AC'):
     """
     Helper function which loads the dataset, applies
     pre-transforms and splits it into a training and a
@@ -545,7 +639,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     """
     print('Creating Datasets...')
     t1 = time.time()
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding)
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding, data_type='AC')
     data_list = dataset.data_list
 
     if num_samples is None:
