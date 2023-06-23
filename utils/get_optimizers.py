@@ -19,8 +19,8 @@ def get_optimizer(cfg, model, params):
             model.parameters(),
             lr = params['LR'],
             betas=cfg["optim::betas"],
-            weight_decay=params["weight_decay"],
-            eps = params['optim::epsilon']
+            weight_decay = params["weight_decay"],
+            eps = cfg['optim::epsilon']
         )
     else:
         raise ValueError("Optimizer {} does not exist".format(cfg["optim::optimizer"]))
