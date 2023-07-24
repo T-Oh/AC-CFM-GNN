@@ -473,6 +473,28 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
     }
     return params
 
+def multiclass_classification(output, labels, N_bins):
+
+    output = output.reshape(-1)
+    labels = labels.reshape(-1)
+    N_nodes = len(output)
+    labelclasses = torch.zeros(N_bins+1)
+    outputclasses = torch.zeros(N_bins+1)
+    matrix = torch.zeros([N_bins+1, N_bins+1])
+    for node in range(N_nodes):
+        for i in range(N_bins+1):
+            if output[node] <= (1/N_bins)*i:
+
+                outputclasses[i] += 1
+                break;
+        for j in range(N_bins+1):
+            if labels[node] <= (1/N_bins)*j:
+                labelclasses[j] += 1
+                matrix[j,i] += 1
+                break;
+    return outputclasses, labelclasses, matrix
+        
+
 
 class weighted_loss_label(torch.nn.Module):
     def __init__(self, factor):
@@ -499,5 +521,7 @@ class weighted_loss_var(torch.nn.Module):
         output_ = output.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         labels_ = labels.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         return self.baseloss(output_.reshape(-1), labels_.reshape(-1))
+    
+
     
     
