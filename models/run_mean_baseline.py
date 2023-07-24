@@ -25,11 +25,11 @@ def run_mean_baseline(cfg):
             depending on wether crossvalidation is used or not returns floats or list of floats for all folds
 
     """
-
+    trainset, testset, _ = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit = cfg['stormsplit'])
+    trainloader, testloader = create_loaders(cfg, trainset, testset) 
     if cfg['crossvalidation']:
         folds = 7
-        trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
-        trainloader, testloader = create_loaders(cfg, trainset, testset) 
+
         trainlosses = torch.zeros(folds)
         trainR2s = torch.zeros(folds)
         testlosses = torch.zeros(folds)
@@ -59,14 +59,17 @@ def run_mean_baseline(cfg):
         #compile labels and calculate means
         index = 0
         for i, batch in enumerate(trainloader):
+            print(i)
             N_instances = int(len(batch.node_labels)/2000)
             train_labels[index:index+N_instances] = batch.node_labels.reshape(N_instances,2000)
             index = index+N_instances 
         means = train_labels.mean(dim=0)
-    
+
         #Compile output of Trainset
         for i in range(len(trainset)):
             train_output[i] = means
+        print(train_labels.shape)
+        print(train_output.shape)
             
         #calc loss and R2
         trainloss = criterion(train_output.reshape(-1), train_labels.reshape(-1))
@@ -111,4 +114,4 @@ def run_mean_baseline(cfg):
                       'testloss' : testloss,
                       'testR2' : testR2}
             
-    return result
+    return result, means
