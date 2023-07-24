@@ -29,8 +29,8 @@ def run_node2vec(cfg, trainloader, device, params, trial):
     model.to(device)
     loader = model.loader()
     #Get optimizer        
-    optimizer = get_optimizer(cfg, model)
-    for i in range(cfg['epochs']):
+    optimizer = get_optimizer(cfg, model, params)
+    for i in range(cfg['N2V_epochs']):
         print(f'Epoch: {i}')
         loss = train_epoch(model, loader, optimizer, device)
         #acc = test(model, labels)

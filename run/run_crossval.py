@@ -28,9 +28,12 @@ def run_crossval(cfg, device):
     trainR2s = torch.zeros(FOLDS)
     testlosses = torch.zeros(FOLDS)
     testR2s = torch.zeros(FOLDS)
-    
     trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
-    trainloader, testloader = create_loaders(cfg, trainset, testset) 
+    if cfg['model'] == 'Node2Vec':
+        trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True) 
+    else:
+        trainloader, testloader = create_loaders(cfg, trainset, testset)
+
     # Calculate probabilities for masking of nodes if necessary
     if cfg['use_masking']:
         if isfile('node_label_vars.pt'):

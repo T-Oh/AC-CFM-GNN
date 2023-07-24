@@ -48,8 +48,10 @@ def run_single(cfg, device):
         
         # Create Datasets and Dataloaders
         trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
-        trainloader, testloader = create_loaders(cfg, trainset, testset)
-
+        if cfg['model'] == 'Node2Vec':
+             trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)
+        else:
+             trainloader, testloader = create_loaders(cfg, trainset, testset)
 
         # Calculate probabilities for masking of nodes if necessary
         if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
@@ -62,7 +64,7 @@ def run_single(cfg, device):
                 torch.save(mask_probs, 'node_label_vars.pt')
         else:
             #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
-            mask_probs = torch.zeros(2000)+1
+            mask_probs = torch.zeros(trainset.__getitem__(0).x.shape[0])+1
 
 
         # getting feature and target sizes
@@ -107,12 +109,15 @@ def run_single(cfg, device):
         # Loadi GNN model
         model = get_model(cfg, params)
         model.to(device)
+        pytorch_total_params = sum(p.numel() for p in model.parameters())
+        print('NUMBER OF PARAMETERS:')
+        print(pytorch_total_params)
         
         # Init optimizer
         optimizer = get_optimizer(cfg, model, params)
         
         #Init LR Scheduler
-        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001, verbose=True)
     
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,

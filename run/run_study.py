@@ -31,7 +31,7 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
              include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
-    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'])
+    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
     trainloader, testloader = create_loaders(cfg, trainset, testset)
    
     

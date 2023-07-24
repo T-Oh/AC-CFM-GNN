@@ -184,24 +184,33 @@ class HurricaneDataset(Dataset):
         x_max=torch.zeros(2)
         x_min=torch.zeros(2)
         x_means = torch.zeros(2)
-        edge_attr_max=torch.zeros(5)
-        edge_attr_min=torch.zeros(5)
-        edge_attr_means = torch.zeros(5)
+        edge_attr_max=0
+        edge_attr_min=0
+        edge_attr_means = 0
         node_count = 0
         edge_count = 0
         for i in range(5):
-            edge_attr_max[i] =  np.NINF
-            edge_attr_min[i] = np.Inf
+            #edge_attr_max[i] =  np.NINF
+            #edge_attr_min[i] = np.Inf
             if i <2:
                 x_max[i] = np.NINF
                 x_min[i] = np.Inf
         node_labels_max=0
         node_labels_min=1e6
         node_labels_mean = 0
+        graph_label_max = np.NINF
+        graph_label_min = np.Inf
+        graph_label_mean = 0
+        graph_count = 0
         
         
-        for j, file in enumerate( self.processed_file_names):
-            data = torch.load(self.processed_dir +'/' + file)
+        for file in self.raw_paths:
+            # Read data from `raw_path`.
+            
+       
+            graph_count += 1
+            data = np.load(file)
+            #data = torch.load(self.processed_dir +'/' + file)
             x = data['x']
             for i in range(x.shape[0]):
                 if x[i,0]>x_max[0]: x_max[0]=x[i,0]
@@ -214,12 +223,16 @@ class HurricaneDataset(Dataset):
                 #if x[i,2]>x_max[2]: x_max[2]=x[i,2]    can be used for a third node feature
                 #if x[i,2]<x_min[2]: x_min[2]=x[i,2]
             
-            edge_attr = data['edge_attr']
+            edge_attr = data['edge_weights']
             for i in range(len(edge_attr)):
-                if edge_attr[i,0]>edge_attr_max[0]: edge_attr_max[0]=edge_attr[i,0]
-                if edge_attr[i,0]<edge_attr_min[0]: edge_attr_min[0]=edge_attr[i,0]
-                edge_attr_means[0] += edge_attr[i,0]
+                if self.data_type == 'DC':
+                    if edge_attr[i]>edge_attr_max: edge_attr_max=edge_attr[i]
+                    if edge_attr[i]<edge_attr_min: edge_attr_min=edge_attr[i]
+                    edge_attr_means += edge_attr[i]
                 if self.data_type == 'AC':
+                    if edge_attr[i,0]>edge_attr_max[0]: edge_attr_max[0]=edge_attr[i,0]
+                    if edge_attr[i,0]<edge_attr_min[0]: edge_attr_min[0]=edge_attr[i,0]
+                    edge_attr_means[0] += edge_attr[i,0]
                     if edge_attr[i,1]>edge_attr_max[1]: edge_attr_max[1]=edge_attr[i,1]
                     if edge_attr[i,1]<edge_attr_min[1]: edge_attr_min[1]=edge_attr[i,1]
                     if edge_attr[i,2]>edge_attr_max[2]: edge_attr_max[2]=edge_attr[i,2]
@@ -234,24 +247,31 @@ class HurricaneDataset(Dataset):
                     edge_attr_means[3] += edge_attr[i,4]
                     edge_attr_means[4] += edge_attr[i,5]
                 edge_count += 1
-                
-
-            node_labels = data['node_labels']
-            for i in range(len(node_labels)):
-                if node_labels[i]>node_labels_max: node_labels_max=node_labels[i]
-                if node_labels[i]<node_labels_min: node_labels_min=node_labels[i]
-                node_labels_mean += node_labels[i]
+            graph_label = data['y']
+            if graph_label>graph_label_max: graph_label_max=graph_label
+            if graph_label<graph_label_min: graph_label_min=graph_label
+            graph_label_mean += graph_label
+            
+            if self.data_type == 'AC':
+                node_labels = data['node_labels']
+                for i in range(len(node_labels)):
+                    if node_labels[i]>node_labels_max: node_labels_max=node_labels[i]
+                    if node_labels[i]<node_labels_min: node_labels_min=node_labels[i]
+                    node_labels_mean += node_labels[i]
+            else: node_count = 1    #avoid devision by 0
             
 
-        return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count
+        return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count, graph_label_min, graph_label_max, graph_label_mean/graph_count
      
     def get_feature_stds(self, x_means, edge_means):
         x_stds = torch.zeros(2)
         edge_stds = torch.zeros(5)
         node_count = 0
         edge_count = 0
-        for j, file in enumerate( self.processed_file_names):
-            data = torch.load(self.processed_dir +'/' + file)
+        for raw_path in self.raw_paths:
+            # Read data from `raw_path`.
+            data = np.load(raw_path)
+            #data = torch.load(self.processed_dir +'/' + file)
             x = data['x']
             for i in range(x.shape[0]):
                 x_stds[0] += (x[i,0]-x_means[0])**2
@@ -481,7 +501,7 @@ class HurricaneDataset(Dataset):
                     init_dmg_feature.append(init_dmg[j])
                     
 
-                    
+                    graphs = torch.load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/example_graphs.pt")
 
                 #compile data of step to feature matrices                
                 adj = torch.tensor([adj_from,adj_to])
@@ -538,7 +558,7 @@ class HurricaneDataset(Dataset):
         """
         #get limits for scaling
 
-        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = self.get_min_max_features()
+        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = self.get_min_max_features()
         x_stds, edge_stds = self.get_feature_stds(x_means, edge_attr_means)
         ymax=torch.log(self.get_max_label()+1)
         
@@ -617,8 +637,13 @@ class HurricaneDataset(Dataset):
         step=int(self.data_list[idx,1])
         data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'
                                        f'_{step}.pt'))
+        print(data.x.shape)
         if self.embedding != None:
-            data.x = torch.cat([data.x.to(self.device), self.embedding.to(self.device)], dim=1)
+            print('YES')
+            #embedding = torch.cat([self.embedding]*int(len(data.x)/2000))
+            #print(f'Embedding shape: {embedding.shape}')
+            print(f'self.embedding shape: {self.embedding.shape}')
+            data.x = torch.cat([data.x.to('cpu'), self.embedding.to('cpu')], dim=1)
         return data
     
 
@@ -639,7 +664,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     """
     print('Creating Datasets...')
     t1 = time.time()
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding, data_type='AC')
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding, data_type=data_type)
     data_list = dataset.data_list
 
     if num_samples is None:
@@ -670,7 +695,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
 
     return trainset, testset, data_list 
 
-def create_loaders(cfg, trainset, testset, pre_compute_mean=False): 
+def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=False): 
     """
     Helper function which creates the dataloaders and
     pre-computes the means of the testset labels for more
@@ -688,10 +713,17 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False):
     """
     print('Creating Dataloaders...')
     t1 = time.time()
-    trainloader = DataLoader(trainset,
-        batch_size=cfg["train_set::batchsize"],
-        shuffle=cfg["train_set::shuffle"]
-    )
+
+    if Node2Vec:
+        trainloader = DataLoader(trainset,
+            batch_size=1,
+            shuffle=cfg["train_set::shuffle"]
+        )
+    else:
+        trainloader = DataLoader(trainset,
+            batch_size=cfg["train_set::batchsize"],
+            shuffle=cfg["train_set::shuffle"]
+        )
 
     testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"])
 
