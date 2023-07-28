@@ -22,6 +22,9 @@ from training.engine import Engine
 from training.training import run_training
 
 def run_single(cfg, device):
+    """
+    Trains a single model (i.e. no cross-validation and no study)
+    """
    
     if cfg['model'] == 'Mean':  # Model used as baseline that simply predicts the mean load shed of the training set
              
@@ -49,7 +52,7 @@ def run_single(cfg, device):
         # Create Datasets and Dataloaders
         trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
         if cfg['model'] == 'Node2Vec':
-             trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)
+             trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         else:
              trainloader, testloader = create_loaders(cfg, trainset, testset)
 

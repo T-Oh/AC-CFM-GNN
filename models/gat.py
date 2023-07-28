@@ -1,10 +1,42 @@
 from torch_geometric.nn import  GATv2Conv, BatchNorm
-from torch.nn import Module, Dropout, Sigmoid, Linear, LeakyReLU, ModuleList
+from torch.nn import Module, Dropout, Linear, LeakyReLU, ModuleList
 
 
 class GAT(Module):
+    """
+    Graph Attention Network
+    """
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers=1,
                  dropout=0.0, gat_dropout=0.0,  num_heads=1, use_skipcon=False, use_batchnorm=False):
+        """
+        INPUT
+        num_node_features   :   int
+            number of node features in data
+        num_edge_features   :   int
+            number of edge features in the data
+        num_targets         :   int
+            number of labels in the data
+        hidden_size         :   int
+            the number of hidden features to be used
+        num_layers          :   int
+            the number of layers to be used
+        reghead_size        :   int
+            number of hidden features of the regression head
+        reghead_layers      :   itn
+            number of regression head layers
+        dropout             :   float
+             the dropout to be applied
+         gat_dropout        :   float
+             dropout applied within the GATv2Conv layers
+         num_heads          :   int
+              number of attention heads
+        use_batchnorm       :   bool
+             whether batchnorm should be applied
+         use_skipcon        :   boo
+             wether skip connections should be applied
+        
+        """
+        
         super(GAT, self).__init__()
         
         #Params
@@ -15,13 +47,7 @@ class GAT(Module):
         self.num_heads = int(num_heads)
         self.use_skipcon = bool(int(use_skipcon))
         self.use_batchnorm = bool(int(use_batchnorm))
-        print(f'Dropout Rate {dropout}')
-        print(f'Gat Dropout Rate {gat_dropout}')
-        print(f'Num Heads {self.num_heads}')
-        print(f'Num Layers {self.num_layers}')
-        print(f'Hidden Size {self.hidden_size}')
-        print(f'Reghead Size {self.reghead_size}')
-        print(f'Reghead Layers {self.reghead_layers}')
+
         
         
         #Conv Layers
@@ -63,17 +89,14 @@ class GAT(Module):
         #Arranging Conv Layers
         for i in range(self.num_layers -1):
             if self.use_skipcon:   
-                print('Using Skipcon')
                 x_ = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
                 if self.use_batchnorm:
-                    print('Using Batchnorm')
                     x_ = self.batchnorm(x_)
                 x = (self.relu(x_)+x)/2
                 x = self.dropout(x)
             else:
                 x = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
                 if self.use_batchnorm:
-                    print('Using Batchnorm')
                     x = self.batchnorm(x)
                 x = self.relu(x)
                 x = self.dropout(x)

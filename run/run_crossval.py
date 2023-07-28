@@ -21,8 +21,16 @@ from training.training import run_training
 
 
 def run_crossval(cfg, device):
+    """
+    runs the crossvalidation
+    INPUT
+        cfg     :   preloaded json configuration file
+        device  :   torch.device
+        
+    """
+    
 
-    FOLDS = 7
+    FOLDS = 7   #number of folds
     
     trainlosses = torch.zeros(FOLDS)
     trainR2s = torch.zeros(FOLDS)
@@ -30,7 +38,7 @@ def run_crossval(cfg, device):
     testR2s = torch.zeros(FOLDS)
     trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
     if cfg['model'] == 'Node2Vec':
-        trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True) 
+        trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)     #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     else:
         trainloader, testloader = create_loaders(cfg, trainset, testset)
 

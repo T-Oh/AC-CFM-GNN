@@ -5,8 +5,35 @@ import torch
 
 
 class TAGNodeReg(Module):
+    """
+    Topology Adaptive Graph convolutional network
+    """
     def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15, K = 4, reghead_size = 64, reghead_layers = 1,
                  use_batchnorm=False, use_skipcon=False):
+        """
+        INPUT
+        num_node_features   :   int
+            number of node features in data
+        num_targets         :   int
+            number of labels in the data
+        hidden_size         :   int
+            the number of hidden features to be used
+        num_layers          :   int
+            the number of layers to be used
+        dropout             :   float
+             the dropout to be applied
+         K                  :   int
+             number of jumps within the TAG layer
+        reghead_size        :   int
+            number of hidden features of the regression head
+        reghead_layers      :   itn
+            number of regression head layers
+        use_batchnorm       :   bool
+             whether batchnorm should be applied
+         use_skipcon        :   boo
+             wether skip connections should be applied
+        
+        """
         super(TAGNodeReg, self).__init__()
         
         self.num_layers = int(num_layers)
@@ -18,12 +45,7 @@ class TAGNodeReg(Module):
         self.K = int(K)
         self.use_batchnorm = bool(int(use_batchnorm))
         self.use_skipcon = bool(int(use_skipcon))
-        print(f'Dropout Rate {dropout}')
-        print(f'K= {self.K}')
-        print(f'Num Layers {self.num_layers}')
-        print(f'Hidden Size {self.hidden_size}')
-        print(f'Reghead Size {self.reghead_size}')
-        print(f'Reghead Layers {self.reghead_layers}')
+
 
 
         #Convolutional Layers

@@ -13,6 +13,22 @@ from utils.get_optimizers import get_optimizer
 
 
 def run_node2vec(cfg, trainloader, device, params, trial):
+    """
+    Runs Node2Vec
+    INPUT
+        cfg     :   string
+            configuration file
+        trainloader     :   torch dataloader
+            data loader of the trainset (does not matter if it is train or test set)
+        device  :   torch.device
+            the device on which calculation happens
+        params  :   dict
+             dictionary containing all parameters from the configuration file or the study depending on what is run
+         trial  :   int
+              indicates at which trial a study is to save multiple Node2Vec embeddings from different trials
+        
+    """
+    
     edge_index = next(iter(trainloader)).edge_index
 
     #edge_index = edge_index[:,:int(len(edge_index[0])/trainloader.batch_size)]

@@ -164,12 +164,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     torch.save(list(train_losses), cfg['dataset::path'] + "results/" + 'train_losses' + savename) #saving train losses
     torch.save(list(output), cfg['dataset::path'] + "results/" + 'output' + savename) #saving train losses
     torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels' + savename) #saving train losses
-    """  
-    torch.save(list(test_losses), cfg['dataset::path'] + "results/" + f"test_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
-    torch.save(list(train_losses), cfg['dataset::path'] + "results/" + f"train_losses_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
-    torch.save(list(output), cfg['dataset::path'] + "results/" + f"output_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
-    torch.save(list(labels), cfg['dataset::path'] + "results/" + f"labels_{params['num_layers']}L_{params['hidden_size']}HF_{params['LR']:.{3}f}lr_{params['gradclip']}GC_{params['use_skipcon']}SC_{params['reghead_size']}RHS_{params['reghead_layers']}RHL.pt") #saving train losses
-    """
+
     #tune.report(np.array(discrete_measure).min())  #only necessary for intermediate results
 
 

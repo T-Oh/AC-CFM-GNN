@@ -4,7 +4,9 @@ from torch.nn import Module, LeakyReLU, Linear, ModuleList, Dropout, BatchNorm1d
 
 
 class ridge(Module):
-    """Simple ridge model to use as baseline"""
+    """Simple ridge model to use as baseline
+    DEPRECATED using run_ridge.py instead
+    """
 
     def __init__(self, num_node_features, hidden_size=128):
         super().__init__()
@@ -21,7 +23,27 @@ class ridge(Module):
         return x
 
 class MLP(Module):
+    """
+    Multi layer perceptron baseline
+    """
     def __init__(self, num_node_features, hidden_size, num_layers, dropout, use_batchnorm, use_skipcon):
+        """
+        INPUT
+        num_node_features   :   int
+            number of node features in data
+        hidden_size         :   int
+            the number of hidden features to be used
+        num_layers          :   int
+            the number of layers to be used
+        dropout             :   float
+             the dropout to be applied
+        use_batchnorm       :   bool
+             whether batchnorm should be applied
+         use_skipcon        :   boo
+             wether skip connections should be applied
+        
+        """
+        
         super().__init__()
         #Parameters
         self.num_layers = int(num_layers)
@@ -45,19 +67,20 @@ class MLP(Module):
         x = data.x
         print(f'MLP Shape {x.shape}')
         
+        #Single layer
         if self.num_layers == 1:
             x = self.lin_single(x)
             
-            
+        #Multiple layers
         else:           
             x = self.lin_in(x)
-            if self.use_batchnorm:
-                x = self.batchnorm(x)
-            x = self.ReLu(x)
+            if self.use_batchnorm:  
+                x = self.batchnorm(x)   #Batchnormalization
+            x = self.ReLu(x)        
             x = self.dropout(x)
             
             for i in range(self.num_layers-2):               
-                if self.use_skipcon:   
+                if self.use_skipcon:   #Skip connections
                     print('Using Skipcon')
                     x_ = self.layers[i](x)
                     if self.use_batchnorm:
@@ -65,7 +88,7 @@ class MLP(Module):
                         x_ = self.batchnorm(x_)
                     x = (self.ReLu(x_)+x)/2
                     x = self.dropout(x)
-                else:                
+                else:                #No Skip connections
                     x = self.layers[i](x)
                     if self.use_batchnorm:
                         print('Using Batchnorm')

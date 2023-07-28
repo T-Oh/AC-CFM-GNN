@@ -17,6 +17,37 @@ class Engine(object):
     """
 
     def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False):
+        """
+        Initializes the Engine
+
+        Parameters
+        ----------
+        model : torch.nn.module
+            the configured model
+        optimizer : torch.optim.Optimizer
+            the configured optimizer
+        device : torch.device
+            the device on which computation takes place (on cluster usually gpu)
+        criterion : torch.criterion
+            the criterion used for training and evaluation
+        tol : float, optional
+            tolerance for accuracy calculation. The default is 0.1.
+        task : string, optional
+            the task ('NodeReg' or 'GraphReg') in this version only 'NodeReg' is implemented. The default is "NodeReg".
+        var : float array (1D), optional
+            the variances of the nodelabels. Used for loss masking or weighting. The default is None.
+        masking : bool, optional
+            wether masking should be applied or not. The default is False.
+        mask_bias : float, optional
+            float from the interval [0,1]. The bias to be added to the masking probabilities. The default is 0.0.
+        return_full_output : bool, optional
+            Wether the full output or only an example output of a few instances should be saved. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
         self.model = model
         self.optimizer = optimizer
         self.device = device
@@ -37,6 +68,28 @@ class Engine(object):
 
 
     def train_epoch(self, dataloader, gradclip):
+        """
+        Executes the training of a single epoch
+
+        Parameters
+        ----------
+        dataloader : torch.dataloader
+            the loader of the dataset to be sued (testloader or trainloader)
+        gradclip : float
+            value for gradient clipping. If gradclip<0.02 no gradient clipping is applied.
+
+        Returns
+        -------
+        loss/count : float
+            the mean squared error
+        R2 : float
+            R2 score
+        total_output : torch.tensor (1D)
+            the complete output of the model
+        total_labelstorch.tensor (1D)
+            the complete output of the model
+
+        """
         
 
             

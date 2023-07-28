@@ -12,6 +12,17 @@ import os
 from ray import tune
 
 #from tabulate import tabulate
+"""
+A lot of functions here have been (and still can be) used for analyzing a big variety of stuff within the data or the models. But these functions
+are not called during the normal operation of the program. HOWEVER this does not go for all functions in this module.
+Here is the list of the functions necessary for the normal operation:
+    setup_search_space
+    setup_params_from_search_space
+    setup_params
+    weighted_loss_var
+    weighted_loss_label
+    
+"""
 
 def from_scipy_coo(A):
     """
@@ -163,7 +174,7 @@ def plot_loss(train_loss, test_loss, save = False):
     plt.ylabel("MSE Loss")
 
     if save:
-        fig.savefig("/home/jan/pik/report/loss.pgf")
+        fig.savefig("loss.pgf")
     else:
         plt.show()
 
@@ -185,7 +196,7 @@ def plot_R2(values, save = False):
     plt.ylabel("R2")
 
     if save:
-        fig.savefig("/home/jan/pik/report/R2.pgf")
+        fig.savefig("R2.pgf")
     else:
         plt.show()
 
@@ -297,6 +308,12 @@ class ImbalancedSampler(torch.utils.data.WeightedRandomSampler):
         return super().__init__(weight, num_samples, replacement=True)
     
 def discrete_loss(output, target):
+    """
+    DEPRECATED
+    Used to calculate a loss based on 10 class classification
+
+
+    """
     output_=output.clone()
     labels_=target.clone()
     discrete_array = torch.eq(torch.floor(output_*10), torch.floor(labels_*10))
@@ -305,6 +322,23 @@ def discrete_loss(output, target):
     return loss/len(output)
 
 def count_missclassified(output,target):
+    """
+    DEPRECATED
+    Counts the missclassified instances
+
+    Parameters
+    ----------
+    output : torch.tensor 
+        output tensor
+    target : torch.tensor
+        target tensor
+
+    Returns
+    -------
+    count : int
+        number of missclassified instances
+
+    """
     count = 0
     missclassified = np.zeros(2000)
     for i in range(len(output)):
@@ -319,6 +353,15 @@ def count_missclassified(output,target):
     return count
 
 def get_zero_buses():
+    """
+    DEPRECATED
+
+    Returns
+    -------
+    all_instances_zero : TYPE
+        DESCRIPTION.
+
+    """
     path_from_processed='processed/'#'/p/tmp/tobiasoh/machine_learning/Ike_ajusted_nonans/processed/'
 
     #if all_instances_zero[i] == 0 it means that the nodelabel at node[i] is zero in all instances
@@ -340,6 +383,20 @@ def get_zero_buses():
     return all_instances_zero
 
 def setup_searchspace(cfg):
+    """
+    Sets up the searchspace for a study based on the configuration file
+
+    Parameters
+    ----------
+    cfg : preloaded json configuration file
+        
+
+    Returns
+    -------
+    search_space :dictrionary
+        dictionary of the search space used by ray
+
+    """
 
     search_space = {}
     #General Architecture
@@ -430,6 +487,26 @@ def setup_params_from_search_space(search_space, params):
     return updated_params
 
 def setup_params(cfg, mask_probs, num_features, num_edge_features):
+    """
+    Sets up the parameters dictionary for building and training a model
+
+    Parameters
+    ----------
+    cfg : preloaded json configuration file
+        
+    mask_probs : float array
+        probabilities for node masking
+    num_features : int
+        number of node features in the data
+    num_edge_features : int
+        number of edge features in the data
+
+    Returns
+    -------
+    params : dict
+        parameter dictionary
+
+    """
 
     params = {
         'LR' :  cfg['optim::LR'],
@@ -497,6 +574,9 @@ def multiclass_classification(output, labels, N_bins):
 
 
 class weighted_loss_label(torch.nn.Module):
+    """
+    weights the loss with a constant factor depending on wether the label is >0 or not
+    """
     def __init__(self, factor):
         super(weighted_loss_label, self).__init__()
         self.factor = torch.sqrt(factor)
@@ -512,6 +592,9 @@ class weighted_loss_label(torch.nn.Module):
  
           
 class weighted_loss_var(torch.nn.Module):
+    """
+    weights the loss depending on the label variance at each node
+    """
     def __init__(self, var, device):
         super(weighted_loss_var, self).__init__()
         self.weights = torch.sqrt(var).to(device)

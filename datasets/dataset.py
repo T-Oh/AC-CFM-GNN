@@ -1,5 +1,5 @@
 """
-Author : Jan Philipp Bohl
+Author : Tobias Ohlinger
 
 File setting up training and test data as well as neural network models
 """
@@ -26,17 +26,26 @@ from torch_geometric.utils import to_undirected
 class HurricaneDataset(Dataset):
     """
     Custom class for the hurricane dataset
+    use_supernode   deprecated
+    transform       deprecated
+    pre_transform   deprecated
+    pre_filter      deprecated
+    N_Scenarios     the number of the last scenario independent of the actual number of used scenarios
+    stormsplit      no stormsplit is applied if 0 otherwise the data is split by putting all instances where the scenario indicator starts with stormsplit (f.e. 1) in the test set
+    embedding       Node2Vec embedding to be used
+    device          torch device
+    data_type       'AC' or 'DC' (only intended for AC)
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None,N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC'):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None, N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC'):
         self.use_supernode=use_supernode
         self.embedding = embedding
         self.device = device
         self.data_type = data_type
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
-        self.data_list=self.get_data_list(N_Scenarios)
+        self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
         print(self.data_list)
         
         
@@ -105,7 +114,13 @@ class HurricaneDataset(Dataset):
     
     #TO
     def get_scenario_of_file(self,name):
-        print(name)
+        """
+        Input:
+        name        name of the processed data file
+        
+        Returns:
+        scenario    index of the scenario of which the datafile stems
+        """
         if name.startswith('./processed'):
             name=name[17:]
         else:
@@ -118,7 +133,23 @@ class HurricaneDataset(Dataset):
         return scenario
     
     #TO
-    def get_scenario_step_of_file(self,name):       
+    def get_scenario_step_of_file(self,name):  
+        """
+        
+
+        Parameters
+        ----------
+        name : string
+                name of the processed data file
+
+        Returns
+        -------
+        scenario : int
+            Scenario of which the file stems
+        step : int
+            Step in that scenario
+
+        """
         name=name[5:]
         i=0
         while name[i].isnumeric():
@@ -132,6 +163,7 @@ class HurricaneDataset(Dataset):
                 
     def get_scenario_info(self):
         #fills the array scenario with the number of steps each scenario contains
+        #deprecated ?
         scenario=0
         length=1
         for index,name in enumerate(self.raw_paths):
@@ -181,6 +213,10 @@ class HurricaneDataset(Dataset):
                     
     
     def get_min_max_features(self):
+        """
+        Returns the min and max of the features
+        Probably deprecated as normalization is not part of dataset anymore
+        """
         x_max=torch.zeros(2)
         x_min=torch.zeros(2)
         x_means = torch.zeros(2)
@@ -190,8 +226,8 @@ class HurricaneDataset(Dataset):
         node_count = 0
         edge_count = 0
         for i in range(5):
-            #edge_attr_max[i] =  np.NINF
-            #edge_attr_min[i] = np.Inf
+            edge_attr_max[i] =  np.NINF
+            edge_attr_min[i] = np.Inf
             if i <2:
                 x_max[i] = np.NINF
                 x_min[i] = np.Inf
@@ -264,6 +300,21 @@ class HurricaneDataset(Dataset):
         return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count, graph_label_min, graph_label_max, graph_label_mean/graph_count
      
     def get_feature_stds(self, x_means, edge_means):
+        """
+        Input 
+        x_means     float array
+            means of the node features
+        edge_means  float array
+            means of the edge features
+            
+        Returns
+        np.sqrt(x_stds/node_count)
+            the standarad deviations of the node features
+        
+        np.sqrt(edge_stds/edge_count)
+            the standard deviations of the edge features
+        """
+        
         x_stds = torch.zeros(2)
         edge_stds = torch.zeros(5)
         node_count = 0
@@ -517,36 +568,7 @@ class HurricaneDataset(Dataset):
                 torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             np.save('problems',np.array(problems))
         
-        #SCALING
-        #get limits for scaling
-        """
-        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means = self.get_min_max_features()
-        x_stds, edge_stds = self.get_feature_stds(x_means, edge_attr_means)
-        
-        for file in self.processed_file_names:
-            data = torch.load(self.processed_dir + '/' + file)
-            #Node features
-            x = data['x']
-            #node power
-            x[:,0] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)
-            #node voltage magnitude
-            x[:,1] = ((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
-            
-            #Edge Features
-            edge_attr = data['edge_attr']
-            #capacity
-            edge_attr[:,0] = torch.log(data['edge_attr'][:,0]+1)/torch.log(edge_attr_max[0]+1)
-            #Pf, QF and resistance
-            edge_attr[:,1] = (data['edge_attr'][:,1]-edge_attr_means[1])/edge_stds[1]/((edge_attr_max[1]-edge_attr_means[1])/edge_stds[1])
-            edge_attr[:,2] = (data['edge_attr'][:,2]-edge_attr_means[2])/edge_stds[2]/((edge_attr_max[2]-edge_attr_means[2])/edge_stds[2])
-            edge_attr[:,4] = (data['edge_attr'][:,4]-edge_attr_means[3])/edge_stds[3]/((edge_attr_max[3]-edge_attr_means[3])/edge_stds[3])
-            #reactance
-            edge_attr[:,5] = torch.log(data['edge_attr'][:,5]+1)/torch.log(edge_attr_max[4]+1)
-            
-            #Node Labels
-            node_labels = torch.log(data['node_labels']+1)/torch.log(node_labels_max+1)
-            data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
-            torch.save(data, os.path.join(self.processed_dir, file))"""
+
             
     def process_dc(self):
         """
@@ -661,6 +683,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     Return:
         trainset : the training set
         testset : the testset
+        data_list : the data_list
     """
     print('Creating Datasets...')
     t1 = time.time()
@@ -672,12 +695,14 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     else:
         print("Error: create_datasets can not accept num_samples as input yet")
     print(f'Len Dataset: {len_dataset}')
+    #Get last train sample if stormsplit
     if stormsplit != 0:
         for i in range(len(data_list)):
             if str(data_list[i,0]).startswith(str(stormsplit)):
                 last_train_sample=i
                 break
-    #last_train_sample = floor(trainsize * len_dataset)
+
+    #Get last train sample if no stormsplit
     else:   
         trainsize = cfg["train_size"]
         last_train_sample = len_dataset*trainsize
@@ -707,6 +732,7 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
         testset : the testing dataset
         pre_compute_mean (bool) : descides whether mean is
             computed or not
+        Node2Vec (bool) : if True the trainloader is created with batchsize one for usage of Node2Vec
     Return:
         trainloader : the training set loader
         testloader : the testing set loader
@@ -738,8 +764,21 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
     return trainloader, testloader
 
 
-def calc_mask_probs(dataloader):    
-    #New way
+def calc_mask_probs(dataloader):  
+    """
+    Calculates the masking probabilities based on the variance of the node
+    
+    Parameters
+    ----------
+    dataloader : the dataloader for the dataset for which the masking probabilities should be calculated
+
+    Returns
+    -------
+    node_label_probs : float array
+        the masking probabilities
+
+    """
+
     node_label_vars=np.zeros(2000)
     for i, batch in enumerate(dataloader):
         if i==0:
@@ -759,6 +798,16 @@ def calc_mask_probs(dataloader):
 
 
 def mask_probs_add_bias(mask_probs, bias):
+    """
+    mask_probs  : float array (1D)
+        the masking probabilities of the nodes
+    bias        : float
+         the bias to be added to the masking probabilities
+     Returns
+     mask_probs_rescaled : float array (1D)
+         the masking probabilities with added bias
+    """
+    
     mask_probs_rescaled = mask_probs.clone() + bias
     for i in range(len(mask_probs)):
         if mask_probs_rescaled[i] > 1.0: mask_probs_rescaled[i] = 1
@@ -766,6 +815,18 @@ def mask_probs_add_bias(mask_probs, bias):
 
 
 def save_node2vec(embedding, labels, data_list):
+    """
+    Saves the data node2vec embeddings
+    deprecated??
+    embedding   :   float array (2D)
+        Node2Vec embedding
+    labels  : float array (1D)
+        the labels
+    data_list   : int array (2D)
+        the data list
+        
+    Returns
+    """
     print(embedding.shape)
     print(len(embedding))
     embedding = embedding.reshape(int(len(embedding)/2000), 2000, embedding.shape[1])

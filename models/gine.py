@@ -6,11 +6,42 @@ import torch.nn as nn
 
 
 class GINE(Module):
+    """
+    Graph Isomorphism Network with Edge Features
+    """
+    
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers =2,
-                 dropout=0.0, use_skipcon=False, use_batchnorm=True):
+                 dropout=0.0, use_skipcon=False, use_batchnorm=True):       
+        """
+        INPUT
+        num_node_features   :   int
+            number of node features in data
+        num_edge_features   :   int
+            number of edge features in the data
+        num_targets         :   int
+            number of labels in the data
+        hidden_size         :   int
+            the number of hidden features to be used
+        num_layers          :   int
+            the number of layers to be used
+        reghead_size        :   int
+            number of hidden features of the regression head
+        reghead_layers      :   itn
+            number of regression head layers
+        dropout             :   float
+             the dropout to be applied
+         num_heads          :   int
+              number of attention heads
+        use_batchnorm       :   bool
+             whether batchnorm should be applied - not implemented for GINE
+         use_skipcon        :   boo
+             wether skip connections should be applied
+        
+        """
+        
         super(GINE, self).__init__()
         #use_batchnorm does not have an effect on GINE since the batchnorm is automatically used inside the layers
-        print('\n\nGINE INIT OUTPUT\n ')
+
         #Params
         self.num_layers=int(num_layers)
         self.use_skipcon = bool(int(use_skipcon))

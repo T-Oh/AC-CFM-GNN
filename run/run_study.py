@@ -20,7 +20,25 @@ from models.run_node2vec import run_node2vec
 
 
 def run_study(cfg, device, N_CPUS, port_dashboard):
-    print('\n\nRUN STUDY OUTPUT\n')
+    """
+    Runs a ray study as defined in the configuration file
+
+    Parameters
+    ----------
+    cfg : preloaded json configuration file
+        
+    device : torch.device
+        device on which computation takes place (on cluster usually gpu)
+    N_CPUS : int
+        number of cpus available
+    port_dashboard : int
+        port to connect to the ray dashboard for performance screening
+
+    Returns
+    -------
+    None.
+
+    """
     # arguments for ray
     TEMP_DIR = '/p/tmp/tobiasoh/ray_tmp'
     N_GPUS = 1

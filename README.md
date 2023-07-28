@@ -31,6 +31,7 @@ The crossvalidation returns the output and labels of every fold as .pt files as 
 
 ## References
 <a id="1">[1]</a> 
-Dijkstra, E. W. (1968). 
-Go to statement considered harmful. 
-Communications of the ACM, 11(3), 147-148.
+Matthias Noebels, Robin Preece, and Mathaios Panteli. 
+Ac cascading failure model
+for resilience analysis in power networks.
+ IEEE Systems Journal, pages 1–12, 2020.
