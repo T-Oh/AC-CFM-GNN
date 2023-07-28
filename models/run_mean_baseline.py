@@ -34,6 +34,7 @@ def run_mean_baseline(cfg):
         trainR2s = torch.zeros(folds)
         testlosses = torch.zeros(folds)
         testR2s = torch.zeros(folds)
+        means = []
     else:
         folds = 1
         
@@ -47,7 +48,7 @@ def run_mean_baseline(cfg):
             trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
             
         #calculate means to pass to model
-        means = torch.zeros(2000)
+        #means = torch.zeros(2000)
         train_labels = torch.zeros(len(trainset), 2000)
         train_output = torch.zeros(len(trainset), 2000)
         test_labels = torch.zeros(len(testset), 2000)
@@ -63,13 +64,16 @@ def run_mean_baseline(cfg):
             N_instances = int(len(batch.node_labels)/2000)
             train_labels[index:index+N_instances] = batch.node_labels.reshape(N_instances,2000)
             index = index+N_instances 
-        means = train_labels.mean(dim=0)
+        if cfg['crossvalidation']:
+            means.append(train_labels.mean(dim=0))
+        else:
+            means = train_labels.mean(dim=0)
 
-        #Compile output of Trainset
-        for i in range(len(trainset)):
-            train_output[i] = means
-        print(train_labels.shape)
-        print(train_output.shape)
+            #Compile output of Trainset
+            for i in range(len(trainset)):
+                train_output[i] = means
+            print(train_labels.shape)
+            print(train_output.shape)
             
         #calc loss and R2
         trainloss = criterion(train_output.reshape(-1), train_labels.reshape(-1))

@@ -2,10 +2,7 @@ from models.tag import TAGNodeReg
 from models.gat import GAT
 from models.gine import GINE
 from models.baselines import ridge, MLP
-from models.tag_graphreg import TAGGraphReg
-from models.gine_graphreg import GINEGraphReg
-from models.gat_graphreg import GATGraphReg
-from models.baselines_graphreg import ridge_graphreg, MLP_graphreg
+
 
 
 def get_model(cfg, params):

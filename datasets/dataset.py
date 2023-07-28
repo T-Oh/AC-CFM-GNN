@@ -501,7 +501,7 @@ class HurricaneDataset(Dataset):
                     init_dmg_feature.append(init_dmg[j])
                     
 
-                    graphs = torch.load("C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/example_graphs.pt")
+                    
 
                 #compile data of step to feature matrices                
                 adj = torch.tensor([adj_from,adj_to])
