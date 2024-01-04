@@ -25,7 +25,7 @@ def run_single(cfg, device):
     """
     Trains a single model (i.e. no cross-validation and no study)
     """
-   
+
     if cfg['model'] == 'Mean':  # Model used as baseline that simply predicts the mean load shed of the training set
              
         #Run Mean Baseline

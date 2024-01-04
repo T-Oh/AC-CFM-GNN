@@ -705,7 +705,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     #Get last train sample if no stormsplit
     else:   
         trainsize = cfg["train_size"]
-        last_train_sample = len_dataset*trainsize
+        last_train_sample = int(len_dataset*trainsize)
         if trainsize <1:
             while data_list[last_train_sample-1,0]==data_list[last_train_sample,0]:
                 last_train_sample+=1
