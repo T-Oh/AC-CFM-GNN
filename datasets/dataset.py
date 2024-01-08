@@ -104,6 +104,325 @@ class HurricaneDataset(Dataset):
         return data_list
     
     
+    def process(self):
+        if self.data_type == 'AC':
+            self.process_ac()
+        elif self.data_type == 'DC':
+            self.process_dc()
+        else:
+            assert False, 'Datatype must be AC or DC!'
+            
+            
+    def process_ac(self):
+        """
+        Loads the raw matlab data, converts it to torch
+        tensors which are then saved. Then the torch data is reloaded and normalized 
+        - this is because loading the matfiles takes extremely long as there is much
+        more data saved there so I want to avoid loading them twice
+
+        """
+        #load scenario file which stores the initial damages
+        damages = self.get_initial_damages()
+        #load initial network data
+        init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
+        problems = [[0,0,0],[0,0,0]]    #used for error identification during processing
+        #process data        
+        for raw_path in self.raw_paths:
+            #skip damage file and pws file 
+            if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
+                continue
+            scenario = self.get_scenario_of_file(raw_path)
+            file=scipy.io.loadmat(raw_path)  #loads a full scenario   
+            #loop through steps of scenario each step will be one processed data file
+            for i in range(len(file['clusterresult'][0,:])):
+                #Node data
+                if i == 0:  #in first iteration load original pwsdata as initial data  
+                    node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
+                    edge_data = init_data['ans'][0,0][4]
+                else:
+                    node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
+                    edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
+                if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is none the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                    print('Skipping', file, i)
+                    continue
+                node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
+                
+                node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post)   #extract node features and labels from data
+                
+                adj, edge_attr, problems = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
+                problems.append(problems)
+                
+               
+                
+                #Graph Label
+                graph_label = node_labels.sum()
+
+                #save unscaled data
+                data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
+                torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+            np.save('problems',np.array(problems))
+    
+        
+    def get_node_features(self, node_data_pre, node_data_post):
+        '''
+        extracts the unnormalized node features and labels from the raw data
+        
+        Input:
+            node_data_pre:  node data read from matpower formatted matlab file of the initial state
+            node_data_post: node data read from matpower formatted matlab files of the post cascading failure state
+        Output:
+            node_features:  torch.tensor of node features
+            node_labels:    torch.tensor of node labels
+        '''
+                
+        P1 = node_data_pre[:,2] #P of all buses at initial condition - Node feature
+        Q1 = node_data_pre[:,3] #Q of all buses at initial condition - Node feature
+        S1 = np.sqrt(P1**2+Q1**2)
+        Vm = node_data_pre[:,7] #Voltage magnitude of all buses at initial condition - Node feature
+        #Va = node_data_pre[:,8] #Voltage angle of all buses at initial condition - Node feature
+        
+        P2 = node_data_post[:,2] #P of all buses after step - used for calculation of Node labels
+        Q2 = node_data_post[:,3] #Q of all buses after step - used of calculation of Node labels
+        S2 = np.sqrt(P2**2+Q2**2)
+        
+        node_features = torch.tensor(np.array([S1,Vm]))
+        node_labels = torch.tensor(S1-S2)
+        
+        return node_features, node_labels
+            
+    def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i):
+        #Edge Data
+        #Feature Data
+        rating = edge_data[:,5] #long term rating (MVA) - edge feature
+        status = edge_data[:,10]  #1 if line is working 0 if line is not - edge feature
+        resistance = edge_data[:,2]
+        reactance = edge_data[:,3] 
+        #power flows
+        pf1 = edge_data[:,13]
+        qf1 = edge_data[:,14]
+
+        pf2 = edge_data[:,15]
+        qf2 = edge_data[:,16]
+        
+        problems = []
+        
+        if any(np.isnan(pf1[status==1])) or any(np.isnan(qf1[status==1])) or any(np.isnan(pf2[status==1])) or any(np.isnan(qf2[status==1])):
+            problems.append(self.find_nans(status, pf1, scenario, i))
+            problems.append(self.find_nans(status, pf2, scenario, i))
+            problems.append(self.find_nans(status, qf1, scenario, i))
+            problems.append(self.find_nans(status, qf2, scenario, i))
+
+        
+        #initial damages
+        init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
+        #set initially damaged lines to 0
+        for step in range(len(damages[scenario])):
+            if damages[scenario][step,0] == i:
+                status[damages[scenario][step,1]] = 0 
+                init_dmg[damages[scenario][step,1]] = 1 
+                
+        #Adjacency Matrix
+        bus_id = node_data_pre[:,0] #list of bus ids in order
+        bus_from = edge_data[:,0]   
+        bus_to = edge_data[:,1] 
+        
+        #Features
+        adj_from = []   #adjacency matrix from/to -> no edges appearing twice
+        adj_to = []
+        rating_feature = [] #new list because orig data contains multiple lines along the same edge which are combined here
+        status_feature = []
+        resistance_feature = []
+        reactance_feature = []
+        init_dmg_feature = [] #always zero except if the line was an initial damage during this step -> then 1
+        
+        pf_feature = []
+        qf_feature = []
+        #Add edges and the respective features, edges are always added in both directions, so that the pf can be directional, the other features
+        #are added to both directions
+        for j in range(len(bus_from)):
+            id_from = int(np.where(bus_id==bus_from[j])[0]) #bus_id where line starts
+            id_to = int(np.where(bus_id==bus_to[j])[0])     #bus_id where line ends
+            
+            #if edge already exists recalculate (add) the features and dont add a new edge
+            exists=False
+            if (adj_from.count(id_from) > 0):   #check if bus from exists
+                for k in range(len(adj_from)):  #check all appeareances of bus from in adj_from
+                    if adj_from[k] == id_from and adj_to[k] == id_to: #if bus from and bus to are at the same entry update their edge features
+                        exists = True                       #mark as edge exists
+                        if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
+                            status_feature[k] = status[j]
+                        if status_feature[k] == 0:
+                            rating_feature[k] = 0
+                            resistance_feature[k] = 1
+                            reactance_feature[k] = 1
+                            pf_feature[k] = 0
+                            qf_feature[k] = 0
+                        else:
+                            rating_feature[k] += rating[j]      #add the capacities (ratings)
+                            resistance_feature[k], reactance_feature[k] =self.calc_total_resistance_reactance(resistance_feature[k], resistance[j], reactance_feature[k], reactance[j])
+                            pf_feature[k] += pf1[j]         #add PF
+                            qf_feature[k] += qf1[j]         #add PF
+ 
+                        if init_dmg_feature[k] != 1:
+                            init_dmg_feature[k] = init_dmg[j]
+
+            if (adj_to.count(id_from)>0):       #check other way
+                for k in range(len(adj_to)):
+                    if adj_to[k] == id_from and adj_from[k] == id_to:
+                        exists = True
+                        if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
+                            status_feature[k] = status[j]
+                        if status_feature[k] == 0:
+                            rating_feature[k] = 0
+                            resistance_feature[k] = 1
+                            reactance_feature[k] = 1
+                            pf_feature[k] = 0
+                            qf_feature[k] = 0
+                        else:
+                            rating_feature[k] += rating[j]      #add the capacities (ratings)
+                            resistance_feature[k], reactance_feature[k] = self.calc_total_resistance_reactance(resistance_feature[k],resistance[j],reactance_feature[k], reactance[j])
+                            pf_feature[k] += qf2[j]
+                            qf_feature[k] += qf2[j]
+
+                        if init_dmg_feature[k] != 1:
+                            init_dmg_feature[k] = init_dmg[j]
+                        
+            if exists: continue
+            #if edge does not exist yet add it in both directions
+            else:
+                #First direction
+                
+                adj_from.append(id_from)
+                adj_to.append(id_to)
+    
+                status_feature.append(status[j])
+    
+                init_dmg_feature.append(init_dmg[j])
+                if status[j] !=0:
+                    pf_feature.append(pf1[j])   #pf in first directiong
+                    qf_feature.append(qf1[j])   #qf in first directiong
+                    pf_feature.append(pf2[j])   #pf in opposite direction
+                    qf_feature.append(qf2[j])   #qf in opposite direction
+                    resistance_feature.append(resistance[j])
+                    reactance_feature.append(reactance[j])
+                    rating_feature.append(rating[j])
+                else:
+                    pf_feature.append(0)   #if line inactive set power flows to 0 for both directions
+                    qf_feature.append(0)   
+                    pf_feature.append(0)   
+                    qf_feature.append(0)   
+                    resistance_feature.append(1)
+                    reactance_feature.append(1)
+                    rating_feature.append(0)
+                #Opposite direction
+                adj_from.append(id_to)
+                adj_to.append(id_from)
+                rating_feature.append(rating[j])
+                status_feature.append(status[j])
+                resistance_feature.append(resistance[j])
+                reactance_feature.append(reactance[j])
+                init_dmg_feature.append(init_dmg[j])
+            
+
+            
+
+        #compile data of step to feature matrices                
+        adj = torch.tensor([adj_from,adj_to])
+
+        edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, status_feature, resistance_feature, reactance_feature, init_dmg_feature])
+        
+        return adj, edge_attr, problems
+      
+    def find_nans(status, feature, scenario, i):
+        #Check for NaNs
+        problems = []
+        
+        for j in np.where(np.isnan(feature))[0]:
+            if status[j]==1: 
+                print(j)
+                problems.append([scenario,i,j])
+        return problems
+
+            
+    def process_dc(self):
+        """
+        Loads the raw numpy data, converts it to torch
+        tensors and normalizes the labels to lie in
+        the interval [0,1].
+        Then pre-filters and pre-transforms are applied
+        and the data is saved in the processed directory.
+        """
+        #get limits for scaling
+
+        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = self.get_min_max_features()
+        x_stds, edge_stds = self.get_feature_stds(x_means, edge_attr_means)
+        ymax=torch.log(self.get_max_label()+1)
+        
+        #process data
+        for raw_path in self.raw_paths:
+            # Read data from `raw_path`.
+            raw_data = np.load(raw_path)
+            
+            #scale node features
+            x = torch.from_numpy(raw_data["x"]).float()
+            x[:,0]=(x[:,0]-x_means[0])/x_stds[0]/((x_max[0]-x_means[0])/x_stds[0])
+            x[:,1]=(x[:,1]-x_means[1])/x_stds[1]/((x_max[1]-x_means[1])/x_stds[1])
+            
+            #add supernode
+            if self.use_supernode:
+                x=torch.cat((x,torch.tensor([[1,1]])),0)            
+            
+            #get and scale labels according to task (GraphReg or NodeReg)
+            y = torch.log(torch.tensor([raw_data["y"].item()]).float()+1)/ymax
+            if 'node_labels' in raw_data.keys():
+                node_labels=torch.from_numpy(raw_data['node_labels'])
+                node_labels= torch.log(node_labels+1)/torch.log(node_labels_max+1)
+                node_labels.type(torch.FloatTensor)
+            
+            #get and scale edges and adjacency matrix
+            adj = torch.from_numpy(raw_data["adj"])  
+            print(adj)
+            edge_attr = torch.from_numpy(raw_data["edge_weights"])
+
+            if edge_attr.shape[0]<3:    #multidimensional edge features 
+                edge_attr[0]=torch.log(edge_attr[0]+1)/torch.log(edge_attr_max+1)                
+                adj, edge_attr = to_undirected(adj,[edge_attr[0].float(),edge_attr[1].float()])
+                edge_attr=torch.stack(edge_attr)
+
+                
+            else:                
+                #transform to undirected graph            
+                adj, edge_attr = to_undirected(adj, edge_attr)
+            
+
+            #add supernode edges
+            if self.use_supernode:
+                Nnodes=len(x)
+                supernode_edges=torch.zeros(2,Nnodes-1)
+                for i in range(len(x)-1):
+                    supernode_edges[0,i]=i
+                    supernode_edges[1,i]=Nnodes-1
+                adj = torch.cat((adj,supernode_edges),1)
+                supernode_edge_attr=torch.zeros(supernode_edges.shape[1])+1
+                edge_attr=torch.cat((edge_attr,supernode_edge_attr),0)
+            
+
+            print('Using Homogenous Data')
+            if 'node_labels' in raw_data.keys():
+                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1),node_labels=node_labels)
+            else:
+                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1))
+            
+
+            if self.pre_filter is not None and not self.pre_filter(data):
+                continue
+
+            if self.pre_transform is not None:
+                data = self.pre_transform(data)
+            print(data)
+            #torch.save(data, os.path.join(self.processed_dir, f'data_{idx}.pt'))
+            torch.save(data, os.path.join(self.processed_dir, 'data_'+raw_path[15:-4]+'.pt'))        
+           
     def get_max_label(self):
         "Computes the max of all labels in the dataset"
         ys = np.zeros(len(self.raw_file_names))
@@ -161,7 +480,7 @@ class HurricaneDataset(Dataset):
         step=int(name[i+1:j])
         return scenario,step
                 
-    def get_scenario_info(self):
+    '''def get_scenario_info(self):
         #fills the array scenario with the number of steps each scenario contains
         #deprecated ?
         scenario=0
@@ -176,7 +495,7 @@ class HurricaneDataset(Dataset):
                 self.scenarios[scenario]=length
                 length=0
                 scenario+=1
-            length+=1
+            length+=1'''
     
     def get_initial_damages(self):
         '''
@@ -355,301 +674,6 @@ class HurricaneDataset(Dataset):
         return r_new, x_new
     
     
-    def process(self):
-        if self.data_type == 'AC':
-            self.process_ac()
-        elif self.data_type == 'DC':
-            self.process_dc()
-        else:
-            assert False, 'Datatype must be AC or DC!'
-            
-            
-    def process_ac(self):
-        """
-        Loads the raw matlab data, converts it to torch
-        tensors which are then saved. Then the torch data is reloaded and normalized 
-        - this is because loading the matfiles takes extremely long as there is much
-        more data saved there so I want to avoid loading them twice
-
-        """
-        #load scenario file which stores the initial damages
-        damages = self.get_initial_damages()
-        #load initial network data
-        init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
-        problems = [[0,0,0],[0,0,0]]
-        #process data        
-        for raw_path in self.raw_paths:
-            #skip damage file
-            if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
-                continue
-            scenario = self.get_scenario_of_file(raw_path)
-            file=scipy.io.loadmat(raw_path)  #loads a full scenario   
-            #loop through steps of scenario each step will be one processed data file
-            for i in range(len(file['clusterresult'][0,:])):
-                #Node data
-                if i == 0:  #in first iteration load original pwsdata as initial data  
-                    node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
-                    edge_data = init_data['ans'][0,0][4]
-                else:
-                    node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
-                    edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
-                if np.isnan(file['clusterresult'][0,i][21]):
-                    #print('Skipping')
-                    continue
-                node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
-                P1 = node_data_pre[:,2] #P of all buses at initial condition - Node feature
-                Q1 = node_data_pre[:,3] #Q of all buses at initial condition - Node feature
-                S1 = np.sqrt(P1**2+Q1**2)
-                Vm = node_data_pre[:,7] #Voltage magnitude of all buses at initial condition - Node feature
-                #Va = node_data_pre[:,8] #Voltage angle of all buses at initial condition - Node feature
-                
-                P2 = node_data_post[:,2] #P of all buses after step - used for calculation of Node labels
-                Q2 = node_data_post[:,3] #Q of all buses after step - used of calculation of Node labels
-                S2 = np.sqrt(P2**2+Q2**2)
-                
-                node_labels = S1-S2
-                
-                
-                #Edge Data
-                #Feature Data
-                rating = edge_data[:,5] #long term rating (MVA) - edge feature
-                status = edge_data[:,10]  #1 if line is working 0 if line is not - edge feature
-                resistance = edge_data[:,2]
-                reactance = edge_data[:,3] 
-                #power flows
-                pf1 = edge_data[:,13]
-                qf1 = edge_data[:,14]
-                sf1 = np.sqrt(pf1**2+qf1**2)
-                pf2 = edge_data[:,15]
-                qf2 = edge_data[:,16]
-                sf2 = np.sqrt(pf2**2+qf2**2)
-                #Check for NaNs
-                if any(np.isnan(pf1[status==1])) or any(np.isnan(qf1[status==1])) or any(np.isnan(pf2[status==1])) or any(np.isnan(qf2[status==1])):
-                    print(raw_path)
-                    for j in np.where(np.isnan(pf1))[0]:
-                        if status[j]==1: 
-                            print(j)
-                            problems.append([scenario,i,j])
-                    for j in np.where(np.isnan(qf1))[0]:
-                        if status[j]==1: 
-                            print(j)
-                            problems.append([scenario,i,j])
-                    for j in np.where(np.isnan(pf2))[0]:
-                        if status[j]==1: 
-                            print(j)
-                            problems.append([scenario,i,j])
-                    for j in np.where(np.isnan(qf2))[0]:
-                        if status[j]==1: 
-                            print(j)
-                            problems.append([scenario,i,j])
-                
-                #initial damages
-                init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
-                #set initially damaged lines to 0
-                for step in range(len(damages[scenario])):
-                    if damages[scenario][step,0] == i:
-                        status[damages[scenario][step,1]] = 0 
-                        init_dmg[damages[scenario][step,1]] = 1 
-                        
-                #Adjacency Matrix
-                bus_id = node_data_pre[:,0] #list of bus ids in order
-                bus_from = edge_data[:,0]   
-                bus_to = edge_data[:,1] 
-                
-                #Features
-                adj_from = []   #adjacency matrix from/to -> no edges appearing twice
-                adj_to = []
-                rating_feature = [] #new list because orig data contains multiple lines along the same edge which are combined here
-                status_feature = []
-                resistance_feature = []
-                reactance_feature = []
-                init_dmg_feature = [] #always zero except if the line was an initial damage during this step -> then 1
-                
-                pf_feature = []
-                qf_feature = []
-                #Add edges and the respective features, edges are always added in both directions, so that the pf can be directional, the other features
-                #are added to both directions
-                for j in range(len(bus_from)):
-                    id_from = int(np.where(bus_id==bus_from[j])[0]) #bus_id where line starts
-                    id_to = int(np.where(bus_id==bus_to[j])[0])     #bus_id where line ends
-                    
-                    #if edge already exists recalculate (add) the features and dont add a new edge
-                    exists=False
-                    if (adj_from.count(id_from) > 0):   #check if bus from exists
-                        for k in range(len(adj_from)):  #check all appeareances of bus from in adj_from
-                            if adj_from[k] == id_from and adj_to[k] == id_to: #if bus from and bus to are at the same entry update their edge features
-                                exists = True                       #mark as edge exists
-                                if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
-                                    status_feature[k] = status[j]
-                                if status_feature[k] == 0:
-                                    rating_feature[k] = 0
-                                    resistance_feature[k] = 1
-                                    reactance_feature[k] = 1
-                                    pf_feature[k] = 0
-                                    qf_feature[k] = 0
-                                else:
-                                    rating_feature[k] += rating[j]      #add the capacities (ratings)
-                                    resistance_feature[k], reactance_feature[k] =self.calc_total_resistance_reactance(resistance_feature[k], resistance[j], reactance_feature[k], reactance[j])
-                                    pf_feature[k] += pf1[j]         #add PF
-                                    qf_feature[k] += qf1[j]         #add PF
-         
-                                if init_dmg_feature[k] != 1:
-                                    init_dmg_feature[k] = init_dmg[j]
-
-                    if (adj_to.count(id_from)>0):       #check other way
-                        for k in range(len(adj_to)):
-                            if adj_to[k] == id_from and adj_from[k] == id_to:
-                                exists = True
-                                if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
-                                    status_feature[k] = status[j]
-                                if status_feature[k] == 0:
-                                    rating_feature[k] = 0
-                                    resistance_feature[k] = 1
-                                    reactance_feature[k] = 1
-                                    pf_feature[k] = 0
-                                    qf_feature[k] = 0
-                                else:
-                                    rating_feature[k] += rating[j]      #add the capacities (ratings)
-                                    resistance_feature[k], reactance_feature[k] = self.calc_total_resistance_reactance(resistance_feature[k],resistance[j],reactance_feature[k], reactance[j])
-                                    pf_feature[k] += qf2[j]
-                                    qf_feature[k] += qf2[j]
-
-                                if init_dmg_feature[k] != 1:
-                                    init_dmg_feature[k] = init_dmg[j]
-                                
-                    if exists: continue
-                    #if edge does not exist yet add it in both directions
-                    #First direction
-                    adj_from.append(id_from)
-                    adj_to.append(id_to)
-
-                    status_feature.append(status[j])
-
-                    init_dmg_feature.append(init_dmg[j])
-                    if status[j] !=0:
-                        pf_feature.append(pf1[j])   #pf in first directiong
-                        qf_feature.append(qf1[j])   #qf in first directiong
-                        pf_feature.append(pf2[j])   #pf in opposite direction
-                        qf_feature.append(qf2[j])   #qf in opposite direction
-                        resistance_feature.append(resistance[j])
-                        reactance_feature.append(reactance[j])
-                        rating_feature.append(rating[j])
-                    else:
-                        pf_feature.append(0)   #if line inactive set power flows to 0 for both directions
-                        qf_feature.append(0)   
-                        pf_feature.append(0)   
-                        qf_feature.append(0)   
-                        resistance_feature.append(1)
-                        reactance_feature.append(1)
-                        rating_feature.append(0)
-                    #Opposite direction
-                    adj_from.append(id_to)
-                    adj_to.append(id_from)
-                    rating_feature.append(rating[j])
-                    status_feature.append(status[j])
-                    resistance_feature.append(resistance[j])
-                    reactance_feature.append(reactance[j])
-                    init_dmg_feature.append(init_dmg[j])
-                    
-
-                    
-
-                #compile data of step to feature matrices                
-                adj = torch.tensor([adj_from,adj_to])
-
-                edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, status_feature, resistance_feature, reactance_feature, init_dmg_feature])
-                node_feature = torch.tensor([S1,Vm])
-                node_labels = torch.tensor(node_labels)
-                #Graph Label
-                graph_label = node_labels.sum()
-
-                #save unscaled data
-                data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
-                torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-            np.save('problems',np.array(problems))
-        
-
-            
-    def process_dc(self):
-        """
-        Loads the raw numpy data, converts it to torch
-        tensors and normalizes the labels to lie in
-        the interval [0,1].
-        Then pre-filters and pre-transforms are applied
-        and the data is saved in the processed directory.
-        """
-        #get limits for scaling
-
-        x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = self.get_min_max_features()
-        x_stds, edge_stds = self.get_feature_stds(x_means, edge_attr_means)
-        ymax=torch.log(self.get_max_label()+1)
-        
-        #process data
-        for raw_path in self.raw_paths:
-            # Read data from `raw_path`.
-            raw_data = np.load(raw_path)
-            
-            #scale node features
-            x = torch.from_numpy(raw_data["x"]).float()
-            x[:,0]=(x[:,0]-x_means[0])/x_stds[0]/((x_max[0]-x_means[0])/x_stds[0])
-            x[:,1]=(x[:,1]-x_means[1])/x_stds[1]/((x_max[1]-x_means[1])/x_stds[1])
-            
-            #add supernode
-            if self.use_supernode:
-                x=torch.cat((x,torch.tensor([[1,1]])),0)            
-            
-            #get and scale labels according to task (GraphReg or NodeReg)
-            y = torch.log(torch.tensor([raw_data["y"].item()]).float()+1)/ymax
-            if 'node_labels' in raw_data.keys():
-                node_labels=torch.from_numpy(raw_data['node_labels'])
-                node_labels= torch.log(node_labels+1)/torch.log(node_labels_max+1)
-                node_labels.type(torch.FloatTensor)
-            
-            #get and scale edges and adjacency matrix
-            adj = torch.from_numpy(raw_data["adj"])  
-            print(adj)
-            edge_attr = torch.from_numpy(raw_data["edge_weights"])
-
-            if edge_attr.shape[0]<3:    #multidimensional edge features 
-                edge_attr[0]=torch.log(edge_attr[0]+1)/torch.log(edge_attr_max+1)                
-                adj, edge_attr = to_undirected(adj,[edge_attr[0].float(),edge_attr[1].float()])
-                edge_attr=torch.stack(edge_attr)
-
-                
-            else:                
-                #transform to undirected graph            
-                adj, edge_attr = to_undirected(adj, edge_attr)
-            
-
-            #add supernode edges
-            if self.use_supernode:
-                Nnodes=len(x)
-                supernode_edges=torch.zeros(2,Nnodes-1)
-                for i in range(len(x)-1):
-                    supernode_edges[0,i]=i
-                    supernode_edges[1,i]=Nnodes-1
-                adj = torch.cat((adj,supernode_edges),1)
-                supernode_edge_attr=torch.zeros(supernode_edges.shape[1])+1
-                edge_attr=torch.cat((edge_attr,supernode_edge_attr),0)
-            
-
-            print('Using Homogenous Data')
-            if 'node_labels' in raw_data.keys():
-                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1),node_labels=node_labels)
-            else:
-                data = Data(x=x, y=y, edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1))
-            
-
-            if self.pre_filter is not None and not self.pre_filter(data):
-                continue
-
-            if self.pre_transform is not None:
-                data = self.pre_transform(data)
-            print(data)
-            #torch.save(data, os.path.join(self.processed_dir, f'data_{idx}.pt'))
-            torch.save(data, os.path.join(self.processed_dir, 'data_'+raw_path[15:-4]+'.pt'))        
-           
-
     def len(self):
         return len(self.processed_file_names)
     
