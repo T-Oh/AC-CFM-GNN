@@ -57,7 +57,7 @@ class HurricaneDataset(Dataset):
     @property
     def processed_file_names(self):
         files = os.listdir(self.root + "/processed")
-        return [f for f in files if "data" in f]
+        return [f for f in files if f.startswith("data")]
         
     
     def get_data_list(self,N_scenarios):
@@ -158,7 +158,7 @@ class HurricaneDataset(Dataset):
                 graph_label = node_labels.sum()
 
                 #save unscaled data
-                data = Data(x=torch.transpose(node_feature,0,1).float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
+                data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
                 torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             np.save('problems',np.array(problems))
     
@@ -174,19 +174,31 @@ class HurricaneDataset(Dataset):
             node_features:  torch.tensor of node features
             node_labels:    torch.tensor of node labels
         '''
-                
-        P1 = node_data_pre[:,2] #P of all buses at initial condition - Node feature
-        Q1 = node_data_pre[:,3] #Q of all buses at initial condition - Node feature
-        S1 = np.sqrt(P1**2+Q1**2)
-        Vm = node_data_pre[:,7] #Voltage magnitude of all buses at initial condition - Node feature
-        #Va = node_data_pre[:,8] #Voltage angle of all buses at initial condition - Node feature
+              
+        P1 = torch.tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
+        Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
+        S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
+        Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
+        Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         
-        P2 = node_data_post[:,2] #P of all buses after step - used for calculation of Node labels
-        Q2 = node_data_post[:,3] #Q of all buses after step - used of calculation of Node labels
-        S2 = np.sqrt(P2**2+Q2**2)
+        P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
+        Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
+        S2 = torch.tensor(np.sqrt(P2**2+Q2**2))
         
-        node_features = torch.tensor(np.array([S1,Vm]))
+        N_BUSES = len(node_data_pre[:,2])
+        #one hot encoded bus types
+        bus_type = torch.zeros([2000,4], dtype=torch.int32)
+        for i in range(N_BUSES):
+            bus_type[i, int(node_data_pre[i,1]-1)] = 1
+        
+        #one hot encoded node IDs
+        node_ID = torch.eye(N_BUSES)
+            
+        
+        node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), bus_type, node_ID], dim=1)
         node_labels = torch.tensor(S1-S2)
+        
+        
         
         return node_features, node_labels
             
