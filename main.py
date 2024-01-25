@@ -36,7 +36,7 @@ logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", fi
 # choosing device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   #device = "cuda:0"
 print(device)
-
+ 
 
 # setting seeds
 torch.manual_seed(cfg["manual_seed"])

@@ -49,6 +49,7 @@ class GINE(Module):
         hidden_size = int(hidden_size)
         reghead_size = int(reghead_size)
         
+        print('Using Gine with ', num_node_features, ' Node features')
         
         #ConvLayers        
         self.convLayer1 = GINEConv(
@@ -85,11 +86,12 @@ class GINE(Module):
         self.batchnorm = BatchNorm(hidden_size,track_running_stats=True)
 
     def forward(self, data):
-        print('\n\nGINE FORWARD OUTPUT\n ')
+        
         
         x, _, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
         PRINT=False
         if PRINT:
+            print('\n\nGINE FORWARD OUTPUT\n ')
             print("START")
             print(x)
             print(edge_index)
@@ -102,7 +104,7 @@ class GINE(Module):
 
         #Arranging Conv Layers
         if self.use_skipcon:   
-            print('Using Skipcon')
+            if PRINT: print('Using Skipcon')
             for i in range(self.num_layers -1):
                 x_ = self.gines[i](x, edge_index=edge_index, edge_attr=edge_weight)
                 x = (self.relu(x_)+x)/2
