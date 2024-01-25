@@ -10,9 +10,9 @@ import numpy as np
 from torch_geometric.data import Data
 
 def get_min_max_features(processed_dir):
-    x_max=torch.zeros(2)
-    x_min=torch.zeros(2)
-    x_means = torch.zeros(2)
+    x_max=torch.zeros(4)
+    x_min=torch.zeros(4)
+    x_means = torch.zeros(4)
     edge_attr_max=torch.zeros(5)
     edge_attr_min=torch.zeros(5)
     edge_attr_means = torch.zeros(5)
@@ -25,7 +25,7 @@ def get_min_max_features(processed_dir):
     for i in range(5):
         edge_attr_max[i] =  np.NINF
         edge_attr_min[i] = np.Inf
-        if i <2:
+        if i <3:
             x_max[i] = np.NINF
             x_min[i] = np.Inf
     node_labels_max=0
@@ -47,8 +47,14 @@ def get_min_max_features(processed_dir):
                 if x[i,0]<x_min[0]: x_min[0]=x[i,0]
                 if x[i,1]>x_max[1]: x_max[1]=x[i,1]
                 if x[i,1]<x_min[1]: x_min[1]=x[i,1]
+                if x[i,2]>x_max[2]: x_max[2]=x[i,2]
+                if x[i,2]<x_min[2]: x_min[2]=x[i,2]
+                if x[i,3]>x_max[3]: x_max[3]=x[i,3]
+                if x[i,3]<x_min[3]: x_min[3]=x[i,3]
                 x_means[0] += x[i,0]
                 x_means[1] += x[i,1]
+                x_means[2] += x[i,2]
+                x_means[3] += x[i,3]
                 node_count += 1
                 
                 
@@ -92,7 +98,7 @@ def get_min_max_features(processed_dir):
 
 
 def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
-    x_stds = torch.zeros(2)
+    x_stds = torch.zeros(4)
     edge_stds = torch.zeros(5)
     graph_label_std =0
     node_count = 0
@@ -106,6 +112,8 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
             for i in range(x.shape[0]):
                 x_stds[0] += (x[i,0]-x_means[0])**2
                 x_stds[1] += (x[i,1]-x_means[1])**2
+                x_stds[2] += (x[i,2]-x_means[2])**2
+                x_stds[3] += (x[i,3]-x_means[3])**2
                 node_count += 1
             edge_attr = data['edge_attr']
             for i in range(len(edge_attr)):
@@ -124,9 +132,9 @@ processed_dir = 'processed/'
 normalized_dir = 'processed/'
 data_stats_file = 'unnormalized_data_stats.npy'
 
-if os.path.isfile(data_stats_file):
+if os.path.isfile(processed_dir + data_stats_file):
     print(f'Using presaved data stats of file: {data_stats_file} for normalization')
-    data_stats = np.load('unnormalized_data_stats.npy', allow_pickle=True).item()
+    data_stats = np.load(processed_dir + data_stats_file, allow_pickle=True).item()
     x_min   = data_stats['x_min']
     x_max   = data_stats['x_max']
     x_means = data_stats['x_means']
@@ -176,21 +184,28 @@ for file in os.listdir(processed_dir):
         #Node features
         x = data['x']
         #node power
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])):
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])):
             print('NaN Before Normalization x:')
             print(file)
             for i in range(len(x[:,1])):
                 if torch.isnan(x[i,0]): print(f'Before, x0 {i}')
                 if torch.isnan(x[i,1]): print(f'Before, x1 {i}')
+                if torch.isnan(x[i,2]): print(f'Before, x2 {i}')
+                if torch.isnan(x[i,3]): print(f'Before, x3 {i}')
         x[:,0] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)
+        x[:,1] = torch.log(x[:,1]+1)/torch.log(x_max[1]+1)
         #node voltage magnitude
-        x[:,1] = torch.log(x[:,1]+1)/torch.log(x_max[1]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])):
+        x[:,2] = torch.log(x[:,2]+1)/torch.log(x_max[2]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
+        #Voltage angle
+        x[:,3] = (x[:,3]-x_means[3])/x_stds[3]/((x_max[3]-x_means[3])/x_stds[3])
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])):
             print('NaN After Normalization x:')
             print(file)
             for i in range(len(x[:,1])):
                 if torch.isnan(x[i,0]): print(f'After, x0 {i}')
                 if torch.isnan(x[i,1]): print(f'After, x1 {i}')
+                if torch.isnan(x[i,2]): print(f'After, x2 {i}')
+                if torch.isnan(x[i,3]): print(f'After, x3 {i}')
         #Edge Features
         edge_attr = data['edge_attr']
         adj = data['edge_index']
