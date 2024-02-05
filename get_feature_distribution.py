@@ -10,8 +10,6 @@ import numpy as np
 import os
 
 
-
-
 def get_hist(data, bins):
     hist = np.zeros(len(bins)-1)
     for i in range(len(data)):
