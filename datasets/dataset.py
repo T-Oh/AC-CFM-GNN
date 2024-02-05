@@ -38,11 +38,13 @@ class HurricaneDataset(Dataset):
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None, N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC'):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None, N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC', ls_threshold = .09, N_below_threshold=1):
         self.use_supernode=use_supernode
         self.embedding = embedding
         self.device = device
         self.data_type = data_type
+        self.ls_threshold = ls_threshold
+        self.N_below_threshold = N_below_threshold
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
@@ -121,12 +123,15 @@ class HurricaneDataset(Dataset):
         more data saved there so I want to avoid loading them twice
 
         """
+        #INIT
         #load scenario file which stores the initial damages
         damages = self.get_initial_damages()
         #load initial network data
         init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
         problems = [[0,0,0],[0,0,0]]    #used for error identification during processing
-        #process data        
+        below_threshold_count = 0
+
+        #PROCESSING
         for raw_path in self.raw_paths:
             #skip damage file and pws file 
             if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
@@ -135,32 +140,37 @@ class HurricaneDataset(Dataset):
             file=scipy.io.loadmat(raw_path)  #loads a full scenario   
             #loop through steps of scenario each step will be one processed data file
             for i in range(len(file['clusterresult'][0,:])):
-                #Node data
-                if i == 0:  #in first iteration load original pwsdata as initial data  
-                    node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
-                    edge_data = init_data['ans'][0,0][4]
-                else:
-                    node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
-                    edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
-                if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is none the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
-                    print('Skipping', file, i)
-                    continue
-                node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
-                
-                node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post)   #extract node features and labels from data
-                
-                adj, edge_attr, problems = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
-                problems.append(problems)
-                
-               
-                
-                #Graph Label
-                graph_label = node_labels.sum()
 
-                #save unscaled data
-                data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
-                torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-            np.save('problems',np.array(problems))
+                #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
+                if file['clusterresult'][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                    if below_threshold_count<self.N_below_threshold and file['clusterresult'][0,i][21]<self.ls_threshold:
+                        below_threshold_count += 1
+                    #Node data
+                    if i == 0:  #in first iteration load original pwsdata as initial data  
+                        node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
+                        edge_data = init_data['ans'][0,0][4]
+                    else:
+                        node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
+                        edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
+                    if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is none the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                        print('Skipping', file, i)
+                        continue
+                    node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
+                    
+                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post)   #extract node features and labels from data
+                    
+                    adj, edge_attr, problems = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
+                    problems.append(problems)
+                    
+                
+                    
+                    #Graph Label
+                    graph_label = node_labels.sum()
+
+                    #save unscaled data
+                    data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
+                    torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+            #np.save('problems',np.array(problems))
     
         
     def get_node_features(self, node_data_pre, node_data_post):
@@ -723,7 +733,8 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     """
     print('Creating Datasets...')
     t1 = time.time()
-    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, embedding=embedding, data_type=data_type)
+    dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, 
+                               embedding=embedding, data_type=data_type, ls_threshold=cfg['ls_threshold'], N_below_threshold=cfg['N_below_threshold'])
     data_list = dataset.data_list
 
     if num_samples is None:

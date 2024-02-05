@@ -4,6 +4,8 @@
     "dataset::path": "",
     "task":"NodeReg",
     "data":"AC",
+    "ls_threshold" : 0.25,
+    "N_below_threshold" : 2,
     "n_scenarios":122,
     "stormsplit" : 0,
     "crossvalidation" : false,
