@@ -2,6 +2,7 @@ from models.tag import TAGNodeReg
 from models.gat import GAT
 from models.gine import GINE
 from models.baselines import ridge, MLP
+from models.gtrans import GraphTransformer
 
 
 
@@ -19,7 +20,7 @@ def get_model(cfg, params):
                 num_node_features = params["num_features"],
                 hidden_size = params["hidden_size"],
                 )
-        
+
         #Multilayer Perceptron
         elif cfg['model'] == 'MLP' or cfg['model'] == 'Node2Vec':
             print('Using MLP or Node2Vec with MLP!\n')
@@ -31,8 +32,8 @@ def get_model(cfg, params):
                 use_skipcon     = params['use_skipcon'],
                 use_batchnorm   = params['use_batchnorm']
                 )
-            
-        #TAG    
+
+        #TAG
         elif cfg['model'] == 'TAG':
             print('Using TAG!\n')
             model = TAGNodeReg(
@@ -45,7 +46,7 @@ def get_model(cfg, params):
                 use_skipcon     = params['use_skipcon'],
                 use_batchnorm   = params['use_batchnorm']
                 )
-            
+
         #GAT
         elif cfg['model'] == 'GAT':
             print('Using GAT!\n')
@@ -56,17 +57,31 @@ def get_model(cfg, params):
                 hidden_size     = params["hidden_size"],
                 num_layers      = params["num_layers"],
                 reghead_size    = params['reghead_size'],
-                reghead_layers  = params['reghead_layers'], 
+                reghead_layers  = params['reghead_layers'],
                 dropout         = params['dropout'],
                 gat_dropout     = params['gat_dropout'],
                 num_heads       = params["heads"],
                 use_skipcon     = params['use_skipcon'],
                 use_batchnorm   = params['use_batchnorm']
                 )
-        
-        #Other (mainly GINE)
-        else:
+
+        #GINE
+        elif cfg['model'] == 'GINE':
             print('Using GINE!\n')
+            model = eval(cfg["model"])(
+                num_node_features   = params["num_features"],
+                num_edge_features   = params["num_edge_features"],
+                num_targets     = params["num_targets"],
+                hidden_size     = params["hidden_size"],
+                num_layers      = params["num_layers"],
+                dropout         = params['dropout'],
+                use_skipcon     = params['use_skipcon'],
+                reghead_size    = params['reghead_size'],
+                reghead_layers  = params['reghead_layers'],
+            )
+        #GraphTransformer
+        else:
+            print('Using Graph Transformer!\n')
             try:
                 model = eval(cfg["model"])(
                     num_node_features   = params["num_features"],
@@ -74,16 +89,19 @@ def get_model(cfg, params):
                     num_targets     = params["num_targets"],
                     hidden_size     = params["hidden_size"],
                     num_layers      = params["num_layers"],
-                    dropout         = params['dropout'],
-                    use_skipcon     = params['use_skipcon'],
                     reghead_size    = params['reghead_size'],
                     reghead_layers  = params['reghead_layers'],
+                    dropout         = params['dropout'],
+                    gat_dropout     = params['gat_dropout'],
+                    num_heads       = params["heads"],
+                    use_skipcon     = params['use_skipcon'],
+                    use_batchnorm   = params['use_batchnorm']
                 )
             except NameError:
                 raise NameError("Unknown model selected. Change model in gnn/configuration.json")
-                
-                
-   
+
+
+
 
 
     return model.float()

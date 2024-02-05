@@ -27,10 +27,10 @@ def run_single(cfg, device):
     """
 
     if cfg['model'] == 'Mean':  # Model used as baseline that simply predicts the mean load shed of the training set
-             
+
         #Run Mean Baseline
         result = run_mean_baseline(cfg)
-        
+
         np.save('results/mean_result', result)
         if cfg['crossvalidation']:
             trainloss = result['trainloss'].mean()
@@ -43,12 +43,12 @@ def run_single(cfg, device):
         logging.info(f"Test Loss: {testloss}")
         logging.info(f"Train R2: {trainR2}")
         logging.info(f'Test R2: {testR2}')
-        
+
         exit()
 
 
     else:
-        
+
         # Create Datasets and Dataloaders
         trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
         if cfg['model'] == 'Node2Vec':
@@ -73,34 +73,34 @@ def run_single(cfg, device):
         # getting feature and target sizes
         num_features = trainset.__getitem__(0).x.shape[1]
         num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
-        
+
         #Setup Parameter dictionary for Node2Vec (mask_probs, num_features and num_edge_features should be irrelevant)
         params = setup_params(cfg, mask_probs, num_features, num_edge_features)
-        
+
         #Node2Vec
         if cfg['model'] == 'Node2Vec':
-            
+
             embedding = run_node2vec(cfg, trainloader, device, params, 0)
             normalized_embedding = embedding.data
             #Normalize the Embedding
             print(embedding.shape)
             for i in range(embedding.shape[1]):
                 normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
-                
+
             # Create Datasets and Dataloaders
             trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
             trainloader, testloader = create_loaders(cfg, trainset, testset)
-        
-        
+
+
             # getting feature and target sizes
             num_features = trainset.__getitem__(0).x.shape[1]
             num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
-            
+
             #Setup params for following task (MLP)
             params = setup_params(cfg, mask_probs, num_features, num_edge_features)
-                          
 
-        #Regular Models (GINE, GAT, TAG, MLP)            
+
+        #Regular Models (GINE, GAT, TAG, MLP, GraphTransformer)
         # Init Criterion
         if cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
@@ -108,28 +108,28 @@ def run_single(cfg, device):
         else:
             criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
         criterion.to(device)
-    
+
         # Loadi GNN model
         model = get_model(cfg, params)
         model.to(device)
         pytorch_total_params = sum(p.numel() for p in model.parameters())
         print('NUMBER OF PARAMETERS:')
         print(pytorch_total_params)
-        
+
         # Init optimizer
         optimizer = get_optimizer(cfg, model, params)
-        
+
         #Init LR Scheduler
         LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001, verbose=True)
-    
+
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,
                         tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
-        
+
         #Run Training
         metrics, final_eval, output, labels = run_training(
             trainloader, testloader, engine, cfg, LRScheduler)
-        
+
         #Save outputs, labels and losses of first fold
         torch.save(list(output), "results/" + "output.pt")  # saving train losses
         torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
@@ -140,16 +140,18 @@ def run_single(cfg, device):
         testloss = torch.tensor(metrics['test_loss']).min()
         trainR2 = torch.tensor(metrics['train_R2']).min()
         testR2 = torch.tensor(metrics['test_R2']).min()
-            
-            
+
+
         torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
-        
+
         if device.type != 'cuda':
+            print('Plotting...')
             fig1, ax1 = plt.subplots()
             ax1.plot(metrics['train_loss'], label='Train Loss')
             ax1.plot(metrics['test_loss'], label='Test Loss')
-            
+            fig1.savefig('loss.png', bbox_inches='tight')
+
             fig2, ax2 = plt.subplots()
             ax2.plot(metrics['train_R2'], label='Train R2')
             ax2.plot(metrics['test_R2'], label='Test R2')
-            
+            fig2.savefig('R2.png', bbox_inches='tight')

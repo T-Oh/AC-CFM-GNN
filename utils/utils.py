@@ -21,7 +21,7 @@ Here is the list of the functions necessary for the normal operation:
     setup_params
     weighted_loss_var
     weighted_loss_label
-    
+
 """
 
 def from_scipy_coo(A):
@@ -41,13 +41,13 @@ def to_torch(data):
 
     Input:
         data (dict) : Dictionary containing a node feature matrix,
-            adjacency matrix, and edge feature matrix with 
+            adjacency matrix, and edge feature matrix with
             keys "node_features", "adjacency", "edge_features"
     Return:
         (torch_geometric.Data)
     """
     x = torch.tensor(data["node_features"].T, dtype=torch.float64)
-    
+
     edge_index = from_scipy_coo(data["adjacency"])
     edge_weights = torch.tensor(data["edge_features"], dtype=torch.float64)
     edge_index, edge_weights = to_undirected(edge_index, edge_attr= edge_weights, num_nodes= x.size(0))
@@ -81,7 +81,7 @@ def npz_to_torch(data, fixed_data):
 
 def adjacency_to_torch(adj):
     """
-    Converts standard ajacency matrix to torch.Tensor in format 
+    Converts standard ajacency matrix to torch.Tensor in format
     necessary for torch_geometric.data.Data.
     """
     row, col = np.where(adj != 0)
@@ -96,7 +96,7 @@ def gnn_model_summary(model):
     print(line_new)
     print("----------------------------------------------------------------")
     for elem in model_params_list:
-        p_name = elem[0] 
+        p_name = elem[0]
         p_shape = list(elem[1].size())
         p_count = torch.tensor(elem[1].size()).prod().item()
         line_new = "{:>20}  {:>25} {:>15}".format(p_name, str(p_shape), str(p_count))
@@ -157,12 +157,12 @@ def cfg_to_latex(cfg, file):
 
 def plot_loss(train_loss, test_loss, save = False):
 
-    if save: 
+    if save:
         mlp.use("pgf")
         mlp.rcParams.update({"pgf.texsystem": "pdflatex",
         'font.family': 'serif',
         'text.usetex': True,
-        'pgf.rcfonts': False,}) 
+        'pgf.rcfonts': False,})
         fig, ax = plt.subplots(1, 1, figsize=set_size(483.69687, fraction=.5))
     else:
         fig, ax = plt.subplots(1,1)
@@ -180,12 +180,12 @@ def plot_loss(train_loss, test_loss, save = False):
 
 def plot_R2(values, save = False):
 
-    if save: 
+    if save:
         mlp.use("pgf")
         mlp.rcParams.update({"pgf.texsystem": "pdflatex",
         'font.family': 'sans-serif',
         'text.usetex': True,
-        'pgf.rcfonts': True,}) 
+        'pgf.rcfonts': True,})
         fig, ax = plt.subplots(1, 1, figsize=set_size(483.69687, fraction=.5))
     else:
         fig, ax = plt.subplots(1,1)
@@ -306,7 +306,7 @@ class ImbalancedSampler(torch.utils.data.WeightedRandomSampler):
         weight = class_weight[y]
 
         return super().__init__(weight, num_samples, replacement=True)
-    
+
 def discrete_loss(output, target):
     """
     DEPRECATED
@@ -328,7 +328,7 @@ def count_missclassified(output,target):
 
     Parameters
     ----------
-    output : torch.tensor 
+    output : torch.tensor
         output tensor
     target : torch.tensor
         target tensor
@@ -346,7 +346,7 @@ def count_missclassified(output,target):
             continue
         elif target[i] == 0 and output[i] < 0.01:
             continue
-        else: 
+        else:
             count +=1
             missclassified[i] = output[i]
     plt.bar(range(2000),missclassified)
@@ -370,7 +370,7 @@ def get_zero_buses():
     for file in os.listdir(path_from_processed):
         if file.startswith('data'):
             data = torch.load(path_from_processed+file)
-            
+
             for i in range(2000):
                 if all_instances_zero[i] != 0:
                     continue
@@ -389,7 +389,7 @@ def setup_searchspace(cfg):
     Parameters
     ----------
     cfg : preloaded json configuration file
-        
+
 
     Returns
     -------
@@ -404,27 +404,27 @@ def setup_searchspace(cfg):
         search_space['LR'] = tune.uniform(cfg['study::lr::lower'], cfg['study::lr::upper'])
     if cfg['study::weight_decay_upper'] != cfg['study::weight_decay_lower']:
         search_space['weight_decay'] = tune.uniform(cfg['study::weight_decay_lower'], cfg['study::weight_decay_upper'])
-        
+
     if cfg["study::layers_lower"] != cfg["study::layers_upper"]:
         search_space['num_layers'] = tune.quniform(cfg["study::layers_lower"], cfg["study::layers_upper"]+1, 1)
     if cfg["study::hidden_features_lower"] != cfg["study::hidden_features_upper"]:
-        search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)   
+        search_space['hidden_size'] = tune.loguniform(cfg["study::hidden_features_lower"], cfg["study::hidden_features_upper"]+1)
     if cfg["study::dropout_lower"] != cfg["study::dropout_upper"]:
         search_space['dropout'] = tune.quniform(cfg["study::dropout_lower"], cfg["study::dropout_upper"], 0.01)
     if cfg['study::skipcon']:
         search_space['use_skipcon'] = tune.uniform(0, 2)
     if cfg['study::batchnorm']:
         search_space['use_batchnorm'] = tune.uniform(0, 2)
-    
+
     #Regression Head
     if cfg['study::reghead_size_lower'] != cfg['study::reghead_size_upper']:
         search_space['reghead_size'] = tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1)
     if cfg["study::reghead_layers_lower"] != cfg['study::reghead_layers_upper']:
         search_space['reghead_layers'] = tune.uniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1)
-    
-    #Training    
+
+    #Training
     if cfg['study::gradclip_lower'] != cfg['study::gradclip_upper']:
-        search_space['gradclip'] = tune.uniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'])       
+        search_space['gradclip'] = tune.uniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'])
     if cfg['study::masking']:
         search_space['use_masking'] = tune.uniform(0, 2)
         if cfg['study::mask_bias_lower'] != cfg['study::mask_bias_upper']:
@@ -433,17 +433,17 @@ def setup_searchspace(cfg):
         search_space['loss_type'] = tune.uniform(0,2)
         if cfg['study::loss_weight_lower'] != cfg['study::loss_weight_upper']:
             search_space['loss_weight'] = tune.loguniform(cfg['study::loss_weight_lower'], cfg['study::loss_weight_upper'])
-        
+
     #TAG configuration
     if cfg['study::tag_jumps_lower'] != cfg['study::tag_jumps_upper']:
         search_space['K'] = tune.uniform(cfg['study::tag_jumps_lower'], cfg['study::tag_jumps_upper']+1)
-        
-    #GAT configuration
+
+    #GAT and GraphTransformer configuration
     if cfg["study::heads_lower"] != cfg["study::heads_upper"]:
         search_space['heads'] = tune.uniform(cfg["study::heads_lower"], cfg["study::heads_upper"]+1)
     if cfg['study::gat_dropout_lower'] != cfg['study::gat_dropout_upper']:
         search_space['gat_dropout'] = tune.uniform(cfg['study::gat_dropout_lower'], cfg['study::gat_dropout_upper'])
-        
+
     #Node2Vec configuration
     if cfg['study::embedding_dim_lower'] != cfg['study::embedding_dim_upper']:
         search_space['embedding_dim'] = tune.uniform(cfg['study::embedding_dim_lower'], cfg['study::embedding_dim_upper']+1)
@@ -459,12 +459,12 @@ def setup_searchspace(cfg):
         search_space['p'] = tune.loguniform(cfg['study::p_lower'], cfg['study::p_upper'])
     if cfg['study::q_lower'] != cfg['study::q_upper']:
         search_space['q'] = tune.loguniform(cfg['study::q_lower'], cfg['study::q_upper'])
-           
+
     return search_space
 
 def setup_params_from_search_space(search_space, params):
     """
-    params must already initiated by setup_params which will put the regular values from the cfg file 
+    params must already initiated by setup_params which will put the regular values from the cfg file
     setup_params_from_config then overrides the studied values with values from the search_space
 
     Parameters
@@ -493,7 +493,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
     Parameters
     ----------
     cfg : preloaded json configuration file
-        
+
     mask_probs : float array
         probabilities for node masking
     num_features : int
@@ -511,17 +511,17 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
     params = {
         'LR' :  cfg['optim::LR'],
         'weight_decay'   :   cfg['optim::weight_decay'],
-        
+
         "num_features"          :   num_features,
         "num_edge_features"     :   num_edge_features,
         "num_targets"           :   1,
-        
+
         "num_layers"    :   cfg['num_layers'],
         "hidden_size"   :   cfg['hidden_size'],
-        
+
         "reghead_size"  :   cfg['reghead_size'],
         "reghead_layers":   cfg['reghead_layers'],
-        
+
         "dropout"       :   cfg["dropout"],
 
         "use_batchnorm" :   cfg['use_batchnorm'],
@@ -531,14 +531,14 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
         'mask_bias'     :   cfg['mask_bias'],
         "mask_probs"    :   mask_probs,
         "loss_weight"   :   cfg['weighted_loss_factor'],
-        
-        #Params for GAT
+
+        #Params for GAT and GraphTransformer
         "heads"         :   cfg['num_heads'],
         'gat_dropout'   :   cfg['gat_dropout'],
-        
+
         #Params for TAG
-        "K"     :   cfg['tag_jumps'], 
-        
+        "K"     :   cfg['tag_jumps'],
+
         #Params for Node2vec
         'embedding_dim'   :   cfg['embedding_dim'],
         'walk_length'     :   cfg['walk_length'],
@@ -570,7 +570,7 @@ def multiclass_classification(output, labels, N_bins):
                 matrix[j,i] += 1
                 break;
     return outputclasses, labelclasses, matrix
-        
+
 
 
 class weighted_loss_label(torch.nn.Module):
@@ -581,7 +581,7 @@ class weighted_loss_label(torch.nn.Module):
         super(weighted_loss_label, self).__init__()
         self.factor = torch.sqrt(factor)
         self.baseloss= torch.nn.MSELoss(reduction='mean')
-        
+
     def forward(self, output, labels):
         print('Using weighted loss label')
         output_ = output.clone()
@@ -589,8 +589,8 @@ class weighted_loss_label(torch.nn.Module):
         output_[labels>0] = output_[labels>0]*self.factor
         labels_[labels>0] = labels_[labels>0].clone()*self.factor
         return self.baseloss(self.factor*output_,self.factor*labels_)
- 
-          
+
+
 class weighted_loss_var(torch.nn.Module):
     """
     weights the loss depending on the label variance at each node
@@ -599,12 +599,8 @@ class weighted_loss_var(torch.nn.Module):
         super(weighted_loss_var, self).__init__()
         self.weights = torch.sqrt(var).to(device)
         self.baseloss = torch.nn.MSELoss(reduction='mean').to(device)
-        
+
     def forward(self, output ,labels):
         output_ = output.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         labels_ = labels.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         return self.baseloss(output_.reshape(-1), labels_.reshape(-1))
-    
-
-    
-    
