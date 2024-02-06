@@ -20,8 +20,8 @@ def get_hist(data, bins):
     return hist
 
 def get_min_max_features(path):
-    x_max = torch.zeros(3)
-    x_min = torch.zeros(3)
+    x_max = torch.zeros(4)
+    x_min = torch.zeros(4)
     edge_attr_max = torch.zeros(5)
     edge_attr_min = torch.zeros(5)
     for i in range(5):
@@ -44,8 +44,10 @@ def get_min_max_features(path):
             if x[i,0]<x_min[0]: x_min[0]=x[i,0]
             if x[i,1]>x_max[1]: x_max[1]=x[i,1]
             if x[i,1]<x_min[1]: x_min[1]=x[i,1]
-            #if x[i,2]>x_max[2]: x_max[2]=x[i,2]
-            #if x[i,2]<x_min[2]: x_min[2]=x[i,2]
+            if x[i,2]>x_max[2]: x_max[2]=x[i,2]
+            if x[i,2]<x_min[2]: x_min[2]=x[i,2]
+            if x[i,3]>x_max[3]: x_max[3]=x[i,3]
+            if x[i,3]<x_min[3]: x_min[3]=x[i,3]
             
         edge_attr=torch.load(path+file)['edge_attr']
         for i in range(len(edge_attr[:,0])):
@@ -70,17 +72,21 @@ def get_min_max_features(path):
     return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max
 
 
-PLOT_ONLY = True
-path='C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/results/cluster/AC_Feature_Distr/all_storms_subset/'
-NAME = 'unnormalized_data_histograms_new'
+PLOT_ONLY = False
+path='/home/tohlinger/AC-CFM-GNN-1/processed/'
+NAME = 'unnormalized_data_histograms_addedFeatures_test'
 
 if PLOT_ONLY:
     data = np.load(path + 'unnormalized_data_histograms_new.npz')
     x1hist = data['x1hist']
     x2hist = data['x2hist']
+    x3hist = data['x3hist']
+    x4hist = data['x4hist']
     
     x1bins = data['x1bins']
     x2bins = data['x2bins']
+    x3bins = data['x3bins']
+    x4bins = data['x4bins']
     
     edgehist1 = data['edgehist1']
     edgehist2 = data['edgehist2']
@@ -110,7 +116,8 @@ else:
     
     x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
     x2bins=np.arange(x_min[1],x_max[1]+x_max[1]/10,(x_max[1]-x_min[1])/10)
-    #x3bins=np.arange(x_min[2],x_max[2],(x_max[2]-x_min[2])/10)
+    x3bins=np.arange(x_min[2],x_max[2]+x_max[2]/10,(x_max[2]-x_min[2])/10)
+    x4bins=np.arange(x_min[3],x_max[3]+x_max[3]/10,(x_max[3]-x_min[3])/10)
     edgebins1 = np.arange(edge_attr_min[0],edge_attr_max[0]+edge_attr_max[0]/10,(edge_attr_max[0]-edge_attr_min[0])/10)
     edgebins2 = np.arange(edge_attr_min[1],edge_attr_max[1]+edge_attr_max[1]/10,(edge_attr_max[1]-edge_attr_min[1])/10)
     edgebins3 = np.arange(edge_attr_min[2],edge_attr_max[2]+edge_attr_max[2]/10,(edge_attr_max[2]-edge_attr_min[2])/10)
@@ -131,7 +138,9 @@ else:
             if first:
                 x1hist=get_hist(data['x'][:,0],x1bins)
                 x2hist = get_hist(data['x'][:,1],x2bins)
-                #x3hist = get_hist(data['x'][:,2],x3bins)
+                x3hist=get_hist(data['x'][:,2],x3bins)
+                x4hist = get_hist(data['x'][:,3],x4bins)
+
                 edgehist1 = get_hist(data['edge_attr'][:,0],edgebins1)
                 edgehist2 = get_hist(data['edge_attr'][:,1],edgebins2)
                 edgehist3 = get_hist(data['edge_attr'][:,2],edgebins3)
@@ -167,7 +176,7 @@ else:
                 edgehist7 += edgehist7_temp
                 #labelhist += labelhist_temp
                 node_label_hist += node_label_hist_temp
-    np.savez("4000_subset_data_histograms",x1hist=x1hist, x2hist=x2hist, 
+    np.savez(NAME,x1hist=x1hist, x2hist=x2hist, 
                                      edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
                                      node_label_hist=node_label_hist,
                                      x1bins=x1bins, x2bins=x2bins, 
@@ -207,19 +216,36 @@ plt.rcParams['figure.dpi'] = 300
 fig1,ax1=plt.subplots()
 ax1.bar(x1bins[0:10]/10,x1hist,width=(x1bins[1]-x1bins[0])/10,align='edge')
 #ax1.set_title("Node Feature Apparent Power")
-ax1.set_xlabel("Power [GW]")
+ax1.set_xlabel("Active Power [GW]")
 ax1.set_ylabel('Number of Nodes')
-ax1.set_ylim(0,3e7)
-ax1.set_yticks([0,1e7,2e7,3e7])
-fig1.savefig(path+"ac_node_feature_distr_active_power_"+NAME+".png", bbox_inches='tight')
+#ax1.set_ylim(0,3e7)
+#ax1.set_yticks([0,1e7,2e7,3e7])
+fig1.savefig(path+"ac_node_feature_distr_p_"+NAME+".png", bbox_inches='tight')
 
 fig2,ax2=plt.subplots()
-ax2.bar(x2bins[0:10],x2hist,width=x2bins[1]-x2bins[0],align='edge')
+ax2.bar(x2bins[0:11]/10,x2hist,width=(x2bins[1]-x2bins[0])/10,align='edge')
 #ax2.set_title("Node Feature Voltage magnitude")
-ax2.set_xlabel("Voltage Magnitude [p.U.]")
+ax2.set_xlabel("Reactive Power")
 ax2.set_ylabel('Number of Nodes')
 
-fig2.savefig(path+"ac_node_feature_distr_vm_"+NAME+".png", bbox_inches='tight')
+fig2.savefig(path+"ac_node_feature_distr_q_"+NAME+".png", bbox_inches='tight')
+
+fig11,ax11=plt.subplots()
+ax11.bar(x3bins[0:11],x3hist,width=x3bins[1]-x3bins[0],align='edge')
+#ax1.set_title("Node Feature Apparent Power")
+ax11.set_xlabel("Voltage Magnitude [p.u.]")
+ax11.set_ylabel('Number of Nodes')
+#ax11.set_ylim(0,3e7)
+#ax11.set_yticks([0,1e7,2e7,3e7])
+fig11.savefig(path+"ac_node_feature_distr_vm_"+NAME+".png", bbox_inches='tight')
+
+fig12,ax12=plt.subplots()
+ax12.bar(x4bins[0:10],x4hist,width=x4bins[1]-x4bins[0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax12.set_xlabel("Voltage Angle [rad]")
+ax12.set_ylabel('Number of Nodes')
+
+fig12.savefig(path+"ac_node_feature_distr_va_"+NAME+".png", bbox_inches='tight')
 
 fig3,ax3=plt.subplots()
 ax3.bar(edgebins1[0:10],edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')
