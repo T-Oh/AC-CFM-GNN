@@ -10,9 +10,9 @@ import numpy as np
 from torch_geometric.data import Data
 
 def get_min_max_features(processed_dir):
-    x_max=torch.zeros(4)
-    x_min=torch.zeros(4)
-    x_means = torch.zeros(4)
+    x_max=torch.zeros(5)
+    x_min=torch.zeros(5)
+    x_means = torch.zeros(5)
     edge_attr_max=torch.zeros(5)
     edge_attr_min=torch.zeros(5)
     edge_attr_means = torch.zeros(5)
@@ -51,6 +51,10 @@ def get_min_max_features(processed_dir):
                 if x[i,2]<x_min[2]: x_min[2]=x[i,2]
                 if x[i,3]>x_max[3]: x_max[3]=x[i,3]
                 if x[i,3]<x_min[3]: x_min[3]=x[i,3]
+                if x[i,4]>x_max[4]: x_max[4]=x[i,4]
+                if x[i,4]<x_min[4]: x_min[4]=x[i,4]
+
+
                 x_means[0] += x[i,0]
                 x_means[1] += x[i,1]
                 x_means[2] += x[i,2]
@@ -98,7 +102,7 @@ def get_min_max_features(processed_dir):
 
 
 def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
-    x_stds = torch.zeros(4)
+    x_stds = torch.zeros(5)
     edge_stds = torch.zeros(5)
     graph_label_std =0
     node_count = 0
@@ -114,6 +118,7 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
                 x_stds[1] += (x[i,1]-x_means[1])**2
                 x_stds[2] += (x[i,2]-x_means[2])**2
                 x_stds[3] += (x[i,3]-x_means[3])**2
+                x_stds[4] += (x[i,4]-x_means[4])**2
                 node_count += 1
             edge_attr = data['edge_attr']
             for i in range(len(edge_attr)):
@@ -184,7 +189,7 @@ for file in os.listdir(processed_dir):
         #Node features
         x = data['x']
         #node power
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])):
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])) or any(torch.isnan(x[:,3])) or any(torch.isnan(x[:,4])) or any(torch.isnan(x[:,5])):
             print('NaN Before Normalization x:')
             print(file)
             for i in range(len(x[:,1])):
@@ -192,13 +197,19 @@ for file in os.listdir(processed_dir):
                 if torch.isnan(x[i,1]): print(f'Before, x1 {i}')
                 if torch.isnan(x[i,2]): print(f'Before, x2 {i}')
                 if torch.isnan(x[i,3]): print(f'Before, x3 {i}')
+                if torch.isnan(x[i,4]): print(f'Before, x4 {i}')
+                if torch.isnan(x[i,5]): print(f'Before, x5 {i}')
         x[:,0] = torch.log(x[:,0]+1)/torch.log(x_max[0]+1)
         x[:,1] = torch.log(x[:,1]+1)/torch.log(x_max[1]+1)
         #node voltage magnitude
         x[:,2] = torch.log(x[:,2]+1)/torch.log(x_max[2]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
         #Voltage angle
         x[:,3] = (x[:,3]-x_means[3])/x_stds[3]/((x_max[3]-x_means[3])/x_stds[3])
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])):
+        #Shunt susceptance
+        x[:,4] = (x[:,4]-x_means[4])/x_stds[4]/((x_max[4]-x_means[4])/x_stds[4])
+        #baseKV
+        x[:,6] = x[:,5]/500 #baseKV max baseKV in ACTIVSg2000 is 500 (min is 13.8)
+        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])) or any(torch.isnan(x[:,3])) or any(torch.isnan(x[:,4])) or any(torch.isnan(x[:,5])):
             print('NaN After Normalization x:')
             print(file)
             for i in range(len(x[:,1])):
@@ -206,6 +217,9 @@ for file in os.listdir(processed_dir):
                 if torch.isnan(x[i,1]): print(f'After, x1 {i}')
                 if torch.isnan(x[i,2]): print(f'After, x2 {i}')
                 if torch.isnan(x[i,3]): print(f'After, x3 {i}')
+                if torch.isnan(x[i,4]): print(f'After, x4 {i}')
+                if torch.isnan(x[i,5]): print(f'After, x5 {i}')
+
         #Edge Features
         edge_attr = data['edge_attr']
         adj = data['edge_index']

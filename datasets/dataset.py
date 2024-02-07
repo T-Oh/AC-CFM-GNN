@@ -190,6 +190,8 @@ class HurricaneDataset(Dataset):
         S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
+        Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
+        baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
         
         P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
         Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
@@ -203,9 +205,11 @@ class HurricaneDataset(Dataset):
         
         #one hot encoded node IDs
         node_ID = torch.eye(N_BUSES)
+
+        
             
         
-        node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), bus_type, node_ID], dim=1)
+        node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), Bs.reshape(-1,1), baseKV.reshape(-1,1), bus_type, node_ID], dim=1)
         node_labels = torch.tensor(S1-S2)
         
         

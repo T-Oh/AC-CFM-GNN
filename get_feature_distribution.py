@@ -74,10 +74,10 @@ def get_min_max_features(path):
 
 PLOT_ONLY = False
 path='/home/tohlinger/AC-CFM-GNN-1/processed/'
-NAME = 'unnormalized_data_histograms_addedFeatures_test'
+NAME = 'Ike_new_features'
 
 if PLOT_ONLY:
-    data = np.load(path + 'unnormalized_data_histograms_new.npz')
+    data = np.load(NAME + '.npz')
     x1hist = data['x1hist']
     x2hist = data['x2hist']
     x3hist = data['x3hist']
@@ -154,7 +154,9 @@ else:
             else:
                 x1hist_temp=get_hist(data['x'][:,0],x1bins)
                 x2hist_temp = get_hist(data['x'][:,1],x2bins)
-                #x3hist_temp = get_hist(data['x'][:,2],x3bins)
+                x3hist_temp=get_hist(data['x'][:,2],x3bins)
+                x4hist_temp = get_hist(data['x'][:,3],x4bins)
+
                 edgehist1_temp = get_hist(data['edge_attr'][:,0],edgebins1)
                 edgehist2_temp = get_hist(data['edge_attr'][:,1],edgebins2)
                 edgehist3_temp = get_hist(data['edge_attr'][:,2],edgebins3)
@@ -166,7 +168,9 @@ else:
                 node_label_hist_temp = get_hist(data['node_labels'],node_label_bins)
                 x1hist+=x1hist_temp
                 x2hist+=x2hist_temp
-                #x3hist+=x3hist_temp
+                x3hist+=x3hist_temp
+                x4hist+=x4hist_temp
+
                 edgehist1 += edgehist1_temp
                 edgehist2 += edgehist2_temp
                 edgehist3 += edgehist3_temp
@@ -176,10 +180,10 @@ else:
                 edgehist7 += edgehist7_temp
                 #labelhist += labelhist_temp
                 node_label_hist += node_label_hist_temp
-    np.savez(NAME,x1hist=x1hist, x2hist=x2hist, 
+    np.savez(NAME,x1hist=x1hist, x2hist=x2hist, x3hist=x3hist, x4hist=x4hist,
                                      edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
                                      node_label_hist=node_label_hist,
-                                     x1bins=x1bins, x2bins=x2bins, 
+                                     x1bins=x1bins, x2bins=x2bins, x3bins=x3bins, x4bins=x4bins,
                                      edgebins1=edgebins1, edgebins2=edgebins2, edgebins3=edgebins3, edgebins4=edgebins4, edgebins5=edgebins5, edgebins6=edgebins6, edgebins7=edgebins7,
                                      node_label_bins=node_label_bins)
     
