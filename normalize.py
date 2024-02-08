@@ -25,7 +25,7 @@ def get_min_max_features(processed_dir):
     for i in range(5):
         edge_attr_max[i] =  np.NINF
         edge_attr_min[i] = np.Inf
-        if i <3:
+        if i <5:
             x_max[i] = np.NINF
             x_min[i] = np.Inf
     node_labels_max=0
