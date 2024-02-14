@@ -11,7 +11,7 @@ import os
 
 
 def get_hist(data, bins):
-    hist = np.zeros(len(bins)-1)
+    hist = np.zeros(len(bins))
     for i in range(len(data)):
         for j in range(len(bins)-1):
             if data[i] <= bins[j+1]:
@@ -20,16 +20,18 @@ def get_hist(data, bins):
     return hist
 
 def get_min_max_features(path):
-    x_max = torch.zeros(4)
-    x_min = torch.zeros(4)
+    x_max = torch.zeros(14)
+    x_min = torch.zeros(14)
     edge_attr_max = torch.zeros(5)
     edge_attr_min = torch.zeros(5)
-    for i in range(5):
-        edge_attr_max[i] =  np.NINF
-        edge_attr_min[i] = np.Inf
-        if i <3:
-            x_max[i] = np.NINF
-            x_min[i] = np.Inf
+    for i in range(14):
+        x_max[i] = np.NINF
+        x_min[i] = np.Inf
+        if i <5:
+            edge_attr_max[i] =  np.NINF
+            edge_attr_min[i] = np.Inf
+
+
     node_labels_max = 0
     node_labels_min = 1e6
     #loop through files
@@ -40,14 +42,12 @@ def get_min_max_features(path):
         x = torch.load(path+file)['x']
         #x=data['x']
         for i in range(x.shape[0]):
-            if x[i,0]>x_max[0]: x_max[0]=x[i,0]
-            if x[i,0]<x_min[0]: x_min[0]=x[i,0]
-            if x[i,1]>x_max[1]: x_max[1]=x[i,1]
-            if x[i,1]<x_min[1]: x_min[1]=x[i,1]
-            if x[i,2]>x_max[2]: x_max[2]=x[i,2]
-            if x[i,2]<x_min[2]: x_min[2]=x[i,2]
-            if x[i,3]>x_max[3]: x_max[3]=x[i,3]
-            if x[i,3]<x_min[3]: x_min[3]=x[i,3]
+            for j in range(len(x_max)):
+                bias = 0
+                if j>5: bias = 4    #used to skip the hone hot encoded bus tpye features which are between the first 6 bus features (P,Q,Vm,Va,Bs,basekV) and the gen_features
+                if x[i,j+bias]>x_max[j]: x_max[j]=x[i,j+bias]
+                if x[i,j+bias]<x_min[j]: x_min[j]=x[i,j+bias]
+
             
         edge_attr=torch.load(path+file)['edge_attr']
         for i in range(len(edge_attr[:,0])):
@@ -78,15 +78,9 @@ NAME = 'Ike_new_features'
 
 if PLOT_ONLY:
     data = np.load(NAME + '.npz')
-    x1hist = data['x1hist']
-    x2hist = data['x2hist']
-    x3hist = data['x3hist']
-    x4hist = data['x4hist']
+    x_hists = data['x_hists']
     
-    x1bins = data['x1bins']
-    x2bins = data['x2bins']
-    x3bins = data['x3bins']
-    x4bins = data['x4bins']
+    x_bins = data['x_bins']
     
     edgehist1 = data['edgehist1']
     edgehist2 = data['edgehist2']
@@ -114,10 +108,13 @@ if PLOT_ONLY:
 else:
     x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max = get_min_max_features(path)
     
-    x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
+    x_bins = np.zeros([len(x_max),10])
+    for i in range(len(x_max)):
+        x_bins[i] = np.arange(x_min[i],x_max[i],(x_max[i]-x_min[i])/10)
+    """x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
     x2bins=np.arange(x_min[1],x_max[1]+x_max[1]/10,(x_max[1]-x_min[1])/10)
     x3bins=np.arange(x_min[2],x_max[2]+x_max[2]/10,(x_max[2]-x_min[2])/10)
-    x4bins=np.arange(x_min[3],x_max[3]+x_max[3]/10,(x_max[3]-x_min[3])/10)
+    x4bins=np.arange(x_min[3],x_max[3]+x_max[3]/10,(x_max[3]-x_min[3])/10)"""
     edgebins1 = np.arange(edge_attr_min[0],edge_attr_max[0]+edge_attr_max[0]/10,(edge_attr_max[0]-edge_attr_min[0])/10)
     edgebins2 = np.arange(edge_attr_min[1],edge_attr_max[1]+edge_attr_max[1]/10,(edge_attr_max[1]-edge_attr_min[1])/10)
     edgebins3 = np.arange(edge_attr_min[2],edge_attr_max[2]+edge_attr_max[2]/10,(edge_attr_max[2]-edge_attr_min[2])/10)
@@ -132,14 +129,20 @@ else:
     
     
     first = True
+    x_hists = np.zeros([len(x_max),10])
     for file in os.listdir(path):
         if file.startswith('data'):
             data=torch.load(path+file)
             if first:
-                x1hist=get_hist(data['x'][:,0],x1bins)
+                
+                for i in range(len(x_max)):
+                    j=0
+                    if i>5: j = 4   #after the first 5 features (P,Q,Vm,Va,baseKV) there is the one hot encoded bustype (4 features) which we skip by adding j=4 to get to the generator features
+                    x_hists[i] = get_hist(data['x'][:,i+j],x_bins[i])
+                """x1hist=get_hist(data['x'][:,0],x1bins)
                 x2hist = get_hist(data['x'][:,1],x2bins)
                 x3hist=get_hist(data['x'][:,2],x3bins)
-                x4hist = get_hist(data['x'][:,3],x4bins)
+                x4hist = get_hist(data['x'][:,3],x4bins)"""
 
                 edgehist1 = get_hist(data['edge_attr'][:,0],edgebins1)
                 edgehist2 = get_hist(data['edge_attr'][:,1],edgebins2)
@@ -152,10 +155,14 @@ else:
                 node_label_hist=get_hist(data['node_labels'], node_label_bins)
                 first = False
             else:
-                x1hist_temp=get_hist(data['x'][:,0],x1bins)
-                x2hist_temp = get_hist(data['x'][:,1],x2bins)
+                
+                for i in range(len(x_max)):
+                    j=0
+                    if i>5: j = 4   #after the first 6 features (P,Q,Vm,Va,Bs, baseKV) there is the one hot encoded bustype (4 features) which we skip by adding j=4 to get to the generator features
+                    x_hists[i] += get_hist(data['x'][:,i+j],x_bins[i])
+                """x2hist_temp = get_hist(data['x'][:,1],x2bins)
                 x3hist_temp=get_hist(data['x'][:,2],x3bins)
-                x4hist_temp = get_hist(data['x'][:,3],x4bins)
+                x4hist_temp = get_hist(data['x'][:,3],x4bins)"""
 
                 edgehist1_temp = get_hist(data['edge_attr'][:,0],edgebins1)
                 edgehist2_temp = get_hist(data['edge_attr'][:,1],edgebins2)
@@ -166,10 +173,6 @@ else:
                 edgehist7_temp = get_hist(data['edge_attr'][:,6],edgebins7)
                 #labelhist_temp = get_hist(data['y'],labelbins)
                 node_label_hist_temp = get_hist(data['node_labels'],node_label_bins)
-                x1hist+=x1hist_temp
-                x2hist+=x2hist_temp
-                x3hist+=x3hist_temp
-                x4hist+=x4hist_temp
 
                 edgehist1 += edgehist1_temp
                 edgehist2 += edgehist2_temp
@@ -180,10 +183,9 @@ else:
                 edgehist7 += edgehist7_temp
                 #labelhist += labelhist_temp
                 node_label_hist += node_label_hist_temp
-    np.savez(NAME,x1hist=x1hist, x2hist=x2hist, x3hist=x3hist, x4hist=x4hist,
-                                     edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
+    np.savez(NAME,x_hists = x_hists, edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
                                      node_label_hist=node_label_hist,
-                                     x1bins=x1bins, x2bins=x2bins, x3bins=x3bins, x4bins=x4bins,
+                                     x_bins = x_bins,
                                      edgebins1=edgebins1, edgebins2=edgebins2, edgebins3=edgebins3, edgebins4=edgebins4, edgebins5=edgebins5, edgebins6=edgebins6, edgebins7=edgebins7,
                                      node_label_bins=node_label_bins)
     
@@ -218,38 +220,120 @@ plt.rcParams['font.size'] = 16
 plt.rcParams['figure.dpi'] = 300
 #Plotting
 fig1,ax1=plt.subplots()
-ax1.bar(x1bins[0:10]/10,x1hist,width=(x1bins[1]-x1bins[0])/10,align='edge')
+ax1.bar(x_bins[0]/10,x_hists[0],width=(x_bins[0,1]-x_bins[0,0])/10,align='edge')
 #ax1.set_title("Node Feature Apparent Power")
 ax1.set_xlabel("Active Power [GW]")
 ax1.set_ylabel('Number of Nodes')
 #ax1.set_ylim(0,3e7)
 #ax1.set_yticks([0,1e7,2e7,3e7])
-fig1.savefig(path+"ac_node_feature_distr_p_"+NAME+".png", bbox_inches='tight')
+fig1.savefig(path+"ac_node_feature_distr_P_"+NAME+".png", bbox_inches='tight')
 
 fig2,ax2=plt.subplots()
-ax2.bar(x2bins[0:11]/10,x2hist,width=(x2bins[1]-x2bins[0])/10,align='edge')
+ax2.bar(x_bins[1]/10,x_hists[1],width=(x_bins[1,1]-x_bins[1,0])/10,align='edge')
 #ax2.set_title("Node Feature Voltage magnitude")
-ax2.set_xlabel("Reactive Power")
+ax2.set_xlabel("Reactive Power [MVAr]")
 ax2.set_ylabel('Number of Nodes')
 
-fig2.savefig(path+"ac_node_feature_distr_q_"+NAME+".png", bbox_inches='tight')
+fig2.savefig(path+"ac_node_feature_distr_Q_"+NAME+".png", bbox_inches='tight')
 
 fig11,ax11=plt.subplots()
-ax11.bar(x3bins[0:11],x3hist,width=x3bins[1]-x3bins[0],align='edge')
+ax11.bar(x_bins[2],x_hists[2],width=x_bins[2,1]-x_bins[2,0],align='edge')
 #ax1.set_title("Node Feature Apparent Power")
 ax11.set_xlabel("Voltage Magnitude [p.u.]")
 ax11.set_ylabel('Number of Nodes')
 #ax11.set_ylim(0,3e7)
 #ax11.set_yticks([0,1e7,2e7,3e7])
-fig11.savefig(path+"ac_node_feature_distr_vm_"+NAME+".png", bbox_inches='tight')
+fig11.savefig(path+"ac_node_feature_distr_Vm_"+NAME+".png", bbox_inches='tight')
 
 fig12,ax12=plt.subplots()
-ax12.bar(x4bins[0:10],x4hist,width=x4bins[1]-x4bins[0],align='edge')
+ax12.bar(x_bins[3],x_hists[3],width=x_bins[3,1]-x_bins[3,0],align='edge')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax12.set_xlabel("Voltage Angle [rad]")
 ax12.set_ylabel('Number of Nodes')
 
-fig12.savefig(path+"ac_node_feature_distr_va_"+NAME+".png", bbox_inches='tight')
+fig12.savefig(path+"ac_node_feature_distr_Va_"+NAME+".png", bbox_inches='tight')
+
+fig13,ax13=plt.subplots()
+ax13.bar(x_bins[4],x_hists[4],width=x_bins[4,1]-x_bins[4,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax13.set_xlabel("Shunt Susceptance")
+ax13.set_ylabel('Number of Nodes')
+
+fig13.savefig(path+"ac_node_feature_distr_Bs_"+NAME+".png", bbox_inches='tight')
+
+fig14,ax14=plt.subplots()
+ax14.bar(x_bins[5],x_hists[5],width=x_bins[5,1]-x_bins[5,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax14.set_xlabel("Base kV")
+ax14.set_ylabel('Number of Nodes')
+
+fig14.savefig(path+"ac_node_feature_distr_basekV_"+NAME+".png", bbox_inches='tight')
+
+fig15,ax15=plt.subplots()
+ax15.bar(x_bins[6]/10,x_hists[6],width=(x_bins[6,1]-x_bins[6,0])/10,align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax15.set_xlabel("Generator Active Power Output [GW]")
+ax15.set_ylabel('Number of Nodes')
+
+fig15.savefig(path+"ac_node_feature_distr_genP_"+NAME+".png", bbox_inches='tight')
+
+fig16,ax16=plt.subplots()
+ax16.bar(x_bins[7],x_hists[7],width=x_bins[7,1]-x_bins[7,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax16.set_xlabel("Generator Reactive Power Output [MVar]")
+ax16.set_ylabel('Number of Nodes')
+
+fig16.savefig(path+"ac_node_feature_distr_genQ_"+NAME+".png", bbox_inches='tight')
+
+fig17,ax17=plt.subplots()
+ax17.bar(x_bins[8],x_hists[8],width=x_bins[8,1]-x_bins[8,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax17.set_xlabel("Maximum Reactive Power Output [MVar]")
+ax17.set_ylabel('Number of Nodes')
+
+fig17.savefig(path+"ac_node_feature_distr_genQMax_"+NAME+".png", bbox_inches='tight')
+
+fig18,ax18=plt.subplots()
+ax18.bar(x_bins[9],x_hists[9],width=x_bins[9,1]-x_bins[9,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax18.set_xlabel("Minimum Reactive Power Output [MVar]")
+ax18.set_ylabel('Number of Nodes')
+
+fig18.savefig(path+"ac_node_feature_distr_genQMin_"+NAME+".png", bbox_inches='tight')
+
+fig19,ax19=plt.subplots()
+ax19.bar(x_bins[10],x_hists[10],width=x_bins[10,1]-x_bins[10,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax19.set_xlabel("Voltage Magnitude Set Point [p.u.]")
+ax19.set_ylabel('Number of Nodes')
+
+fig19.savefig(path+"ac_node_feature_distr_genQMax_"+NAME+".png", bbox_inches='tight')
+
+fig20,ax20=plt.subplots()
+ax20.bar(x_bins[11],x_hists[11],width=x_bins[11,1]-x_bins[11,0],align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax20.set_xlabel("mBase (total MVA base)")
+ax20.set_ylabel('Number of Nodes')
+
+fig20.savefig(path+"ac_node_feature_distr_genmBase_"+NAME+".png", bbox_inches='tight')
+
+fig21,ax21=plt.subplots()
+ax21.bar(x_bins[12]/10,x_hists[12],width=(x_bins[12,1]-x_bins[12,0])/10,align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax21.set_xlabel("Maximum Active Power Output [GW]")
+ax21.set_ylabel('Number of Nodes')
+
+fig21.savefig(path+"ac_node_feature_distr_genPMax_"+NAME+".png", bbox_inches='tight')
+
+fig22,ax22=plt.subplots()
+ax22.bar(x_bins[13]/10,x_hists[13],width=(x_bins[13,1]-x_bins[13,0])/10,align='edge')
+#ax2.set_title("Node Feature Voltage magnitude")
+ax22.set_xlabel("Minimum Active Power Output [GW]")
+ax22.set_ylabel('Number of Nodes')
+
+fig22.savefig(path+"ac_node_feature_distr_genPMin_"+NAME+".png", bbox_inches='tight')
+
+
 
 fig3,ax3=plt.subplots()
 ax3.bar(edgebins1[0:10],edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')

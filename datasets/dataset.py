@@ -148,16 +148,18 @@ class HurricaneDataset(Dataset):
                     #Node data
                     if i == 0:  #in first iteration load original pwsdata as initial data  
                         node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
+                        gen_data_pre = init_data['ans'][0,0][3]
                         edge_data = init_data['ans'][0,0][4]
                     else:
                         node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
+                        gen_data_pre = file['clusterresult'][0,i-1][3]
                         edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
-                    if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is none the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                    if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
                         print('Skipping', file, i)
                         continue
                     node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
                     
-                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post)   #extract node features and labels from data
+                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data
                     
                     adj, edge_attr, problems = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
                     problems.append(problems)
@@ -173,7 +175,7 @@ class HurricaneDataset(Dataset):
             #np.save('problems',np.array(problems))
     
         
-    def get_node_features(self, node_data_pre, node_data_post):
+    def get_node_features(self, node_data_pre, node_data_post, gen_data_pre):
         '''
         extracts the unnormalized node features and labels from the raw data
         
@@ -206,15 +208,32 @@ class HurricaneDataset(Dataset):
         #one hot encoded node IDs
         node_ID = torch.eye(N_BUSES)
 
-        
+        gen_features = self.get_gen_features(gen_data_pre, node_data_pre)
             
         
-        node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), Bs.reshape(-1,1), baseKV.reshape(-1,1), bus_type, node_ID], dim=1)
+        node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), Bs.reshape(-1,1), baseKV.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
         node_labels = torch.tensor(S1-S2)
         
         
         
         return node_features, node_labels
+    
+    def get_gen_features(self, gen_data_pre, node_data_pre):
+        gen_features = torch.zeros(2000, 9)
+        node_index = 0
+        for i in range(len(gen_data_pre)):
+            while gen_data_pre[i,0] != node_data_pre[node_index,0]:
+                node_index += 1
+                if node_index >= 2000: node_index = 0
+            if gen_data_pre[i,0] == node_data_pre[node_index,0]:
+                gen_features[node_index] += torch.tensor(gen_data_pre[i,1:])
+                gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
+                gen_features[node_index][6] = torch.tensor(gen_data_pre[i,7])
+  
+        gen_features = torch.cat([gen_features[:,:6], gen_features[:,7:], gen_features[:,6].reshape(-1,1)], dim=1)
+
+        
+        return gen_features
             
     def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i):
         #Edge Data
@@ -506,22 +525,6 @@ class HurricaneDataset(Dataset):
         step=int(name[i+1:j])
         return scenario,step
                 
-    '''def get_scenario_info(self):
-        #fills the array scenario with the number of steps each scenario contains
-        #deprecated ?
-        scenario=0
-        length=1
-        for index,name in enumerate(self.raw_paths):
-            if index==len(self.raw_paths)-1:
-                self.scenarios[scenario]=length
-                break;
-            s1,_=self.get_scenario_step_of_file(name)
-            s2,_=self.get_scenario_step_of_file(self.raw_paths[index+1])
-            if s1!=s2: 
-                self.scenarios[scenario]=length
-                length=0
-                scenario+=1
-            length+=1'''
     
     def get_initial_damages(self):
         '''
