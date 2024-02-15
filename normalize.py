@@ -10,9 +10,9 @@ import numpy as np
 from torch_geometric.data import Data
 
 def get_min_max_features(processed_dir):
-    x_max=torch.zeros(14)
-    x_min=torch.zeros(14)
-    x_means = torch.zeros(14)
+    x_max=torch.zeros(18)
+    x_min=torch.zeros(18)
+    x_means = torch.zeros(18)
     edge_attr_max=torch.zeros(5)
     edge_attr_min=torch.zeros(5)
     edge_attr_means = torch.zeros(5)
@@ -22,7 +22,7 @@ def get_min_max_features(processed_dir):
 
     node_count = 0
     edge_count = 0
-    for i in range(14):
+    for i in range(18):
         x_max[i] = np.NINF
         x_min[i] = np.Inf
 
@@ -80,7 +80,7 @@ def get_min_max_features(processed_dir):
 
 
 def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
-    x_stds = torch.zeros(14)
+    x_stds = torch.zeros(18)
     edge_stds = torch.zeros(5)
     graph_label_std =0
     node_count = 0
@@ -163,11 +163,11 @@ for file in os.listdir(processed_dir):
         #Node features
         x = data['x']
         #node power
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])) or any(torch.isnan(x[:,3])) or any(torch.isnan(x[:,4])) or any(torch.isnan(x[:,5])):
-            print('NaN Before Normalization x:')
-            print(file)
-            for i in range(len(x[:,1])):
-                for j in range(len(x[1,:])):
+        for j in range(len(x_max)):
+            if any(torch.isnan(x[:,j])):
+                print('NaN Before Normalization x:')
+                print(file)
+                for i in range(len(x[:,1])):
                     if torch.isnan(x[i,j]): print(f'Before, x{j} at bus {i}')
 
 
@@ -180,18 +180,20 @@ for file in os.listdir(processed_dir):
         #Shunt susceptance
         x[:,4] = torch.log(x[:,4]+1+x_min[4]*-1)/torch.log(x_max[4]+1+x_min[4]*-1)
         #baseKV
-        x[:,6] = x[:,5]/500 #baseKV max baseKV in ACTIVSg2000 is 500 (min is 13.8)
+        x[:,5] = x[:,5]/500 #baseKV max baseKV in ACTIVSg2000 is 500 (min is 13.8)
         #Generator Features
         for j in range(8):
-            if j == 6: continue
-            x[:,j] = torch.log(x[:,j]+1)/torch.log(x_max[j]+1) #10 is the first gen feature in node_features, 5 is the first gen_stat since bus_type is not normalized and takes 4 features
+            if j == 3 or j == 1:
+                x[:,j+10] = torch.log(x[:,j+10]+1-x_min[j+10])/torch.log(x_max[j+10]+1-x_min[j+10]) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type    
+            else:
+                x[:,j+10] = torch.log(x[:,j+10]+1)/torch.log(x_max[j+10]+1) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type
 
-        if any(torch.isnan(x[:,0])) or any(torch.isnan(x[:,1])) or any(torch.isnan(x[:,2])) or any(torch.isnan(x[:,3])) or any(torch.isnan(x[:,4])) or any(torch.isnan(x[:,5])):
-            print('NaN After Normalization x:')
-            print(file)
-            for i in range(len(x[:,1])):
-                for j in range(len(x[0,:])):
-                    if torch.isnan(x[i,j]): print(f'After, x{j} {i}')
+        for i in range(len(x_max)):
+            if any(torch.isnan(x[:,i])):
+                print('NaN After Normalization x:')
+                print(file)
+                for j in range(len(x[:,i])):
+                    if torch.isnan(x[j,i]): print(f'After, x{i} {j}')
 
 
         #Edge Features
