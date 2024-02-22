@@ -37,6 +37,7 @@ def get_model(cfg, params):
         elif cfg['model'] == 'TAG':
             print('Using TAG!\n')
             model = TAGNodeReg(
+                num_node_features   = params['num_features'],
                 hidden_size     = params["hidden_size"],
                 num_layers      = params["num_layers"],
                 dropout         = params['dropout'],
