@@ -24,7 +24,7 @@ def get_min_max_features(path):
     x_min = torch.zeros(18)
     edge_attr_max = torch.zeros(5)
     edge_attr_min = torch.zeros(5)
-    for i in range(14):
+    for i in range(18):
         x_max[i] = np.NINF
         x_min[i] = np.Inf
         if i <5:
