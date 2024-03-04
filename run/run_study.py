@@ -8,7 +8,7 @@ Created on Fri May 26 10:18:09 2023
 import ray
 import torch
 
-from ray import tune, air
+from ray import tune, air#, train
 from os.path import isfile
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
@@ -40,13 +40,13 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
 
     """
     # arguments for ray
-    TEMP_DIR = '/p/tmp/tobiasoh/ray_tmp'
+    TEMP_DIR = '~/RAY_TMP'
     N_GPUS = 1
-    N_CPUS = N_CPUS
+    N_CPUS = 1
     port_dashboard = port_dashboard
     # init ray
-    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_CPUS, num_gpus=N_GPUS,
-             include_dashboard=True, dashboard_port=port_dashboard)
+    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_CPUS, num_gpus=N_GPUS)
+             #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
     trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
@@ -112,17 +112,20 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
     # configurations
     tune_config = tune.tune_config.TuneConfig(
         num_samples=cfg['study::n_trials'], search_alg=baysopt, scheduler=scheduler)
-    run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')
+    run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
-
-    
+    trainable = tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features,
+                                num_edge_features=num_edge_features, num_targets=1, device=device, mask_probs=mask_probs)
     # tuner
-    tuner = tune.Tuner(tune.with_resources(
-        tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features,
-                             num_edge_features=num_edge_features, num_targets=1, device=device, mask_probs=mask_probs),
-        resources={"cpu": 1, "gpu": N_GPUS/(N_CPUS/1)}),
-        param_space=search_space,
-        tune_config=tune_config,
-        run_config=run_config)
+    if not cfg['study::continue']:
+        tuner = tune.Tuner(tune.with_resources(
+            trainable,
+            resources={"cpu": 1, "gpu": N_GPUS/(N_CPUS/1)}),
+            param_space=search_space,
+            tune_config=tune_config,
+            run_config=run_config)
+    else:
+        tuner = tune.Tuner.restore(cfg['dataset::path']+'results/'+cfg['study_ID'], trainable=trainable)
+
     results = tuner.fit()
     print(results)
