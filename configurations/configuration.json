@@ -11,6 +11,17 @@
     "n_scenarios":10000,
 
     /*General Run Control*/
+    "cfg_path": "/home/tohlinger/AC-CFM-GNN-1/",
+    "dataset": "hurricane_line_priority",
+    "dataset::path": "/home/tohlinger/AC-CFM-GNN-1/",
+    "study_ID": "objective_2024-03-04_14-23-08/",
+
+    "task":"NodeReg",
+    "data":"AC",
+    "ls_threshold" : 0.25,
+    "N_below_threshold" : 4,
+    "n_scenarios":1229,
+
     "crossvalidation" : false,
     "study::run" : false,
     "study::continue": false,
@@ -19,6 +30,13 @@
     //Specific Run Control
     "checkpointing": false,
     "epochs": 100,
+    "study::run" : true,
+    "study::continue": true,
+
+    "epochs": 50,
+    "N2V_epochs": 20,
+    "model": "GINE",
+    "supernode":false,
     "output_freq" : 1,
     
     /*Data split settings*/
@@ -42,6 +60,7 @@
     "num_lstm_layers"   : 1, 
     //Others
     "dropout": 0.0,
+    "gradclip" : 0.0,
     "use_batchnorm" : true,
     "use_skipcon" : true,
     //GAT Settings
@@ -59,6 +78,32 @@
 
     /*Optimizer Settings*/
     "optim::LR": 2e-3,
+    "num_heads" : 2,
+    "gat_dropout" : 0.1,
+
+    "tag_jumps" : 22,
+
+    "num_conv_targets"  : 32,
+    "lstm_hidden_size"  : 64,
+    "num_lstm_layers"   : 1,
+
+    "embedding_dim" : 16,
+    "walk_length" : 5,
+    "context_size" : 1,
+    "walks_per_node" : 1,
+    "num_negative_samples" : 1,
+    "p" : 1,
+    "q" : 1,
+    
+    "train_size":0.8,
+    "stormsplit" : 4,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 1,
+    "train_set::shuffle": false,
+
+    "accuracy_tolerance":0.15,
+
+    "optim::LR": 2e-4,
     "optim::betas": [
         0.9,
         0.999
@@ -84,6 +129,13 @@
     /*Study Settings*/
     "study::n_trials" : 4,
     "grace_period" : 1,
+    "optim::weight_decay": 2e-7,
+    
+    "manual_seed" : 7,
+
+
+
+    "study::n_trials" : 12,
 
     "study::lr::lower" : -7,
     "study::lr::upper" : -3,
