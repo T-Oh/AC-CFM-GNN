@@ -4,6 +4,7 @@ import numpy as np
 from torch import no_grad, cat
 from torch.cuda.amp import GradScaler, autocast
 from torchmetrics import R2Score
+#from torch.utils.data import collate_fn
 
 
 from utils.utils import discrete_loss
@@ -103,6 +104,7 @@ class Engine(object):
         for (i, batch) in enumerate(dataloader):
             self.optimizer.zero_grad()
             count +=1
+            #yield dataloader.collate_fn(batch)
             batch.to(self.device)
 
             #with autocast(dtype=torch.float16):
