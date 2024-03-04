@@ -569,3 +569,5 @@ results/objective_2024-03-04_14-23-08/objective_efbbcc0f_3_LR=-8.0639,weight_dec
 results/objective_2024-03-04_14-23-08/objective_efbbcc0f_3_LR=-8.0639,weight_decay=-8.0640_2024-03-04_14-23-34/params.pkl
 results/objective_2024-03-04_14-23-08/objective_efbbcc0f_3_LR=-8.0639,weight_decay=-8.0640_2024-03-04_14-23-34/progress.csv
 results/objective_2024-03-04_14-23-08/objective_efbbcc0f_3_LR=-8.0639,weight_decay=-8.0640_2024-03-04_14-23-34/result.json
+scipy.io
+create_test_data.py
