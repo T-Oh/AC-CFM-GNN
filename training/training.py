@@ -43,7 +43,10 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
 
 
     for i in range(1, cfg['epochs'] + 1):
-        print(f'Epoch: {i}')
+
+        print(f'Epoch: {i}', flush=True)
+        t1 = time.time()
+        print('Epoch Start Time:', t1, flush=True)
         temp_train_loss, R2, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
         if cfg['train_size'] == 1:
             temp_eval, eval_output, eval_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
@@ -61,6 +64,8 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
             print(f'Train R2: {R2}')
             #output.append(temp_output)  #can be added to return to save best output instead of last outpu
             #labels.append(temp_labels)
+        t2 = time.time()
+        print(f'Training Epoch took {(t1-t2)/60} mins', flush=True)
             
     if cfg['train_size'] == 1 and cfg['stormsplit'] == 0 and cfg['crossvalidation'] == 0:
         final_eval, final_output, final_labels =  engine.eval(trainloader)
@@ -107,7 +112,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
             criterion = weighted_loss_label(factor = torch.tensor(params['loss_weight']))   
         else:    
             criterion = torch.nn.MSELoss(reduction = 'mean')  #TO defines the loss
-    criterion.to(device)
+    #criterion.to(device)
     optimizer = get_optimizer(cfg, model, params)
     #Init LR Scheduler
     LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)

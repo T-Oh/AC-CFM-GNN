@@ -20,6 +20,10 @@ start = time.time()
 configfile = "configurations/configuration.json"
 with open(configfile, "r") as io:
     cfg = json.load(io)
+
+#Pass Input Arguments
+N_CPUS = int(argv[1])
+port_dashboard = int(argv[2])
     
 
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
@@ -44,23 +48,22 @@ torch.cuda.manual_seed(cfg["manual_seed"])
 numpy_seed(cfg["manual_seed"])
 if device == "cuda":
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.benchmark = True
+
 
 
 # Runs study if set in configuration file
 if cfg["study::run"]:
-    #N_CPUS = int(argv[1])
-    #port_dashboard = int(argv[2])
-    #model = run_study(cfg, device, N_CPUS, port_dashboard)
-    model = run_study(cfg, device, 1, 8123)
+    model = run_study(cfg, device, N_CPUS, port_dashboard)
+    #model = run_study(cfg, device, 1, 8123)
 
 #Runs crossvalidation
 elif cfg['crossvalidation']:
-    model = run_crossval(cfg, device)
+    model = run_crossval(cfg, device, N_CPUS=N_CPUS)
 
 #Runs a single configuration    
 else:
-    model = run_single(cfg, device)
+    model = run_single(cfg, device, N_CPUS=N_CPUS)
 
 
 
