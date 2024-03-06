@@ -48,7 +48,7 @@ class HurricaneDataset(Dataset):
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
-        print(self.data_list)
+        #print(self.data_list)
         
         
     
@@ -740,6 +740,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     """
     print('Creating Datasets...')
     t1 = time.time()
+    print(t1, flush=True)
     dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, 
                                embedding=embedding, data_type=data_type, ls_threshold=cfg['ls_threshold'], N_below_threshold=cfg['N_below_threshold'])
     data_list = dataset.data_list
@@ -770,11 +771,11 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     testset = Subset(dataset, range(last_train_sample, len_dataset))
     
     t2 = time.time()
-    print(f'Creating datasets took {(t1-t2)/60} mins')
+    print(f'Creating datasets took {(t1-t2)/60} mins', flush=True)
 
     return trainset, testset, data_list 
 
-def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=False): 
+def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=False, data_type='AC', num_workers=0, pin_memory=False): 
     """
     Helper function which creates the dataloaders and
     pre-computes the means of the testset labels for more
@@ -800,12 +801,9 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
             shuffle=cfg["train_set::shuffle"]
         )
     else:
-        trainloader = DataLoader(trainset,
-            batch_size=cfg["train_set::batchsize"],
-            shuffle=cfg["train_set::shuffle"]
-        )
-
-    testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"])
+        trainloader = DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], num_workers=num_workers, pin_memory=pin_memory)
+    
+    testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], num_workers=num_workers, pin_memory=pin_memory)
 
     if pre_compute_mean:
         mean_labels = 0.
