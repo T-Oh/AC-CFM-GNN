@@ -11,8 +11,9 @@
     "n_scenarios":1229,
 
     "crossvalidation" : false,
-    "study::run" : true,
+    "study::run" : false,
     "study::continue": true,
+    "study::parallel_trials": 4,
 
     "epochs": 50,
     "N2V_epochs": 20,
