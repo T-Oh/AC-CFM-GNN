@@ -32,6 +32,7 @@
     "epochs": 100,
     "study::run" : true,
     "study::continue": true,
+    "study::parallel_trials": 4,
 
     "epochs": 50,
     "N2V_epochs": 20,
