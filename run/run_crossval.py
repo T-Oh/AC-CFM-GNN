@@ -20,7 +20,7 @@ from training.engine import Engine
 from training.training import run_training
 
 
-def run_crossval(cfg, device):
+def run_crossval(cfg, device, N_CPUS=0):
     """
     runs the crossvalidation
     INPUT
@@ -40,7 +40,9 @@ def run_crossval(cfg, device):
     if cfg['model'] == 'Node2Vec':
         trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)     #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     else:
-        trainloader, testloader = create_loaders(cfg, trainset, testset)
+        if device == 'cuda' :   pin_memory=True
+        else                :   pin_memory=False
+        trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory)
 
     # Calculate probabilities for masking of nodes if necessary
     if cfg['use_masking']:
@@ -88,7 +90,7 @@ def run_crossval(cfg, device):
         criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
     else:
         criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
-    criterion.to(device)
+    #criterion.to(device)
 
  
          

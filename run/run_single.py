@@ -21,7 +21,7 @@ from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
 
-def run_single(cfg, device):
+def run_single(cfg, device, N_CPUS):
     """
     Trains a single model (i.e. no cross-validation and no study)
     """
@@ -51,10 +51,12 @@ def run_single(cfg, device):
 
         # Create Datasets and Dataloaders
         trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+        if device == 'cuda':    pin_memory = True
+        else:                   pin_memory = False
         if cfg['model'] == 'Node2Vec':
              trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         else:
-             trainloader, testloader = create_loaders(cfg, trainset, testset)
+             trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory)
 
         # Calculate probabilities for masking of nodes if necessary
         if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
@@ -107,7 +109,7 @@ def run_single(cfg, device):
                 factor=torch.tensor(cfg['weighted_loss_factor']))
         else:
             criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
-        criterion.to(device)
+        #criterion.to(device)
 
         # Loading GNN model
         model = get_model(cfg, params)

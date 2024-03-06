@@ -41,16 +41,17 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
     """
     # arguments for ray
     TEMP_DIR = '~/RAY_TMP'
-    N_GPUS = 1
-    N_CPUS = 1
+
     port_dashboard = port_dashboard
     # init ray
-    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_CPUS, num_gpus=N_GPUS)
+    ray.init( _temp_dir=TEMP_DIR,num_cpus=cfg['study::parallel_trials'], num_gpus=1)
              #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
     trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
-    trainloader, testloader = create_loaders(cfg, trainset, testset)
+    if device == 'cuda' :   pin_memory=True
+    else                :   pin_memory=False
+    trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS/cfg['study::parallel_trials']), pin_memory=pin_memory)
    
     
     # getting feature and target sizes
