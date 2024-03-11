@@ -11,7 +11,7 @@ from run.run_single import run_single
 from run.run_crossval import run_crossval
 from run.run_study import run_study
 
-#TEST
+
 
 # get time
 start = time.time()
@@ -22,9 +22,11 @@ with open(configfile, "r") as io:
     cfg = json.load(io)
 
 #Pass Input Arguments
-N_CPUS = int(argv[1])
-port_dashboard = int(argv[2])
-    
+N_TASKS = int(argv[1])  #should only be >1 for studies -> controls the number of parallel trials
+N_CPUS_PER_TASK = int(argv[2])   #controls the number of cpus per trial used as dataloaders (for run_single and run_crossval should be total number of cpus (used as loaders))
+port_dashboard = int(argv[3])
+print('N_TASKS:', N_TASKS)
+print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK, flush=True)    
 
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
 assert not (cfg['data'] == 'DC' and cfg['stormsplit']>0), 'Stormsplit can only be used with AC data'
@@ -54,16 +56,16 @@ if device == "cuda":
 
 # Runs study if set in configuration file
 if cfg["study::run"]:
-    model = run_study(cfg, device, N_CPUS, port_dashboard)
+    model = run_study(cfg, device, N_TASKS, N_CPUS_PER_TASK, port_dashboard)
     #model = run_study(cfg, device, 1, 8123)
 
 #Runs crossvalidation
 elif cfg['crossvalidation']:
-    model = run_crossval(cfg, device, N_CPUS=N_CPUS)
+    model = run_crossval(cfg, device, N_CPUS=N_CPUS_PER_TASK)
 
 #Runs a single configuration    
 else:
-    model = run_single(cfg, device, N_CPUS=N_CPUS)
+    model = run_single(cfg, device, N_CPUS=N_CPUS_PER_TASK)
 
 
 

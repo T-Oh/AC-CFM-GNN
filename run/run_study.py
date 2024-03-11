@@ -19,7 +19,7 @@ from models.run_node2vec import run_node2vec
 
 
 
-def run_study(cfg, device, N_CPUS, port_dashboard):
+def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     """
     Runs a ray study as defined in the configuration file
 
@@ -40,18 +40,19 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
 
     """
     # arguments for ray
-    TEMP_DIR = '~/RAY_TMP'
+    TEMP_DIR = '/home/tohlinger/RAY_TMP2'
 
     port_dashboard = port_dashboard
+    N_GPUS=1
     # init ray
-    ray.init( _temp_dir=TEMP_DIR,num_cpus=cfg['study::parallel_trials'], num_gpus=1)
+    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS, num_gpus=N_GPUS)
              #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
     trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
     if device == 'cuda' :   pin_memory=True
     else                :   pin_memory=False
-    trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS/cfg['study::parallel_trials']), pin_memory=pin_memory)
+    trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
    
     
     # getting feature and target sizes
@@ -121,7 +122,7 @@ def run_study(cfg, device, N_CPUS, port_dashboard):
     if not cfg['study::continue']:
         tuner = tune.Tuner(tune.with_resources(
             trainable,
-            resources={"cpu": 1, "gpu": N_GPUS/(N_CPUS/1)}),
+            resources={"cpu": 1, "gpu": N_GPUS/(N_TASKS/1)}),
             param_space=search_space,
             tune_config=tune_config,
             run_config=run_config)

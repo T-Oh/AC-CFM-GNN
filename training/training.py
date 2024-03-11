@@ -59,7 +59,7 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
         test_loss.append(temp_eval[0])
         test_R2.append(temp_eval[1])
         if i % cfg['output_freq'] == 0:
-            logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / train R2 {R2}/ test R2 {temp_eval[1]} / test discrete measure {temp_eval[3]}")
+            logging.info(f"Epoch {i}: training loss {temp_train_loss} / test_loss {temp_eval[0]} / test accuracy {temp_eval[2]} / train R2 {R2}/ test R2 {temp_eval[1]}")
             print(f'TrainLoss: {temp_train_loss}')
             print(f'Train R2: {R2}')
             #output.append(temp_output)  #can be added to return to save best output instead of last outpu
@@ -95,7 +95,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     print('\nSEARCH_SPACE:\n')
     print(search_space)
     print('PARAMS')
-    print(params)
+    print(params, flush=True)
     if device=='cuda':
         print('CUDA')
         tune.utils.wait_for_gpu(target_util=0.66)
@@ -122,14 +122,14 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
     used_lr=engine.optimizer.param_groups[0]['lr']
     used_weight_decay = engine.optimizer.param_groups[0]['weight_decay']
     print(f'LR: {used_lr}')
-    print(f'Weight Decay: {used_weight_decay}')
+    print(f'Weight Decay: {used_weight_decay}',flush=True)
     logging.info('New parameters suggested:')
     for key in search_space.keys():
         logging.info(f"{key}: {search_space[key]}")
     
     test_losses = []
     train_losses = []
-    discrete_measure = []
+    #discrete_measure = []
     test_R2 = []
     train_R2 = []
     start = time.time()
@@ -140,12 +140,11 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
         if i % cfg['output_freq'] == 0:
             eval_score, _, _ =  engine.eval(testloader)  
             test_losses.append(eval_score[0].cpu())
-            discrete_measure.append(eval_score[3].cpu())
+            #discrete_measure.append(eval_score[3].cpu())
             test_R2.append(eval_score[1].cpu())
             train_R2.append(temp_train_R2.cpu())
-            logging.info(f"Epoch {i}: Train Loss: {train_loss} // Test Loss: {eval_score[0]} // Train R2: {temp_train_R2} // Test R2: {eval_score[1]} // accuracy {eval_score[2]} // discrete measure {eval_score[3]}")
+            logging.info(f"Epoch {i}: Train Loss: {train_loss} // Test Loss: {eval_score[0]} // Train R2: {temp_train_R2} // Test R2: {eval_score[1]} // accuracy {eval_score[2]}")
             result = {
-                'discrete_measure' : eval_score[3].detach(),
                 'train_loss' : train_loss,
                 'test_loss' : eval_score[0].detach(),
                 'train_R2' : temp_train_R2.detach(),
@@ -175,13 +174,13 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
 
     end = time.time()
     logging.info(f'Runtime: {(end-start)/60} min')
-    discrete_measure = torch.tensor(discrete_measure).detach()
+    #discrete_measure = torch.tensor(discrete_measure).detach()
     train_losses = torch.tensor(train_losses).detach()
     test_losses = torch.tensor(test_losses).detach()
     train_R2 = torch.tensor(train_R2).cpu().detach()
     test_R2 = torch.tensor(test_R2).cpu().detach()
     result = {
-        'discrete_measure' : discrete_measure.min(),
+        #'discrete_measure' : discrete_measure.min(),
         'train_loss' : train_losses.min(),
         'test_loss' : test_losses.min(),
         'train_R2' : train_R2.cpu().min(),
