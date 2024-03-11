@@ -216,7 +216,7 @@ class Engine(object):
         with no_grad():
             with autocast():
                 loss = 0.
-                discrete_measure = 0.
+                #discrete_measure = 0.
                 correct = 0
                 
                 first = True
