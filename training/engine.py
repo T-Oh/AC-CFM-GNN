@@ -5,9 +5,10 @@ import time
 from torch import no_grad, cat
 from torch.cuda.amp import GradScaler, autocast
 from torchmetrics import R2Score
+#from torch.utils.data import collate_fn
 
 
-from utils.utils import discrete_loss
+#from utils.utils import discrete_loss
 from datasets.dataset import mask_probs_add_bias
 
 
@@ -107,6 +108,7 @@ class Engine(object):
             #self.optimizer.zero_grad(set_to_none=True)
             self.optimizer.zero_grad()
             count +=1
+            #yield dataloader.collate_fn(batch)
             batch.to(self.device)
 
             with autocast():
@@ -258,7 +260,7 @@ class Engine(object):
                 correct = ((labels-output).abs() < self.tol).sum().item()
                 accuracy = correct/len(dataloader.dataset)
                 #TO end
-            evaluation = [loss, R2, accuracy, discrete_measure/count]
+            evaluation = [loss, R2, accuracy]#, discrete_measure/count]
             if not full_output:
                 example_output = np.array(output[0:16000].cpu())
                 example_labels = np.array(labels[0:16000].cpu())

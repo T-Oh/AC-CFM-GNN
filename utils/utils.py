@@ -539,6 +539,12 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
         #Params for TAG
         "K"     :   cfg['tag_jumps'],
 
+        #Params for LSTM
+        "num_conv_targets"  :   cfg['num_conv_targets'],
+        'lstm_hidden_size'  :   cfg['lstm_hidden_size'],
+        'num_lstm_layers'   :   cfg['num_lstm_layers'],
+        'len_sequence'      :   12,
+
         #Params for Node2vec
         'embedding_dim'   :   cfg['embedding_dim'],
         'walk_length'     :   cfg['walk_length'],

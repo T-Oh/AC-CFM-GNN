@@ -10,6 +10,7 @@ import numpy as np
 from torch_geometric.data import Data
 
 def get_min_max_features(processed_dir):
+    
     x_max=torch.zeros(18)
     x_min=torch.zeros(18)
     x_means = torch.zeros(18)
@@ -86,6 +87,7 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
     node_count = 0
     edge_count = 0
     graph_count = 0
+    
     for file in os.listdir(processed_dir):
         if file.startswith('data'):
             graph_count += 1
@@ -104,7 +106,8 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
                 edge_count += 1
             graph_label = data['y']
             graph_label_std += (graph_label - graph_label_mean)**2
-        return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count), np.sqrt(graph_label_std/graph_count)
+
+    return np.sqrt(x_stds/node_count), np.sqrt(edge_stds/edge_count), np.sqrt(graph_label_std/graph_count)
     
     
 processed_dir = 'processed/'
