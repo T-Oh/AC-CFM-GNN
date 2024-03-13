@@ -8,7 +8,7 @@ from torchmetrics import R2Score
 #from torch.utils.data import collate_fn
 
 
-from utils.utils import discrete_loss
+#from utils.utils import discrete_loss
 from datasets.dataset import mask_probs_add_bias
 
 
@@ -260,7 +260,7 @@ class Engine(object):
                 correct = ((labels-output).abs() < self.tol).sum().item()
                 accuracy = correct/len(dataloader.dataset)
                 #TO end
-            evaluation = [loss, R2, accuracy, discrete_measure/count]
+            evaluation = [loss, R2, accuracy]#, discrete_measure/count]
             if not full_output:
                 example_output = np.array(output[0:16000].cpu())
                 example_labels = np.array(labels[0:16000].cpu())

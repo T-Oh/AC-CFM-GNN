@@ -131,7 +131,6 @@ class HurricaneDataset(Dataset):
         #load initial network data
         init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
         num_nodes = len(init_data['ans'][0,0][2])
-        problems = [[0,0,0],[0,0,0]]    #used for error identification during processing
         below_threshold_count = 0
 
 
@@ -166,8 +165,8 @@ class HurricaneDataset(Dataset):
                     
 
                     node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data                    
-                    adj, edge_attr, problems_ = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
-                    problems.append(problems_)
+                    adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
+                    
                     graph_label = node_labels.sum()
                     
                     if self.data_type == 'LSTM':
@@ -282,21 +281,12 @@ class HurricaneDataset(Dataset):
         pf2 = edge_data[:,15]
         qf2 = edge_data[:,16]
         
-        problems = []
-        
-        if any(np.isnan(pf1[status==1])) or any(np.isnan(qf1[status==1])) or any(np.isnan(pf2[status==1])) or any(np.isnan(qf2[status==1])):
-            problems.append(self.find_nans(status, pf1, scenario, i))
-            problems.append(self.find_nans(status, pf2, scenario, i))
-            problems.append(self.find_nans(status, qf1, scenario, i))
-            problems.append(self.find_nans(status, qf2, scenario, i))
-
         
         #initial damages
         init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
         #set initially damaged lines to 0
         for step in range(len(damages[scenario])):
             if damages[scenario][step,0] == i:
-                status[damages[scenario][step,1]] = 0 
                 init_dmg[damages[scenario][step,1]] = 1 
                 
         #Adjacency Matrix
@@ -308,7 +298,6 @@ class HurricaneDataset(Dataset):
         adj_from = []   #adjacency matrix from/to -> no edges appearing twice
         adj_to = []
         rating_feature = [] #new list because orig data contains multiple lines along the same edge which are combined here
-        status_feature = []
         resistance_feature = []
         reactance_feature = []
         init_dmg_feature = [] #always zero except if the line was an initial damage during this step -> then 1
@@ -316,7 +305,7 @@ class HurricaneDataset(Dataset):
         pf_feature = []
         qf_feature = []
         #Add edges and the respective features, edges are always added in both directions, so that the pf can be directional, the other features
-        #are added to both directions
+        #   are added to both directions
         for j in range(len(bus_from)):
             id_from = int(np.where(bus_id==bus_from[j])[0]) #bus_id where line starts
             id_to = int(np.where(bus_id==bus_to[j])[0])     #bus_id where line ends
@@ -327,15 +316,10 @@ class HurricaneDataset(Dataset):
                 for k in range(len(adj_from)):  #check all appeareances of bus from in adj_from
                     if adj_from[k] == id_from and adj_to[k] == id_to: #if bus from and bus to are at the same entry update their edge features
                         exists = True                       #mark as edge exists
-                        if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
-                            status_feature[k] = status[j]
-                        if status_feature[k] == 0:
-                            rating_feature[k] = 0
-                            resistance_feature[k] = 1
-                            reactance_feature[k] = 1
-                            pf_feature[k] = 0
-                            qf_feature[k] = 0
-                        else:
+                        """if status[j] == 0:      #remove existing edge if status is inactive
+                            adj_from.remove(k)
+                            adj_to.remove(k)"""
+                        if status[j]==1:
                             rating_feature[k] += rating[j]      #add the capacities (ratings)
                             resistance_feature[k], reactance_feature[k] =self.calc_total_resistance_reactance(resistance_feature[k], resistance[j], reactance_feature[k], reactance[j])
                             pf_feature[k] += pf1[j]         #add PF
@@ -348,15 +332,11 @@ class HurricaneDataset(Dataset):
                 for k in range(len(adj_to)):
                     if adj_to[k] == id_from and adj_from[k] == id_to:
                         exists = True
-                        if status_feature[k] != 0:          #if status 0 keep 0 otherwise set to status of additional edge
-                            status_feature[k] = status[j]
-                        if status_feature[k] == 0:
-                            rating_feature[k] = 0
-                            resistance_feature[k] = 1
-                            reactance_feature[k] = 1
-                            pf_feature[k] = 0
-                            qf_feature[k] = 0
-                        else:
+
+                        """if status[j] == 0:
+                            adj_to.remove(k)
+                            adj_from.remove(k)"""
+                        if status[j] == 1:
                             rating_feature[k] += rating[j]      #add the capacities (ratings)
                             resistance_feature[k], reactance_feature[k] = self.calc_total_resistance_reactance(resistance_feature[k],resistance[j],reactance_feature[k], reactance[j])
                             pf_feature[k] += qf2[j]
@@ -365,15 +345,18 @@ class HurricaneDataset(Dataset):
                         if init_dmg_feature[k] != 1:
                             init_dmg_feature[k] = init_dmg[j]
                         
-            if exists: continue
+            if exists: 
+                continue
             #if edge does not exist yet add it in both directions
-            else:
+            elif status[j]==1:
+                
                 #First direction
                 
                 adj_from.append(id_from)
                 adj_to.append(id_to)
+                #print(3, j, len(adj_from), int(bus_from[j]), int(bus_to[j]), int(status[j]))
     
-                status_feature.append(status[j])
+                #status_feature.append(status[j])
     
                 init_dmg_feature.append(init_dmg[j])
                 if status[j] !=0:
@@ -396,10 +379,11 @@ class HurricaneDataset(Dataset):
                 adj_from.append(id_to)
                 adj_to.append(id_from)
                 rating_feature.append(rating[j])
-                status_feature.append(status[j])
+                #status_feature.append(status[j])
                 resistance_feature.append(resistance[j])
                 reactance_feature.append(reactance[j])
                 init_dmg_feature.append(init_dmg[j])
+            
             
 
             
@@ -407,9 +391,9 @@ class HurricaneDataset(Dataset):
         #compile data of step to feature matrices                
         adj = torch.tensor([adj_from,adj_to])
 
-        edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, status_feature, resistance_feature, reactance_feature, init_dmg_feature])
+        edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, resistance_feature, reactance_feature, init_dmg_feature])
         
-        return adj, edge_attr, problems
+        return adj, edge_attr
       
     def find_nans(status, feature, scenario, i):
         #Check for NaNs
