@@ -1,20 +1,27 @@
 {
-    "cfg_path": "/home/tohlinger/AC-CFM-GNN-1/",
+    "cfg_path": "",
     "dataset": "hurricane_line_priority",
-    "dataset::path": "/home/tohlinger/AC-CFM-GNN-1/",
+    "dataset::path": "",
     "study_ID": "objective_2024-03-04_14-23-08/",
 
     "task":"NodeReg",
     "data":"AC",
     "ls_threshold" : 0.25,
-    "N_below_threshold" : 4,
+    "N_below_threshold" : 3,
     "n_scenarios":1229,
 
     "crossvalidation" : false,
-    "study::run" : true,
-    "study::continue": true,
+    "study::run" : false,
+    "study::continue": false,
 
-    "epochs": 50,
+    "train_size":1,
+    "stormsplit" : 0,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 1,
+    "train_set::shuffle": false,
+    "checkpointing": false,
+
+    "epochs": 200,
     "N2V_epochs": 20,
     "model": "GINE",
     "supernode":false,
@@ -22,7 +29,7 @@
     
 
     "num_layers": 2,
-    "hidden_size": 150,
+    "hidden_size": 250,
     "reghead_size": 141,
     "reghead_layers" : 2,
    
@@ -52,12 +59,6 @@
     "p" : 1,
     "q" : 1,
     
-    "train_size":0.8,
-    "stormsplit" : 4,
-    "test_set::batchsize": 1,
-    "train_set::batchsize": 1,
-    "train_set::shuffle": false,
-
     "accuracy_tolerance":0.15,
 
     "optim::LR": 2e-4,
