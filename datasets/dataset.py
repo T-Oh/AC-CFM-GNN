@@ -208,7 +208,7 @@ class HurricaneDataset(Dataset):
             node_features:  torch.tensor of node features
             node_labels:    torch.tensor of node labels
         '''
-              
+             
         P1 = torch.tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
         Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
         S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
@@ -232,8 +232,17 @@ class HurricaneDataset(Dataset):
         
             #one hot encoded node IDs
             node_ID = torch.eye(N_BUSES)
-
+        
+        #adjust features of inactive buses
+        P1[bus_type[:,3]==1] = 0
+        Q1[bus_type[:,3]==1] = 0
+        S1[bus_type[:,3]==1] = 0
+        Vm[bus_type[:,3]==1] = 0
+        Va[bus_type[:,3]==1] = 0
+        Bs[bus_type[:,3]==1] = 0
+        
         gen_features = self.get_gen_features(gen_data_pre, node_data_pre)
+
             
         if self.data_type == 'AC':
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), Bs.reshape(-1,1), baseKV.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
@@ -251,16 +260,46 @@ class HurricaneDataset(Dataset):
         else: gen_features = torch.zeros(2000,2)
         node_index = 0
         for i in range(len(gen_data_pre)):
-            while gen_data_pre[i,0] != node_data_pre[node_index,0]:
+            while gen_data_pre[i,0] != node_data_pre[node_index,0]: #get the node belonging to the generator
                 node_index += 1
                 if node_index >= 2000: node_index = 0
             if gen_data_pre[i,0] == node_data_pre[node_index,0]:
-                if self.data_type == 'AC':
-                    gen_features[node_index] += torch.tensor(gen_data_pre[i,1:])
-                    gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
-                    gen_features[node_index][6] = torch.tensor(gen_data_pre[i,7])
-                else:
-                    gen_features[node_index] += torch.tensor(gen_data_pre[i,1:3])
+
+                if gen_data_pre[i,7] >0 and node_data_pre[node_index,1]!=4:    #if generator is active and bus is active
+                    gen_features[node_index][:2] += torch.tensor(gen_data_pre[i,1:3])    #only adds p and q if the generator is active since ac-cfm does not update inactive buses
+                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                        gen_features[node_index][6] = 1
+                        if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
+                        else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
+                        gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
+                        if gen_features[node_index][8] == 0:    gen_features[node_index][8]=torch.tensor(gen_data_pre[i,9])
+                        else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
+
+                elif node_data_pre[node_index,1] != 4:   #if gen is inactive but bus is active
+                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                        gen_features[node_index][6] = gen_features[node_index][6]   #if bus is active but generator isnt leave state as is since an active gen could be connected
+                        #set lower limits and voltage set point only to inactive values if there are no existing values yet
+                        if gen_features[node_index][3] == 0: gen_features[node_index][3] = gen_data_pre[i,4]    #Pmin
+                        if gen_features[node_index][4] == 0: gen_features[node_index][4] = gen_data_pre[i,5]    #voltage set point
+                        if gen_features[node_index][8] == 0: gen_features[node_index][8] = gen_data_pre[i,9]    #Qmin  
+
+                else:   #this case is only entered if bus is inactive then all gens should also be counted as inactive 
+                    gen_features[node_index][:2] = 0
+                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                        if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
+                        else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
+                        gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
+                        gen_features[node_index][6] = 0     
+                        if gen_features[node_index][8] == 0:    gen_features[node_index][8]=torch.tensor(gen_data_pre[i,9])
+                        else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
+                        
+                if self.data_type == 'AC':  #features that are treated equally for active and inactive busses and generatos
+                    gen_features[node_index][2] += torch.tensor(gen_data_pre[i,3])    
+                    gen_features[node_index][5] += torch.tensor(gen_data_pre[i,6])
+                    gen_features[node_index][7] += torch.tensor(gen_data_pre[i,8])
+                    
+
+                
         if self.data_type == 'AC':
             gen_features = torch.cat([gen_features[:,:6], gen_features[:,7:], gen_features[:,6].reshape(-1,1)], dim=1)
 
