@@ -56,10 +56,10 @@ def get_min_max_features(path):
             if edge_attr[i,1] < edge_attr_min[1]: edge_attr_min[1] = edge_attr[i,1]
             if edge_attr[i,2] > edge_attr_max[2]: edge_attr_max[2] = edge_attr[i,2]
             if edge_attr[i,2] < edge_attr_min[2]: edge_attr_min[2] = edge_attr[i,2]
-            if edge_attr[i,4] > edge_attr_max[3]: edge_attr_max[3] = edge_attr[i,4]
-            if edge_attr[i,4] < edge_attr_min[3]: edge_attr_min[3] = edge_attr[i,4]
-            if edge_attr[i,5] > edge_attr_max[4]: edge_attr_max[4] = edge_attr[i,5]
-            if edge_attr[i,5] < edge_attr_min[4]: edge_attr_min[4] = edge_attr[i,5]
+            if edge_attr[i,3] > edge_attr_max[3]: edge_attr_max[3] = edge_attr[i,3]
+            if edge_attr[i,3] < edge_attr_min[3]: edge_attr_min[3] = edge_attr[i,3]
+            if edge_attr[i,4] > edge_attr_max[4]: edge_attr_max[4] = edge_attr[i,4]
+            if edge_attr[i,4] < edge_attr_min[4]: edge_attr_min[4] = edge_attr[i,4]
             
         if torch.is_tensor(torch.load(path+file)['node_labels']):
             print('TEST')
@@ -72,8 +72,8 @@ def get_min_max_features(path):
 
 
 PLOT_ONLY = False
-path='/home/tohlinger/AC-CFM-GNN-1/processed/'
-NAME = 'Ike_new_features'
+path='/home/tohlinger/HUI/Documents/hi-accf-ml/processed/'
+NAME = 'test'
 
 if PLOT_ONLY:
     data = np.load(NAME + '.npz')
@@ -87,7 +87,7 @@ if PLOT_ONLY:
     edgehist4 = data['edgehist4']
     edgehist5 = data['edgehist5']
     edgehist6 = data['edgehist6']
-    edgehist7 = data['edgehist7']
+    #edgehist7 = data['edgehist7']
     
     edgebins1 = data['edgebins1']
     edgebins2 = data['edgebins2']
@@ -95,7 +95,7 @@ if PLOT_ONLY:
     edgebins4 = data['edgebins4']
     edgebins5 = data['edgebins5']
     edgebins6 = data['edgebins6']
-    edgebins7 = data['edgebins7']
+    #edgebins7 = data['edgebins7']
     
     node_label_hist = data['node_label_hist']
     
@@ -109,7 +109,14 @@ else:
     
     x_bins = np.zeros([len(x_max),10])
     for i in range(len(x_max)):
-        x_bins[i] = np.arange(x_min[i],x_max[i],(x_max[i]-x_min[i])/10)
+        print(i)
+        print(x_max[i])
+        print(x_min[i])
+        print(np.arange(x_min[i],x_max[i]+x_max[i]/10,(x_max[i]-x_min[i])/9))
+        if x_max[i]<=0:
+            x_bins[i] = np.arange(x_min[i],x_max[i]-x_min[i]/10,(x_max[i]-x_min[i])/9)
+        else:
+            x_bins[i] = np.arange(x_min[i],x_max[i]+x_max[i]/10,(x_max[i]-x_min[i])/9)
     """x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
     x2bins=np.arange(x_min[1],x_max[1]+x_max[1]/10,(x_max[1]-x_min[1])/10)
     x3bins=np.arange(x_min[2],x_max[2]+x_max[2]/10,(x_max[2]-x_min[2])/10)
@@ -117,10 +124,10 @@ else:
     edgebins1 = np.arange(edge_attr_min[0],edge_attr_max[0]+edge_attr_max[0]/10,(edge_attr_max[0]-edge_attr_min[0])/10)
     edgebins2 = np.arange(edge_attr_min[1],edge_attr_max[1]+edge_attr_max[1]/10,(edge_attr_max[1]-edge_attr_min[1])/10)
     edgebins3 = np.arange(edge_attr_min[2],edge_attr_max[2]+edge_attr_max[2]/10,(edge_attr_max[2]-edge_attr_min[2])/10)
-    edgebins4 = np.arange(0,1.1,1/10)
-    edgebins5 = np.arange(edge_attr_min[3],edge_attr_max[3]+edge_attr_max[3]/10,(edge_attr_max[3]-edge_attr_min[3])/10)
-    edgebins6 = np.arange(edge_attr_min[4],edge_attr_max[4]+edge_attr_max[4]/10,(edge_attr_max[4]-edge_attr_min[4])/10)
-    edgebins7 = np.arange(0,1.1,1/10)
+    #edgebins4 = np.arange(0,1.1,1/10)
+    edgebins4 = np.arange(edge_attr_min[3],edge_attr_max[3]+edge_attr_max[3]/10,(edge_attr_max[3]-edge_attr_min[3])/10)
+    edgebins5 = np.arange(edge_attr_min[4],edge_attr_max[4]+edge_attr_max[4]/10,(edge_attr_max[4]-edge_attr_min[4])/10)
+    edgebins6 = np.arange(0,1.1,1/10)
     
     
     #labelbins=np.arange(label_min,label_max,(label_max-label_min)/10)
@@ -144,10 +151,10 @@ else:
                 edgehist1 = get_hist(data['edge_attr'][:,0],edgebins1)
                 edgehist2 = get_hist(data['edge_attr'][:,1],edgebins2)
                 edgehist3 = get_hist(data['edge_attr'][:,2],edgebins3)
+                #edgehist4 = get_hist(data['edge_attr'][:,3],edgebins4)
                 edgehist4 = get_hist(data['edge_attr'][:,3],edgebins4)
                 edgehist5 = get_hist(data['edge_attr'][:,4],edgebins5)
                 edgehist6 = get_hist(data['edge_attr'][:,5],edgebins6)
-                edgehist7 = get_hist(data['edge_attr'][:,6],edgebins7)
                 #labelhist = get_hist(data['y'],labelbins)
                 node_label_hist=get_hist(data['node_labels'], node_label_bins)
                 first = False
@@ -165,7 +172,7 @@ else:
                 edgehist4_temp = get_hist(data['edge_attr'][:,3],edgebins4)
                 edgehist5_temp = get_hist(data['edge_attr'][:,4],edgebins5)
                 edgehist6_temp = get_hist(data['edge_attr'][:,5],edgebins6)
-                edgehist7_temp = get_hist(data['edge_attr'][:,6],edgebins7)
+                #edgehist7_temp = get_hist(data['edge_attr'][:,6],edgebins7)
                 #labelhist_temp = get_hist(data['y'],labelbins)
                 node_label_hist_temp = get_hist(data['node_labels'],node_label_bins)
 
@@ -175,13 +182,13 @@ else:
                 edgehist4 += edgehist4_temp
                 edgehist5 += edgehist5_temp
                 edgehist6 += edgehist6_temp
-                edgehist7 += edgehist7_temp
+                #edgehist7 += edgehist7_temp
                 #labelhist += labelhist_temp
                 node_label_hist += node_label_hist_temp
-    np.savez(NAME,x_hists = x_hists, edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, edgehist7=edgehist7,
+    np.savez(NAME,x_hists = x_hists, edgehist1=edgehist1, edgehist2=edgehist2, edgehist3=edgehist3, edgehist4=edgehist4, edgehist5=edgehist5, edgehist6=edgehist6, #edgehist7=edgehist7,
                                      node_label_hist=node_label_hist,
                                      x_bins = x_bins,
-                                     edgebins1=edgebins1, edgebins2=edgebins2, edgebins3=edgebins3, edgebins4=edgebins4, edgebins5=edgebins5, edgebins6=edgebins6, edgebins7=edgebins7,
+                                     edgebins1=edgebins1, edgebins2=edgebins2, edgebins3=edgebins3, edgebins4=edgebins4, edgebins5=edgebins5, edgebins6=edgebins6, #edgebins7=edgebins7,
                                      node_label_bins=node_label_bins)
     
     
@@ -331,47 +338,48 @@ fig22.savefig(path+"ac_node_feature_distr_genPMin_"+NAME+".png", bbox_inches='ti
 
 
 fig3,ax3=plt.subplots()
-ax3.bar(edgebins1[0:10],edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')
+ax3.bar(edgebins1,edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')
 #ax3.set_title("Edge Feature Capacity")
 ax3.set_xlabel("Capacity [MVA]")
 ax3.set_ylabel('Number of Nodes')
 fig3.savefig(path+"ac_edge_feature_capacity_distr_"+NAME+".png", bbox_inches='tight')
 
 fig4,ax4=plt.subplots()
-ax4.bar(edgebins2[0:10],edgehist2,width=edgebins2[1]-edgebins2[0],align='edge')
+ax4.bar(edgebins2,edgehist2,width=edgebins2[1]-edgebins2[0],align='edge')
 #ax4.set_title("Active PF")
 ax4.set_xlabel("Active Power Flow [MVA]")
 ax4.set_ylabel('Number of Nodes')
-fig4.savefig(path+"ac_edge_feature_active_pf_distr_"+NAME+".png", bbox_inches='tight')
+fig4.savefig(path+"ac_edge_feature_pf_distr_"+NAME+".png", bbox_inches='tight')
 
 fig6,ax6=plt.subplots()
-ax6.bar(edgebins3[0:10],edgehist3,width=edgebins3[1]-edgebins3[0],align='edge')
+ax6.bar(edgebins3,edgehist3,width=edgebins3[1]-edgebins3[0],align='edge')
 #ax6.set_title("Edge Feature reactive PF")
 ax6.set_xlabel("Reactive Power Flow [MVA]")
 ax6.set_ylabel('Number of Nodes')
-fig6.savefig(path+"ac_edge_feature_reactive_pf_distr_"+NAME+".png", bbox_inches='tight')
+fig6.savefig(path+"ac_edge_feature_qf_distr_"+NAME+".png", bbox_inches='tight')
 
 fig7,ax7=plt.subplots()
-ax7.bar(edgebins4[0:10],edgehist4,width=edgebins4[1]-edgebins4[0],align='edge')
+ax7.bar(edgebins4,edgehist4,width=edgebins4[1]-edgebins4[0],align='edge')
 #ax7.set_title("Edge Feature Status")
-ax7.set_xlabel("Status")
+ax7.set_xlabel("Resistance [p.U.]")
 ax7.set_ylabel('Number of Nodes')
-fig7.savefig(path+"ac_edge_feature_status_distr_"+NAME+".png", bbox_inches='tight')
+fig7.savefig(path+"ac_edge_feature_resistance_distr_"+NAME+".png", bbox_inches='tight')
 
 fig8,ax8=plt.subplots()
-ax8.bar(edgebins5[0:10],edgehist5,width=edgebins5[1]-edgebins5[0],align='edge')
+ax8.bar(edgebins5,edgehist5,width=edgebins5[1]-edgebins5[0],align='edge')
 #ax8.set_title("Edge Feature resistance")
-ax8.set_xlabel("Resistance [.p.U.]")
+ax8.set_xlabel("Reactance [.p.U.]")
 ax8.set_ylabel('Number of Nodes')
-fig8.savefig(path+"ac_edge_feature_resistance_distr_"+NAME+".png", bbox_inches='tight')
+fig8.savefig(path+"ac_edge_feature_reactance_distr_"+NAME+".png", bbox_inches='tight')
 
 fig9,ax9=plt.subplots()
-ax9.bar(edgebins6[0:11],edgehist6, width=edgebins6[1]-edgebins6[0], align='edge')
+ax9.bar(edgebins6,edgehist6, width=edgebins6[1]-edgebins6[0], align='edge')
 #ax9.set_title("Edge Feature reactance")
-ax9.set_xlabel("Reactance [p.U.]")
+ax9.set_xlabel("Initial Damage [p.U.]")
 ax9.set_ylabel('Number of Nodes')
-fig9.savefig(path+"ac_edge_feature_reactance_distr_"+NAME+".png", bbox_inches='tight')
+fig9.savefig(path+"ac_edge_feature_init_dmg_distr_"+NAME+".png", bbox_inches='tight')
 
+"""
 fig10,ax10=plt.subplots()
 ax10.bar(edgebins7[0:10],edgehist7,width=edgebins7[1]-edgebins7[0],align='edge')
 #ax10.set_title("Edge Feature Init Damage")
@@ -379,7 +387,7 @@ ax10.set_xlabel("Initial Damage Indicator")
 ax10.set_ylabel('Number of Nodes')
 fig10.savefig(path+"ac_edge_feature_init_dmg_distr_"+NAME+".png", bbox_inches='tight')
 
-"""
+
 fig4,ax4=plt.subplots()
 ax4.bar(x3bins[0:9],x3hist,width=x3bins[1]-x3bins[0],align='edge')
 ax4.set_title("Node Feature Voltage Amplitude")
@@ -388,10 +396,11 @@ fig4.savefig("ac_node_feature_distr_voltage_amplitude.png")"""
 
 
 fig5,ax5=plt.subplots()
-ax5.bar(node_label_bins[0:10]/10,node_label_hist,width=(node_label_bins[1]-node_label_bins[0])/10,align='edge')
+ax5.bar(node_label_bins/10,node_label_hist,width=(node_label_bins[1]-node_label_bins[0])/10,align='edge')
 ax5.set_xlim(0,30)
 #ax5.set_title("Power Outage at Nodes (NodeLabel)")
 ax5.set_xlabel("Load Shed [GW]")
 ax5.set_ylabel('Number of Nodes')
 fig5.savefig(path+"ac_node_label_distr_"+NAME+".png", bbox_inches='tight')
+
 
