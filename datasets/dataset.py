@@ -107,10 +107,11 @@ class HurricaneDataset(Dataset):
             
         return data_list
     
-    
     def process(self):
         if self.data_type == 'AC' or self.data_type == 'LSTM':
             self.process_ac()
+        elif self.data_type == 'n-k':
+            self.process_n_minus_k()
         elif self.data_type == 'DC':
             self.process_dc()
         else:
@@ -165,7 +166,7 @@ class HurricaneDataset(Dataset):
                     
 
                     node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data                    
-                    adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i)
+                    adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
                     graph_label = node_labels.sum()
                     
@@ -195,6 +196,59 @@ class HurricaneDataset(Dataset):
                 #print('Batch in Save:\n', Batch.from_data_list(data_seq))
                 #torch.save(Batch.from_data_list(data_seq), os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             #np.save('problems',np.array(problems))
+
+
+
+    def process_n_minus_k(self):
+        """
+        Loads the raw matlab data, converts it to torch
+        tensors which are then saved. Nees to be manually normalized after processing using normalize.py
+        """
+        #INIT
+        #load scenario file which stores the initial damages
+        damages = self.get_initial_damages()
+        #load initial network data
+        init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
+        #Initial data
+        node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
+        gen_data_pre = init_data['ans'][0,0][3]
+        edge_data = init_data['ans'][0,0][4]
+        num_nodes = len(init_data['ans'][0,0][2])
+        below_threshold_count = 0
+
+
+        #PROCESSING
+        for raw_path in self.raw_paths:
+            #skip damage file and pws file 
+            if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
+                continue
+            scenario = self.get_scenario_of_file(raw_path)
+            file=scipy.io.loadmat(raw_path)  #loads a full scenario 
+
+            #loop through steps of scenario each step will be one processed data file
+            for i in range(10):
+
+                #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
+                if self.data_type == 'LSTM' or file['clusterresult'][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                    if below_threshold_count<self.N_below_threshold and file['clusterresult'][0,i][21]<self.ls_threshold:
+                        below_threshold_count += 1
+
+                    if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                        print('Skipping because ls_tot==NaN', file, i)
+                        continue
+                    node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
+
+                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data                    
+
+                    adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=True)
+
+
+
+                    graph_label = node_labels.sum()
+                    
+                    data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
+                    torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+            
     
         
     def get_node_features(self, node_data_pre, node_data_post, gen_data_pre):
@@ -214,7 +268,7 @@ class HurricaneDataset(Dataset):
         S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
-        if self.data_type == 'AC':
+        if self.data_type in ['AC', 'n-k']:
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
             baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
         
@@ -224,7 +278,7 @@ class HurricaneDataset(Dataset):
         
         N_BUSES = len(node_data_pre[:,2])
  
-        if self.data_type == 'AC':
+        if self.data_type in ['AC', 'n-k']:
             #one hot encoded bus types
             bus_type = torch.zeros([2000,4], dtype=torch.int32)
             for i in range(N_BUSES):
@@ -244,7 +298,7 @@ class HurricaneDataset(Dataset):
         gen_features = self.get_gen_features(gen_data_pre, node_data_pre)
 
             
-        if self.data_type == 'AC':
+        if self.data_type in ['AC', 'n-k']:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), Bs.reshape(-1,1), baseKV.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
         else:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), gen_features], dim=1)
@@ -255,7 +309,7 @@ class HurricaneDataset(Dataset):
         return node_features, node_labels
     
     def get_gen_features(self, gen_data_pre, node_data_pre):
-        if self.data_type == 'AC':
+        if self.data_type in ['AC', 'n-k']:
             gen_features = torch.zeros(2000, 9)
         else: gen_features = torch.zeros(2000,2)
         node_index = 0
@@ -267,7 +321,7 @@ class HurricaneDataset(Dataset):
 
                 if gen_data_pre[i,7] >0 and node_data_pre[node_index,1]!=4:    #if generator is active and bus is active
                     gen_features[node_index][:2] += torch.tensor(gen_data_pre[i,1:3])    #only adds p and q if the generator is active since ac-cfm does not update inactive buses
-                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
                         gen_features[node_index][6] = 1
                         if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
                         else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
@@ -276,7 +330,7 @@ class HurricaneDataset(Dataset):
                         else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
 
                 elif node_data_pre[node_index,1] != 4:   #if gen is inactive but bus is active
-                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
                         gen_features[node_index][6] = gen_features[node_index][6]   #if bus is active but generator isnt leave state as is since an active gen could be connected
                         #set lower limits and voltage set point only to inactive values if there are no existing values yet
                         if gen_features[node_index][3] == 0: gen_features[node_index][3] = gen_data_pre[i,4]    #Pmin
@@ -285,7 +339,7 @@ class HurricaneDataset(Dataset):
 
                 else:   #this case is only entered if bus is inactive then all gens should also be counted as inactive 
                     gen_features[node_index][:2] = 0
-                    if self.data_type == 'AC':  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
                         if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
                         else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
                         gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
@@ -293,20 +347,20 @@ class HurricaneDataset(Dataset):
                         if gen_features[node_index][8] == 0:    gen_features[node_index][8]=torch.tensor(gen_data_pre[i,9])
                         else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
                         
-                if self.data_type == 'AC':  #features that are treated equally for active and inactive busses and generatos
+                if self.data_type in ['AC', 'n-k']:  #features that are treated equally for active and inactive busses and generatos
                     gen_features[node_index][2] += torch.tensor(gen_data_pre[i,3])    
                     gen_features[node_index][5] += torch.tensor(gen_data_pre[i,6])
                     gen_features[node_index][7] += torch.tensor(gen_data_pre[i,8])
                     
 
                 
-        if self.data_type == 'AC':
+        if self.data_type in ['AC', 'n-k']:
             gen_features = torch.cat([gen_features[:,:6], gen_features[:,7:], gen_features[:,6].reshape(-1,1)], dim=1)
 
         
         return gen_features
             
-    def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i):
+    def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i, n_minus_k):
         #Edge Data
         #Feature Data
         rating = edge_data[:,5] #long term rating (MVA) - edge feature
@@ -325,8 +379,12 @@ class HurricaneDataset(Dataset):
         init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
         #set initially damaged lines to 0
         for step in range(len(damages[scenario])):
-            if damages[scenario][step,0] == i:
-                init_dmg[damages[scenario][step,1]] = 1 
+            if n_minus_k:
+                if damages[scenario][step,0] <= i:
+                    init_dmg[damages[scenario][step,1]] = 1 
+            else:       
+                if damages[scenario][step,0] == i:
+                    init_dmg[damages[scenario][step,1]] = 1 
                 
         #Adjacency Matrix
         bus_id = node_data_pre[:,0] #list of bus ids in order
@@ -668,7 +726,7 @@ class HurricaneDataset(Dataset):
                     if edge_attr[i]>edge_attr_max: edge_attr_max=edge_attr[i]
                     if edge_attr[i]<edge_attr_min: edge_attr_min=edge_attr[i]
                     edge_attr_means += edge_attr[i]
-                if self.data_type == 'AC':
+                if self.data_type in ['AC', 'n-k']:
                     if edge_attr[i,0]>edge_attr_max[0]: edge_attr_max[0]=edge_attr[i,0]
                     if edge_attr[i,0]<edge_attr_min[0]: edge_attr_min[0]=edge_attr[i,0]
                     edge_attr_means[0] += edge_attr[i,0]
@@ -691,7 +749,7 @@ class HurricaneDataset(Dataset):
             if graph_label<graph_label_min: graph_label_min=graph_label
             graph_label_mean += graph_label
             
-            if self.data_type == 'AC':
+            if self.data_type in ['AC', 'n-k']:
                 node_labels = data['node_labels']
                 for i in range(len(node_labels)):
                     if node_labels[i]>node_labels_max: node_labels_max=node_labels[i]
@@ -734,7 +792,7 @@ class HurricaneDataset(Dataset):
             edge_attr = data['edge_attr']
             for i in range(len(edge_attr)):
                 edge_stds[0] += (edge_attr[i,0] - edge_means[0])**2
-                if self.data_type == 'AC':
+                if self.data_type in ['AC', 'n-k']:
                     edge_stds[1] += (edge_attr[i,1] - edge_means[1])**2
                     edge_stds[2] += (edge_attr[i,2] - edge_means[2])**2
                     edge_stds[3] += (edge_attr[i,4] - edge_means[3])**2
