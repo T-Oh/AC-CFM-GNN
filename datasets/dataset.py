@@ -225,12 +225,17 @@ class HurricaneDataset(Dataset):
             scenario = self.get_scenario_of_file(raw_path)
             file=scipy.io.loadmat(raw_path)  #loads a full scenario 
 
+            accumulated_ls_tot = 0.  #used for step selection according to ls_threshold and N_below_threshold
+            remaining_load = 1.      #necessary to correctly scale ls_tot since it refers to load shed relative to initial load at each step (not init load of scenario)
+
             #loop through steps of scenario each step will be one processed data file
-            for i in range(10):
+            for i in range(min(len(file('clusterresult')[0,:]), 10)):
+                accumulated_ls_tot += file['clusterresult'][0,i][21] * remaining_load
+                remaining_load -= file['clusterresult'][0,i][21] * remaining_load
 
                 #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
-                if self.data_type == 'LSTM' or file['clusterresult'][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
-                    if below_threshold_count<self.N_below_threshold and file['clusterresult'][0,i][21]<self.ls_threshold:
+                if self.data_type == 'LSTM' or accumulated_ls_tot>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                    if below_threshold_count<self.N_below_threshold and accumulated_ls_tot<self.ls_threshold:
                         below_threshold_count += 1
 
                     if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
@@ -267,7 +272,8 @@ class HurricaneDataset(Dataset):
         Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
         S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
-        Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
+        #Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
+        #Va = (Va-Va[0])%360
         if self.data_type in ['AC', 'n-k']:
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
             baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
@@ -303,9 +309,7 @@ class HurricaneDataset(Dataset):
         else:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Va.reshape(-1,1), gen_features], dim=1)
         node_labels = torch.tensor(S1-S2)
-        
-        
-        
+         
         return node_features, node_labels
     
     def get_gen_features(self, gen_data_pre, node_data_pre):
@@ -825,6 +829,8 @@ class HurricaneDataset(Dataset):
         step=int(self.data_list[idx,1])
         data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'
                                        f'_{step}.pt'))
+        print('HARDCODED MANUALLY REMOVING 4TH FEATURE IN X -> IN ORDER TO REMOVE VOLTAGE ANGLE WITHOUT REPROCESSING EVERYTHING')
+        data.x = torch.cat([data.x[:3],data.x[4:]])
         #print(data.x.shape)
         if self.embedding != None:
             #embedding = torch.cat([self.embedding]*int(len(data.x)/2000))
