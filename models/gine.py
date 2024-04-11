@@ -75,7 +75,7 @@ class GINE(Module):
         #Regression Head Layers
         self.regHead1 = Linear(hidden_size, reghead_size)
         self.singleLinear = Linear(hidden_size, num_targets)
-        self.regHeadLayers = nn.ModuleList(Linear(reghead_size, reghead_size) for i in range(self.num_layers-2))
+        self.regHeadLayers = nn.ModuleList(Linear(reghead_size, reghead_size) for i in range(self.reghead_layers-2))
         self.endLinear = Linear(reghead_size,num_targets,bias=True)
 
         
