@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+PLOT_ONLY = True
+NO_Va = True
+path='processed/'
+NAME = 'plotting_test'
+
 
 def get_hist(data, bins):
     hist = np.zeros(len(bins))
@@ -71,9 +76,7 @@ def get_min_max_features(path):
     return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max
 
 
-PLOT_ONLY = False
-path='/home/tohlinger/HUI/Documents/hi-accf-ml/processed/'
-NAME = 'test'
+
 
 if PLOT_ONLY:
     data = np.load(NAME + '.npz')
@@ -113,10 +116,11 @@ else:
         print(x_max[i])
         print(x_min[i])
         print(np.arange(x_min[i],x_max[i]+x_max[i]/10,(x_max[i]-x_min[i])/9))
-        if x_max[i]<=0:
-            x_bins[i] = np.arange(x_min[i],x_max[i]-x_min[i]/10,(x_max[i]-x_min[i])/9)
-        else:
-            x_bins[i] = np.arange(x_min[i],x_max[i]+x_max[i]/10,(x_max[i]-x_min[i])/9)
+        #if x_max[i]<=0:
+        #    x_bins[i] = np.arange(x_min[i],x_max[i]-x_min[i]/10,(x_max[i]-x_min[i])/9)
+        #else:
+        #    x_bins[i] = np.arange(x_min[i],x_max[i]+x_max[i]/10,(x_max[i]-x_min[i])/9)
+        x_bins[i] = np.linspace(x_min[i],x_max[i],10)
     """x1bins=np.arange(x_min[0],x_max[0]+x_max[0]/10,(x_max[0]-x_min[0])/10)
     x2bins=np.arange(x_min[1],x_max[1]+x_max[1]/10,(x_max[1]-x_min[1])/10)
     x3bins=np.arange(x_min[2],x_max[2]+x_max[2]/10,(x_max[2]-x_min[2])/10)
@@ -217,12 +221,14 @@ else:
         print(edgehist)
     #np.savez("data_histograms",x1hist=x1hist,x2hist=x2hist,edgehist=edgehist,x1bins=x1bins,x2bins=x2bins,edgebins=edgebins)
     """
-
+if NO_Va:
+    x_bins=np.insert(x_bins,3,np.zeros(10),axis=0)
+    x_hists=np.insert(x_hists,3,np.zeros(10),axis=0)
 plt.rcParams['font.size'] = 16
 plt.rcParams['figure.dpi'] = 300
 #Plotting
 fig1,ax1=plt.subplots()
-ax1.bar(x_bins[0]/10,x_hists[0],width=(x_bins[0,1]-x_bins[0,0])/10,align='edge')
+ax1.bar(x_bins[0]/10,x_hists[0],width=(x_bins[0,1]-x_bins[0,0])/10,align='edge', color='green')
 #ax1.set_title("Node Feature Apparent Power")
 ax1.set_xlabel("Active Power [GW]")
 ax1.set_ylabel('Number of Nodes')
@@ -231,7 +237,7 @@ ax1.set_ylabel('Number of Nodes')
 fig1.savefig(path+"ac_node_feature_distr_P_"+NAME+".png", bbox_inches='tight')
 
 fig2,ax2=plt.subplots()
-ax2.bar(x_bins[1]/10,x_hists[1],width=(x_bins[1,1]-x_bins[1,0])/10,align='edge')
+ax2.bar(x_bins[1]/10,x_hists[1],width=(x_bins[1,1]-x_bins[1,0])/10,align='edge', color='green')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax2.set_xlabel("Reactive Power [MVAr]")
 ax2.set_ylabel('Number of Nodes')
@@ -239,7 +245,7 @@ ax2.set_ylabel('Number of Nodes')
 fig2.savefig(path+"ac_node_feature_distr_Q_"+NAME+".png", bbox_inches='tight')
 
 fig11,ax11=plt.subplots()
-ax11.bar(x_bins[2],x_hists[2],width=x_bins[2,1]-x_bins[2,0],align='edge')
+ax11.bar(x_bins[2],x_hists[2],width=x_bins[2,1]-x_bins[2,0],align='edge', color='green')
 #ax1.set_title("Node Feature Apparent Power")
 ax11.set_xlabel("Voltage Magnitude [p.u.]")
 ax11.set_ylabel('Number of Nodes')
@@ -248,7 +254,7 @@ ax11.set_ylabel('Number of Nodes')
 fig11.savefig(path+"ac_node_feature_distr_Vm_"+NAME+".png", bbox_inches='tight')
 
 fig12,ax12=plt.subplots()
-ax12.bar(x_bins[3],x_hists[3],width=x_bins[3,1]-x_bins[3,0],align='edge')
+ax12.bar(x_bins[3],x_hists[3],width=x_bins[3,1]-x_bins[3,0],align='edge', color='green')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax12.set_xlabel("Voltage Angle [rad]")
 ax12.set_ylabel('Number of Nodes')
@@ -256,7 +262,7 @@ ax12.set_ylabel('Number of Nodes')
 fig12.savefig(path+"ac_node_feature_distr_Va_"+NAME+".png", bbox_inches='tight')
 
 fig13,ax13=plt.subplots()
-ax13.bar(x_bins[4],x_hists[4],width=x_bins[4,1]-x_bins[4,0],align='edge')
+ax13.bar(x_bins[4],x_hists[4],width=x_bins[4,1]-x_bins[4,0],align='edge', color='green')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax13.set_xlabel("Shunt Susceptance")
 ax13.set_ylabel('Number of Nodes')
@@ -264,7 +270,7 @@ ax13.set_ylabel('Number of Nodes')
 fig13.savefig(path+"ac_node_feature_distr_Bs_"+NAME+".png", bbox_inches='tight')
 
 fig14,ax14=plt.subplots()
-ax14.bar(x_bins[5],x_hists[5],width=x_bins[5,1]-x_bins[5,0],align='edge')
+ax14.bar(x_bins[5],x_hists[5],width=x_bins[5,1]-x_bins[5,0],align='edge', color='green')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax14.set_xlabel("Base kV")
 ax14.set_ylabel('Number of Nodes')
@@ -272,7 +278,7 @@ ax14.set_ylabel('Number of Nodes')
 fig14.savefig(path+"ac_node_feature_distr_basekV_"+NAME+".png", bbox_inches='tight')
 
 fig15,ax15=plt.subplots()
-ax15.bar(x_bins[10]/10,x_hists[10],width=(x_bins[10,1]-x_bins[10,0])/10,align='edge')
+ax15.bar(x_bins[10]/10,x_hists[10],width=(x_bins[10,1]-x_bins[10,0])/10,align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax15.set_xlabel("Generator Active Power Output [GW]")
 ax15.set_ylabel('Number of Nodes')
@@ -280,7 +286,7 @@ ax15.set_ylabel('Number of Nodes')
 fig15.savefig(path+"ac_node_feature_distr_genP_"+NAME+".png", bbox_inches='tight')
 
 fig16,ax16=plt.subplots()
-ax16.bar(x_bins[11],x_hists[11],width=x_bins[11,1]-x_bins[11,0],align='edge')
+ax16.bar(x_bins[11],x_hists[11],width=x_bins[11,1]-x_bins[11,0],align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax16.set_xlabel("Generator Reactive Power Output [MVar]")
 ax16.set_ylabel('Number of Nodes')
@@ -288,7 +294,7 @@ ax16.set_ylabel('Number of Nodes')
 fig16.savefig(path+"ac_node_feature_distr_genQ_"+NAME+".png", bbox_inches='tight')
 
 fig17,ax17=plt.subplots()
-ax17.bar(x_bins[12],x_hists[12],width=x_bins[12,1]-x_bins[12,0],align='edge')
+ax17.bar(x_bins[12],x_hists[12],width=x_bins[12,1]-x_bins[12,0],align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax17.set_xlabel("Maximum Reactive Power Output [MVar]")
 ax17.set_ylabel('Number of Nodes')
@@ -296,7 +302,7 @@ ax17.set_ylabel('Number of Nodes')
 fig17.savefig(path+"ac_node_feature_distr_genQMax_"+NAME+".png", bbox_inches='tight')
 
 fig18,ax18=plt.subplots()
-ax18.bar(x_bins[13],x_hists[13],width=x_bins[13,1]-x_bins[13,0],align='edge')
+ax18.bar(x_bins[13],x_hists[13],width=x_bins[13,1]-x_bins[13,0],align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax18.set_xlabel("Minimum Reactive Power Output [MVar]")
 ax18.set_ylabel('Number of Nodes')
@@ -304,7 +310,7 @@ ax18.set_ylabel('Number of Nodes')
 fig18.savefig(path+"ac_node_feature_distr_genQMin_"+NAME+".png", bbox_inches='tight')
 
 fig19,ax19=plt.subplots()
-ax19.bar(x_bins[14],x_hists[14],width=x_bins[14,1]-x_bins[14,0],align='edge')
+ax19.bar(x_bins[14],x_hists[14],width=x_bins[14,1]-x_bins[14,0],align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax19.set_xlabel("Voltage Magnitude Set Point [p.u.]")
 ax19.set_ylabel('Number of Nodes')
@@ -312,7 +318,7 @@ ax19.set_ylabel('Number of Nodes')
 fig19.savefig(path+"ac_node_feature_distr_Vg_"+NAME+".png", bbox_inches='tight')
 
 fig20,ax20=plt.subplots()
-ax20.bar(x_bins[15],x_hists[15],width=x_bins[15,1]-x_bins[15,0],align='edge')
+ax20.bar(x_bins[15],x_hists[15],width=x_bins[15,1]-x_bins[15,0],align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax20.set_xlabel("mBase (total MVA base)")
 ax20.set_ylabel('Number of Nodes')
@@ -320,7 +326,7 @@ ax20.set_ylabel('Number of Nodes')
 fig20.savefig(path+"ac_node_feature_distr_genmBase_"+NAME+".png", bbox_inches='tight')
 
 fig21,ax21=plt.subplots()
-ax21.bar(x_bins[16]/10,x_hists[16],width=(x_bins[16,1]-x_bins[16,0])/10,align='edge')
+ax21.bar(x_bins[16]/10,x_hists[16],width=(x_bins[16,1]-x_bins[16,0])/10,align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax21.set_xlabel("Maximum Active Power Output [GW]")
 ax21.set_ylabel('Number of Nodes')
@@ -328,7 +334,7 @@ ax21.set_ylabel('Number of Nodes')
 fig21.savefig(path+"ac_node_feature_distr_genPMax_"+NAME+".png", bbox_inches='tight')
 
 fig22,ax22=plt.subplots()
-ax22.bar(x_bins[17]/10,x_hists[17],width=(x_bins[17,1]-x_bins[17,0])/10,align='edge')
+ax22.bar(x_bins[17]/10,x_hists[17],width=(x_bins[17,1]-x_bins[17,0])/10,align='edge', color='turquoise')
 #ax2.set_title("Node Feature Voltage magnitude")
 ax22.set_xlabel("Minimum Active Power Output [GW]")
 ax22.set_ylabel('Number of Nodes')
@@ -338,42 +344,42 @@ fig22.savefig(path+"ac_node_feature_distr_genPMin_"+NAME+".png", bbox_inches='ti
 
 
 fig3,ax3=plt.subplots()
-ax3.bar(edgebins1,edgehist1,width=edgebins1[1]-edgebins1[0],align='edge')
+ax3.bar(edgebins1,edgehist1,width=edgebins1[1]-edgebins1[0],align='edge', color='orange')
 #ax3.set_title("Edge Feature Capacity")
 ax3.set_xlabel("Capacity [MVA]")
 ax3.set_ylabel('Number of Nodes')
 fig3.savefig(path+"ac_edge_feature_capacity_distr_"+NAME+".png", bbox_inches='tight')
 
 fig4,ax4=plt.subplots()
-ax4.bar(edgebins2,edgehist2,width=edgebins2[1]-edgebins2[0],align='edge')
+ax4.bar(edgebins2,edgehist2,width=edgebins2[1]-edgebins2[0],align='edge', color='orange')
 #ax4.set_title("Active PF")
 ax4.set_xlabel("Active Power Flow [MVA]")
 ax4.set_ylabel('Number of Nodes')
-fig4.savefig(path+"ac_edge_feature_pf_distr_"+NAME+".png", bbox_inches='tight')
+fig4.savefig(path+"ac_edge_feature_active_pf_distr_"+NAME+".png", bbox_inches='tight')
 
 fig6,ax6=plt.subplots()
-ax6.bar(edgebins3,edgehist3,width=edgebins3[1]-edgebins3[0],align='edge')
+ax6.bar(edgebins3,edgehist3,width=edgebins3[1]-edgebins3[0],align='edge', color='orange')
 #ax6.set_title("Edge Feature reactive PF")
 ax6.set_xlabel("Reactive Power Flow [MVA]")
 ax6.set_ylabel('Number of Nodes')
-fig6.savefig(path+"ac_edge_feature_qf_distr_"+NAME+".png", bbox_inches='tight')
+fig6.savefig(path+"ac_edge_feature_reactive_pf_distr_"+NAME+".png", bbox_inches='tight')
 
 fig7,ax7=plt.subplots()
-ax7.bar(edgebins4,edgehist4,width=edgebins4[1]-edgebins4[0],align='edge')
+ax7.bar(edgebins4,edgehist4,width=edgebins4[1]-edgebins4[0],align='edge', color='orange')
 #ax7.set_title("Edge Feature Status")
 ax7.set_xlabel("Resistance [p.U.]")
 ax7.set_ylabel('Number of Nodes')
 fig7.savefig(path+"ac_edge_feature_resistance_distr_"+NAME+".png", bbox_inches='tight')
 
 fig8,ax8=plt.subplots()
-ax8.bar(edgebins5,edgehist5,width=edgebins5[1]-edgebins5[0],align='edge')
+ax8.bar(edgebins5,edgehist5,width=edgebins5[1]-edgebins5[0],align='edge', color='orange')
 #ax8.set_title("Edge Feature resistance")
 ax8.set_xlabel("Reactance [.p.U.]")
 ax8.set_ylabel('Number of Nodes')
 fig8.savefig(path+"ac_edge_feature_reactance_distr_"+NAME+".png", bbox_inches='tight')
 
 fig9,ax9=plt.subplots()
-ax9.bar(edgebins6,edgehist6, width=edgebins6[1]-edgebins6[0], align='edge')
+ax9.bar(edgebins6,edgehist6, width=edgebins6[1]-edgebins6[0], align='edge', color='orange')
 #ax9.set_title("Edge Feature reactance")
 ax9.set_xlabel("Initial Damage [p.U.]")
 ax9.set_ylabel('Number of Nodes')
@@ -396,8 +402,8 @@ fig4.savefig("ac_node_feature_distr_voltage_amplitude.png")"""
 
 
 fig5,ax5=plt.subplots()
-ax5.bar(node_label_bins/10,node_label_hist,width=(node_label_bins[1]-node_label_bins[0])/10,align='edge')
-ax5.set_xlim(0,30)
+ax5.bar(node_label_bins/10,node_label_hist,width=(node_label_bins[1]-node_label_bins[0])/10,align='edge', color='red')
+#ax5.set_xlim(0,30)
 #ax5.set_title("Power Outage at Nodes (NodeLabel)")
 ax5.set_xlabel("Load Shed [GW]")
 ax5.set_ylabel('Number of Nodes')
