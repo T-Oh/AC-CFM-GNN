@@ -10,12 +10,13 @@ from training.training import objective
 
 
 name = 'Analyze_Ray_Test' #Name tag added to the plots and their filenames
+TEMP_DIR = '/home/tohlinger/RAY_TMP2/'
 
 
-ray.init()
+ray.init(_temp_dir=TEMP_DIR,include_dashboard=False, num_cpus=1)
 i_file = 0
 offset = 0
-path = 'C:/Users/tobia/OneDrive/Dokumente/Master/Semester4/Masterarbeit/line_regression_nauck_cluster/DC-CFM-GNN/results/'
+path = '/home/tohlinger/LEO/Running/GTrans_n-k_test/results/'
 unusable_trials = 0
 usable_trials = 0
 experiments_evaluated = 0
