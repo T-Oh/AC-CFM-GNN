@@ -151,9 +151,11 @@ def run_single(cfg, device, N_CPUS):
         fig1, ax1 = plt.subplots()
         ax1.plot(metrics['train_loss'], label='Train Loss')
         ax1.plot(metrics['test_loss'], label='Test Loss')
+        ax1.legend()
         fig1.savefig('loss.png', bbox_inches='tight')
 
         fig2, ax2 = plt.subplots()
         ax2.plot(metrics['train_R2'], label='Train R2')
         ax2.plot(metrics['test_R2'], label='Test R2')
+        ax2.legend()
         fig2.savefig('R2.png', bbox_inches='tight')
