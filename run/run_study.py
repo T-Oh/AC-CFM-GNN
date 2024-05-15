@@ -108,7 +108,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     # set up optimizer and scheduler
     baysopt = BayesOptSearch(metric='test_R2', mode='max')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='test_R2', mode='max', max_t=100, grace_period=10)
+        time_attr='training_iteration', metric='test_R2', mode='max', max_t=cfg['epochs'], grace_period=10)
 
     
     # configurations
