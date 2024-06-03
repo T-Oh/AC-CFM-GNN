@@ -30,7 +30,7 @@ print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK, flush=True)
 
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
 assert not (cfg['data'] == 'DC' and cfg['stormsplit']>0), 'Stormsplit can only be used with AC data'
-
+assert not (cfg['edge_attr'] == 'multi' and cfg['model'] == 'TAG'), 'TAG can only be used with Y as edge_attr not with multi'
 
 # save config in results
 shutil.copyfile("configurations/configuration.json", "results/configuration.json")
