@@ -2,27 +2,40 @@
     "cfg_path": "",
     "dataset": "hurricane_line_priority",
     "dataset::path": "",
-    "task":"NodeReg",
+    "study_ID": "objective_2024-03-04_14-23-08/",
+
+    "task":"GraphReg",
     "data":"AC",
-    "ls_threshold" : 0.0,
-    "N_below_threshold" : 4,
-    "n_scenarios":122,
-    "stormsplit" : 0,
+    "edge_attr": "multi",
+    "ls_threshold" : 0.1,
+    "N_below_threshold" : 10,
+    "n_scenarios":25000,
+
     "crossvalidation" : false,
-    "epochs": 1,
+    "study::run" : false,
+    "study::continue": false,
+
+    "train_size":1,
+    "stormsplit" : 0,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 1,
+    "train_set::shuffle": false,
+    "checkpointing": false,
+
+    "epochs": 2,
     "N2V_epochs": 20,
-    "model": "GraphTransformer",
+    "model": "GINE",
     "supernode":false,
     "output_freq" : 1,
     
 
-    "num_layers": 2,
-    "hidden_size": 150,
+    "num_layers": 4,
+    "hidden_size": 250,
     "reghead_size": 141,
     "reghead_layers" : 2,
    
     "dropout": 0.0,
-    "gradclip" : 0.6,
+    "gradclip" : 0.0,
     "use_batchnorm" : true,
     "use_skipcon" : true,
     "use_masking" : false,
@@ -33,7 +46,11 @@
     "num_heads" : 2,
     "gat_dropout" : 0.1,
 
-    "tag_jumps" : 22,
+    "tag_jumps" : 20,
+
+    "num_conv_targets"  : 32,
+    "lstm_hidden_size"  : 64,
+    "num_lstm_layers"   : 1,
 
     "embedding_dim" : 16,
     "walk_length" : 5,
@@ -43,14 +60,9 @@
     "p" : 1,
     "q" : 1,
     
-    "train_size":1,
-    "test_set::batchsize": 1,
-    "train_set::batchsize": 1,
-    "train_set::shuffle": false,
-
     "accuracy_tolerance":0.15,
 
-    "optim::LR": 2e-5,
+    "optim::LR": 2e-3,
     "optim::betas": [
         0.9,
         0.999
@@ -65,8 +77,8 @@
     "manual_seed" : 7,
 
 
-    "study::run" : false,
-    "study::n_trials" : 4,
+
+    "study::n_trials" : 12,
 
     "study::lr::lower" : -9,
     "study::lr::upper" : -3,
