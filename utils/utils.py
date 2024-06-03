@@ -509,6 +509,8 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
     """
 
     params = {
+
+        'task'  :   cfg['task'],
         'LR' :  cfg['optim::LR'],
         'weight_decay'   :   cfg['optim::weight_decay'],
 
