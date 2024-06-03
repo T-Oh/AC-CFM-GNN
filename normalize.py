@@ -9,25 +9,23 @@ import torch
 import numpy as np
 from torch_geometric.data import Data
 
-def get_min_max_features(processed_dir):
+def get_min_max_features(processed_dir, n_node_features, n_edge_features):
     
-    x_max=torch.zeros(18)
-    x_min=torch.zeros(18)
-    x_means = torch.zeros(18)
-    edge_attr_max=torch.zeros(5)
-    edge_attr_min=torch.zeros(5)
-    edge_attr_means = torch.zeros(5)
-    node_count = 0
-    edge_count = 0
-    
+    x_max=torch.zeros(n_node_features)
+    x_min=torch.zeros(n_node_features)
+    x_means = torch.zeros(n_node_features)
+    edge_attr_max=torch.zeros(n_edge_features)
+    edge_attr_min=torch.zeros(n_edge_features)
+    edge_attr_means = torch.zeros(n_edge_features)
 
     node_count = 0
     edge_count = 0
-    for i in range(18):
+
+    for i in range(len(x_max)):
         x_max[i] = np.NINF
         x_min[i] = np.Inf
 
-        if i <5:
+        if i <len(edge_attr_max):
             edge_attr_max[i] =  np.NINF
             edge_attr_min[i] = np.Inf
     node_labels_max=0
@@ -56,11 +54,16 @@ def get_min_max_features(processed_dir):
                 #if x[i,2]<x_min[2]: x_min[2]=x[i,2]
             
             edge_attr = data['edge_attr']
+            if edge_attr.dim() == 1: edge_attr = edge_attr.unsqueeze(1)
             for i in range(len(edge_attr)):
                 for j in range(len(edge_attr_max)):
                     if edge_attr[i,j]>edge_attr_max[j]: edge_attr_max[j]=edge_attr[i,j]
                     if edge_attr[i,j]<edge_attr_min[j]: edge_attr_min[j]=edge_attr[i,j]
                     edge_attr_means[j] += edge_attr[i,j]
+                """else:
+                        if edge_attr[i]>edge_attr_max: edge_attr_max=edge_attr[i]
+                        if edge_attr[i]<edge_attr_min: edge_attr_min=edge_attr[i]
+                        edge_attr_means += edge_attr[i]"""
                 edge_count += 1
                 
     
@@ -80,9 +83,9 @@ def get_min_max_features(processed_dir):
     return x_min, x_max, x_means/node_count, edge_attr_min, edge_attr_max, edge_attr_means/edge_count, node_labels_min, node_labels_max, node_labels_mean/node_count, graph_labels_min, graph_labels_max, graph_labels_mean/graph_count
 
 
-def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
-    x_stds = torch.zeros(18)
-    edge_stds = torch.zeros(5)
+def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean, n_node_features, n_edge_features):
+    x_stds = torch.zeros(n_node_features)
+    edge_stds = torch.zeros(n_edge_features)
     graph_label_std =0
     node_count = 0
     edge_count = 0
@@ -99,6 +102,8 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
 
                 node_count += 1
             edge_attr = data['edge_attr']
+            
+            if edge_attr.dim() == 1:    edge_attr = edge_attr.unsqueeze(1)
             for i in range(len(edge_attr)):
                 for j in range(len(edge_stds)):
                     edge_stds[j] += (edge_attr[i,j] - edge_means[j])**2
@@ -113,6 +118,9 @@ def get_feature_stds(processed_dir, x_means, edge_means, graph_label_mean):
 processed_dir = 'processed/'
 normalized_dir = 'processed/'
 data_stats_file = 'unnormalized_data_stats.npy'
+N_NODE_FEATURES = 17    #if NodeIDs are added as features substract 2000 from N_Features
+N_EDGE_FEATURES = 1
+GEN_FEATURE_BIAS = 8    #Used to mark where the generator features start in the node features (used to skip the 4 one hot encoded bus type features)
 
 if os.path.isfile(processed_dir + data_stats_file):
     print(f'Using presaved data stats of file: {data_stats_file} for normalization')
@@ -137,9 +145,9 @@ if os.path.isfile(processed_dir + data_stats_file):
     graph_label_std = data_stats['graph_label_std']
 else:
     print('No presaved data stats found - Calculating data stats')
-    x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = get_min_max_features(processed_dir)
+    x_min, x_max, x_means, edge_attr_min, edge_attr_max, edge_attr_means, node_labels_min, node_labels_max, node_labels_means, graph_label_min, graph_label_max, graph_label_mean = get_min_max_features(processed_dir, N_NODE_FEATURES, N_EDGE_FEATURES)
 
-    x_stds, edge_stds, graph_label_std= get_feature_stds(processed_dir, x_means, edge_attr_means, graph_label_mean)
+    x_stds, edge_stds, graph_label_std= get_feature_stds(processed_dir, x_means, edge_attr_means, graph_label_mean, N_NODE_FEATURES, N_EDGE_FEATURES)
     data_stats = {'x_min'   : x_min,
                   'x_max'   : x_max,
                   'x_means' : x_means,
@@ -179,17 +187,17 @@ for file in os.listdir(processed_dir):
         #node voltage magnitude
         x[:,2] = torch.log(x[:,2]+1)/torch.log(x_max[2]+1)  #((x[:,1]-x_means[1])/x_stds[1])/((x_max[1]-x_means[1])/x_stds[1])
         #Voltage angle
-        x[:,3] = (x[:,3]-x_means[3])/x_stds[3]/((x_max[3]-x_means[3])/x_stds[3])
+        #x[:,3] = (x[:,3]-x_means[3])/x_stds[3]/((x_max[3]-x_means[3])/x_stds[3])
         #Shunt susceptance
-        x[:,4] = torch.log(x[:,4]+1+x_min[4]*-1)/torch.log(x_max[4]+1+x_min[4]*-1)
+        x[:,3] = torch.log(x[:,3]+1+x_min[3]*-1)/torch.log(x_max[3]+1+x_min[3]*-1)
         #baseKV
-        x[:,5] = x[:,5]/500 #baseKV max baseKV in ACTIVSg2000 is 500 (min is 13.8)
+        #x[:,5] = x[:,5]/500 #baseKV max baseKV in ACTIVSg2000 is 500 (min is 13.8)
         #Generator Features
         for j in range(8):
             if j == 3 or j == 1:
-                x[:,j+10] = torch.log(x[:,j+10]+1-x_min[j+10])/torch.log(x_max[j+10]+1-x_min[j+10]) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type    
+                x[:,j+GEN_FEATURE_BIAS] = torch.log(x[:,j+GEN_FEATURE_BIAS]+1-x_min[j+GEN_FEATURE_BIAS])/torch.log(x_max[j+GEN_FEATURE_BIAS]+1-x_min[j+GEN_FEATURE_BIAS]) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type    
             else:
-                x[:,j+10] = torch.log(x[:,j+10]+1)/torch.log(x_max[j+10]+1) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type
+                x[:,j+GEN_FEATURE_BIAS] = torch.log(x[:,j+GEN_FEATURE_BIAS]+1)/torch.log(x_max[j+GEN_FEATURE_BIAS]+1) #10 is the first gen feature in node_features after 6 node features + 4 features for one hot encoded bus type
 
         for i in range(len(x_max)):
             if any(torch.isnan(x[:,i])):
@@ -202,36 +210,42 @@ for file in os.listdir(processed_dir):
         #Edge Features
         edge_attr = data['edge_attr']
         adj = data['edge_index']
-        #capacity
-        edge_attr[:,0] = torch.log(data['edge_attr'][:,0]+1)/torch.log(edge_attr_max[0]+1)
-        #Pf, QF and resistance
-        if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
-            print('NaN in edges Before Normalization:')
-            print(file)
-            for i in range(len(edge_attr[:,1])):
-                if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'Before, edge0 {i}')
-                if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'Before, edge1 {i}')
-                if torch.isnan(edge_attr[i,3]): print(f'Before, edge3 {i}')
-                if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'Before, edge4 {i}')
-                if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'Before, edge5 {i}')
-                if torch.isnan(edge_attr[i,6]): print(f'Before, edge6 {i}')
-                if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'Before, edge2 {i}')
-        edge_attr[:,1] = (data['edge_attr'][:,1]-edge_attr_means[1])/edge_stds[1]/((edge_attr_max[1]-edge_attr_means[1])/edge_stds[1])
-        edge_attr[:,2] = (data['edge_attr'][:,2]-edge_attr_means[2])/edge_stds[2]/((edge_attr_max[2]-edge_attr_means[2])/edge_stds[2])
-        edge_attr[:,4] = torch.log(data['edge_attr'][:,4]+1)/torch.log(edge_attr_max[3]+1)# -edge_attr_means[3])/edge_stds[3]/((edge_attr_max[3]-edge_attr_means[3])/edge_stds[3])
-        #reactance
-        edge_attr[:,5] = torch.log(data['edge_attr'][:,5]+1)/torch.log(edge_attr_max[4]+1)
-        if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
-            print('NaN in edges after Normalization:')
-            print(file)
-            for i in range(len(edge_attr[:,1])):
-                if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'after, edge0 {i}')
-                if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'after, edge1 {i}')
-                if torch.isnan(edge_attr[i,3]): print(f'after, edge3 {i}')
-                if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'after, edge4 {i}')
-                if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'after, edge5 {i}')
-                if torch.isnan(edge_attr[i,6]): print(f'after, edge6 {i}')
-                if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'after, edge2 {i}')
+
+        if edge_attr.dim() == 1:    #When only using Admittance
+            edge_attr = torch.log(data['edge_attr']+1)/torch.log(edge_attr_max+1)
+        
+        else:   #Multiple edge features
+        
+            #capacity
+            edge_attr[:,0] = torch.log(data['edge_attr'][:,0]+1)/torch.log(edge_attr_max[0]+1)
+            #Pf, QF and resistance
+            if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
+                print('NaN in edges Before Normalization:')
+                print(file)
+                for i in range(len(edge_attr[:,1])):
+                    if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'Before, edge0 {i}')
+                    if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'Before, edge1 {i}')
+                    if torch.isnan(edge_attr[i,3]): print(f'Before, edge3 {i}')
+                    if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'Before, edge4 {i}')
+                    if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'Before, edge5 {i}')
+                    if torch.isnan(edge_attr[i,6]): print(f'Before, edge6 {i}')
+                    if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'Before, edge2 {i}')
+            edge_attr[:,1] = (data['edge_attr'][:,1]-edge_attr_means[1])/edge_stds[1]/((edge_attr_max[1]-edge_attr_means[1])/edge_stds[1])
+            edge_attr[:,2] = (data['edge_attr'][:,2]-edge_attr_means[2])/edge_stds[2]/((edge_attr_max[2]-edge_attr_means[2])/edge_stds[2])
+            edge_attr[:,4] = torch.log(data['edge_attr'][:,4]+1)/torch.log(edge_attr_max[3]+1)# -edge_attr_means[3])/edge_stds[3]/((edge_attr_max[3]-edge_attr_means[3])/edge_stds[3])
+            #reactance
+            edge_attr[:,5] = torch.log(data['edge_attr'][:,5]+1)/torch.log(edge_attr_max[4]+1)
+            if any(torch.isnan(edge_attr[:,0])) or any(torch.isnan(edge_attr[:,1])) or any(torch.isnan(edge_attr[:,2])) or any(torch.isnan(edge_attr[:,3])) or any(torch.isnan(edge_attr[:,4])) or any(torch.isnan(edge_attr[:,5])):
+                print('NaN in edges after Normalization:')
+                print(file)
+                for i in range(len(edge_attr[:,1])):
+                    if torch.isnan(edge_attr[i,0]) and edge_attr[i,3]==1: print(f'after, edge0 {i}')
+                    if torch.isnan(edge_attr[i,1]) and edge_attr[i,3]==1: print(f'after, edge1 {i}')
+                    if torch.isnan(edge_attr[i,3]): print(f'after, edge3 {i}')
+                    if torch.isnan(edge_attr[i,4]) and edge_attr[i,3]==1: print(f'after, edge4 {i}')
+                    if torch.isnan(edge_attr[i,5]) and edge_attr[i,3]==1: print(f'after, edge5 {i}')
+                    if torch.isnan(edge_attr[i,6]): print(f'after, edge6 {i}')
+                    if torch.isnan(edge_attr[i,2]) and edge_attr[i,3]==1: print(f'after, edge2 {i}')
         
         #Node Labels
         if any(torch.isnan(data['node_labels'])):
