@@ -50,7 +50,7 @@ def run_single(cfg, device, N_CPUS):
     else:
 
         # Create Datasets and Dataloaders
-        trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+        trainset, testset, _ = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
         if device == 'cuda':    pin_memory = True
         else:                   pin_memory = False
         if cfg['model'] == 'Node2Vec':
@@ -74,7 +74,11 @@ def run_single(cfg, device, N_CPUS):
 
         # getting feature and target sizes
         num_features = trainset.__getitem__(0).x.shape[1]
-        num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+        if trainset.__getitem__(0).edge_attr.dim() == 1:
+            if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+            num_edge_features = 1
+        else:
+            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
 
         #Setup Parameter dictionary for Node2Vec (mask_probs, num_features and num_edge_features should be irrelevant)
         params = setup_params(cfg, mask_probs, num_features, num_edge_features)
