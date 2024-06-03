@@ -46,7 +46,8 @@ def get_model(cfg, params):
             reghead_size    = params['reghead_size'],
             reghead_layers  = params['reghead_layers'],
             use_skipcon     = params['use_skipcon'],
-            use_batchnorm   = params['use_batchnorm']
+            use_batchnorm   = params['use_batchnorm'],
+            task            = params['task']
             )
 
     #GAT

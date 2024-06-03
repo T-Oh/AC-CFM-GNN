@@ -1,4 +1,4 @@
-from torch_geometric.nn import BatchNorm, GINEConv
+from torch_geometric.nn import BatchNorm, GINEConv, global_mean_pool
 from torch.nn import Module, Dropout, Linear, BatchNorm1d, LeakyReLU
 import torch.nn as nn
 
@@ -11,7 +11,7 @@ class GINE(Module):
     """
     
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1, hidden_size=1, num_layers=1, reghead_size=500, reghead_layers =2,
-                 dropout=0.0, use_skipcon=False, use_batchnorm=True):       
+                 dropout=0.0, use_skipcon=False, use_batchnorm=True, task='NodeReg'):       
         """
         INPUT
         num_node_features   :   int
@@ -43,9 +43,12 @@ class GINE(Module):
         #use_batchnorm does not have an effect on GINE since the batchnorm is automatically used inside the layers
 
         #Params
+        print('THIS')
+        print(num_edge_features)
         self.num_layers=int(num_layers)
         self.use_skipcon = bool(int(use_skipcon))
         self.reghead_layers = int(reghead_layers)
+        self.task = task
         hidden_size = int(hidden_size)
         reghead_size = int(reghead_size)
         
@@ -74,9 +77,9 @@ class GINE(Module):
        
         #Regression Head Layers
         self.regHead1 = Linear(hidden_size, reghead_size)
-        self.singleLinear = Linear(hidden_size, num_targets)
+        self.singleLinear = Linear(hidden_size, num_targets, bias=True)
         self.regHeadLayers = nn.ModuleList(Linear(reghead_size, reghead_size) for i in range(self.reghead_layers-2))
-        self.endLinear = Linear(reghead_size,num_targets,bias=True)
+        self.endLinear = Linear(reghead_size,num_targets, bias=True)
 
         
         #Additional Layers
@@ -88,7 +91,9 @@ class GINE(Module):
     def forward(self, data):
         
         
-        x, _, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
+        x, batch, edge_index, edge_weight = data.x, data.batch, data.edge_index, data.edge_attr.float()
+        if edge_weight.dim() == 1:  #If onyl 1 edge attr an empty 2nd dimension needs to be added
+            edge_weight = edge_weight.unsqueeze(1)
         PRINT=False
         if PRINT:
             print('\n\nGINE FORWARD OUTPUT\n ')
@@ -96,7 +101,8 @@ class GINE(Module):
             print(x)
             print(edge_index)
             print(edge_weight)
-        
+
+
         x = self.convLayer1(x, edge_index=edge_index, edge_attr=edge_weight)
         x = self.relu(x)
         x = self.dropout(x)
@@ -107,29 +113,38 @@ class GINE(Module):
             if PRINT: print('Using Skipcon')
             for i in range(self.num_layers -1):
                 x_ = self.gines[i](x, edge_index=edge_index, edge_attr=edge_weight)
-                x = (self.relu(x_)+x)/2
+                if i < self.num_layers-2:
+                    x = (self.relu(x_)+x)/2
+                else: 
+                    x = x_
                 x = self.dropout(x)
         else:
             for i in range(self.num_layers-1):
                 x = self.gines[i](x, edge_index=edge_index, edge_attr=edge_weight)
-                x = self.relu(x)
+                if i < self.num_layers-2:
+                    x = self.relu(x)
                 x = self.dropout(x)
 
-        
+
+        if self.task != 'GraphReg':
         #Regression Head
-        if self.reghead_layers == 1:
-                x = self.singleLinear(x)
+            if self.reghead_layers == 1:
+                    x = self.singleLinear(x)
 
 
-        elif self.reghead_layers > 1:
-            x = self.regHead1(x)
+            elif self.reghead_layers > 1:
+                x = self.regHead1(x)
 
-            x = self.relu(x)
-            for i in range(self.reghead_layers-2):
-                x = self.regHeadLayers[i](x)
                 x = self.relu(x)
-                #print(out)
-            x = self.endLinear(x)
+                for i in range(self.reghead_layers-2):
+                    x = self.regHeadLayers[i](x)
+                    x = self.relu(x)
+                    #print(out)
+                x = self.endLinear(x)
+        else:
+            x = global_mean_pool(x, batch)
+            x = self.singleLinear(x)
+
         
         #print(x)
         #print("END")

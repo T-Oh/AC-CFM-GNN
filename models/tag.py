@@ -1,4 +1,4 @@
-from torch_geometric.nn import  TAGConv, BatchNorm
+from torch_geometric.nn import  TAGConv, BatchNorm, global_mean_pool
 from torch.nn import Module, LeakyReLU, Dropout, Linear, ModuleList
 import torch
 
@@ -9,7 +9,7 @@ class TAGNodeReg(Module):
     Topology Adaptive Graph convolutional network
     """
     def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15, K = 4, reghead_size = 64, reghead_layers = 1,
-                 use_batchnorm=False, use_skipcon=False):
+                 use_batchnorm=False, use_skipcon=False, task='NodeReg'):
         """
         INPUT
         num_node_features   :   int
@@ -45,6 +45,7 @@ class TAGNodeReg(Module):
         self.K = int(K)
         self.use_batchnorm = bool(int(use_batchnorm))
         self.use_skipcon = bool(int(use_skipcon))
+        self.task = task
 
 
 
@@ -64,16 +65,17 @@ class TAGNodeReg(Module):
         
 
     def forward(self, data):
-        x, edge_index, edge_weight = data.x, data.edge_index.type(torch.int64), data.edge_attr.float()
-        edge_weight = edge_weight[:,6]
+        x, edge_index, edge_weight, batch = data.x, data.edge_index.type(torch.int64), data.edge_attr.float(), data.batch
+
 
         PRINT=False
         
         if PRINT:
             print("START")
             print(x.shape)
-            print(edge_index)
-            print(edge_weight)
+            print(edge_index.shape)
+            print(edge_weight.shape)
+            
             
         x = self.conv1(x, edge_index=edge_index, edge_weight=edge_weight)
         if self.use_batchnorm:
@@ -88,7 +90,11 @@ class TAGNodeReg(Module):
                 x_ = self.convLayers[i](x, edge_index=edge_index, edge_weight=edge_weight)
                 if self.use_batchnorm:
                     x_ = self.batchnorm(x_)
-                x = (self.relu(x_)+x)/2
+                if i<self.num_layers-2:
+                    x = (self.relu(x_)+x)/2
+                else:
+                    x = x_
+
                 x = self.dropout(x)
             else:
                 
@@ -96,19 +102,25 @@ class TAGNodeReg(Module):
                 if self.use_batchnorm:
                     x = self.batchnorm(x)
                 x = self.relu(x)
-                x = self.dropout(x)
+                if i < self.num_layers-2:
+                    x = self.dropout(x)
         
-        if self.reghead_layers == 1:
-                x = self.singleLinear(x)
-        
-        
-        elif self.reghead_layers > 1:
-            x = self.regHead1(x)
-        
-            x = self.relu(x)
-            for i in range(self.reghead_layers-2):
-                x = self.regHeadLayers[i](x)
-                x = self.relu(x)
+        if self.task != 'GraphReg':
+        #Regression Head
+            if self.reghead_layers == 1:
+                    x = self.singleLinear(x)
 
-            x = self.endLinear(x)
+
+            elif self.reghead_layers > 1:
+                x = self.regHead1(x)
+
+                x = self.relu(x)
+                for i in range(self.reghead_layers-2):
+                    x = self.regHeadLayers[i](x)
+                    x = self.relu(x)
+                    #print(out)
+                x = self.endLinear(x)
+        else:
+            x = global_mean_pool(x, batch)
+            x = self.singleLinear(x)
         return x
