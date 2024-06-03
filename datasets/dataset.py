@@ -40,11 +40,12 @@ class HurricaneDataset(Dataset):
     """
 
     
-    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None, N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC', ls_threshold = .09, N_below_threshold=1):
+    def __init__(self, root,use_supernode, transform=None, pre_transform=None, pre_filter=None, N_Scenarios=100, stormsplit=0, embedding=None, device=None, data_type='AC', edge_attr='multi', ls_threshold = .09, N_below_threshold=1):
         self.use_supernode=use_supernode
         self.embedding = embedding
         self.device = device
         self.data_type = data_type
+        self.edge_attr = edge_attr
         self.ls_threshold = ls_threshold
         self.N_below_threshold = N_below_threshold
         super().__init__(root, transform, pre_transform, pre_filter)
@@ -187,7 +188,7 @@ class HurricaneDataset(Dataset):
                         else:       data_seq.append(data)"""
                     #save unscaled data (non LSTM)
                     if self.data_type == 'AC':
-                        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
+                        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             if self.data_type == 'LSTM':
                 data = Data(x=node_feature_seq.float(), edge_index=adj_seq, edge_attr=edge_attr_seq, node_labels=node_labels, y=graph_label_seq) 
@@ -377,6 +378,10 @@ class HurricaneDataset(Dataset):
 
         pf2 = edge_data[:,15]
         qf2 = edge_data[:,16]
+
+        Gs = torch.tensor(node_data_pre[:,4]) #Shunt conductance
+        Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
+
         
         
         #initial damages
@@ -485,16 +490,41 @@ class HurricaneDataset(Dataset):
                 reactance_feature.append(reactance[j])
                 init_dmg_feature.append(init_dmg[j])
             
-            
 
-            
 
-        #compile data of step to feature matrices                
         adj = torch.tensor([adj_from,adj_to])
 
-        edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, resistance_feature, reactance_feature, init_dmg_feature])
+        if self.edge_attr == 'Y':
+            impedance = torch.tensor([resistance_feature, reactance_feature])
+            impedance = torch.transpose(impedance, 0, 1).contiguous() #(5154, 2)
+            impedance_complex = torch.view_as_complex(impedance) #(5154)
+            admittance_complex = torch.reciprocal(impedance_complex) #(5154)
+            
+            edge_attr = - torch.view_as_real(admittance_complex)
+
+            Y = torch.zeros((2000,2000), dtype=torch.cfloat)
+            for idx, edge in enumerate(adj.t().tolist()):                
+                source, target = edge
+                Y[source, target] = admittance_complex[idx]
+            #print('Y', Y)
+            admittance_sum = torch.sum(Y, dim=0) #(2000), contains (y12 + y13, y12 + y23, ...)
+            
+            self_admittance = torch.cat((Gs.unsqueeze(1), Bs.unsqueeze(1)), dim=1) - torch.view_as_real(admittance_sum)
+            #self_admittance = self_admittance + torch.view_as_real(admittance_sum) #DO POPRAWKI
+            
+            edge_attr = torch.cat([edge_attr, self_admittance], dim=0)
+            edge_attr = torch.transpose(edge_attr, 0, 1)
+            edge_attr = torch.tensor(np.sqrt(edge_attr[0,:]**2+edge_attr[1,:]**2))
+
+            self_connections = torch.stack([torch.arange(2000), torch.arange(2000)], dim=0)
+            adj = torch.cat([adj, self_connections], dim=1)
+        else:
+            edge_attr = torch.tensor([rating_feature, pf_feature, qf_feature, resistance_feature, reactance_feature, init_dmg_feature])
+            edge_attr = torch.transpose(edge_attr,0,1)
+
         
         return adj, edge_attr
+
       
     def find_nans(status, feature, scenario, i):
         #Check for NaNs
@@ -863,7 +893,7 @@ class HurricaneDataset(Dataset):
     return batch[0]"""
     
 
-def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None, data_type = 'AC'):
+def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None, data_type = 'AC', edge_attr='multi'):
     """
     Helper function which loads the dataset, applies
     pre-transforms and splits it into a training and a
@@ -883,7 +913,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     t1 = time.time()
     print(t1, flush=True)
     dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, 
-                               embedding=embedding, data_type=data_type, ls_threshold=cfg['ls_threshold'], N_below_threshold=cfg['N_below_threshold'])
+                               embedding=embedding, data_type=data_type, edge_attr=edge_attr, ls_threshold=cfg['ls_threshold'], N_below_threshold=cfg['N_below_threshold'])
     data_list = dataset.data_list
 
     if num_samples is None:

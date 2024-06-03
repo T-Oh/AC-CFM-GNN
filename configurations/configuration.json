@@ -4,11 +4,12 @@
     "dataset::path": "",
     "study_ID": "objective_2024-03-04_14-23-08/",
 
-    "task":"NodeReg",
+    "task":"GraphReg",
     "data":"AC",
-    "ls_threshold" : 0.25,
-    "N_below_threshold" : 3,
-    "n_scenarios":1229,
+    "edge_attr": "multi",
+    "ls_threshold" : 0.1,
+    "N_below_threshold" : 10,
+    "n_scenarios":25000,
 
     "crossvalidation" : false,
     "study::run" : false,
@@ -21,14 +22,14 @@
     "train_set::shuffle": false,
     "checkpointing": false,
 
-    "epochs": 200,
+    "epochs": 2,
     "N2V_epochs": 20,
     "model": "GINE",
     "supernode":false,
     "output_freq" : 1,
     
 
-    "num_layers": 2,
+    "num_layers": 4,
     "hidden_size": 250,
     "reghead_size": 141,
     "reghead_layers" : 2,
@@ -45,7 +46,7 @@
     "num_heads" : 2,
     "gat_dropout" : 0.1,
 
-    "tag_jumps" : 22,
+    "tag_jumps" : 20,
 
     "num_conv_targets"  : 32,
     "lstm_hidden_size"  : 64,
@@ -61,7 +62,7 @@
     
     "accuracy_tolerance":0.15,
 
-    "optim::LR": 2e-4,
+    "optim::LR": 2e-3,
     "optim::betas": [
         0.9,
         0.999
