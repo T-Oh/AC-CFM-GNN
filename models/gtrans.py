@@ -1,5 +1,6 @@
-from torch_geometric.nn import  TransformerConv, BatchNorm
+from torch_geometric.nn import  TransformerConv, BatchNorm, global_mean_pool
 from torch.nn import Module, Dropout, Linear, LeakyReLU, ModuleList
+from torch.utils.checkpoint import checkpoint
 
 
 class GraphTransformer(Module):
@@ -9,7 +10,7 @@ class GraphTransformer(Module):
     def __init__(self, num_node_features=2, num_edge_features=7, num_targets=1,
                 hidden_size=1, num_layers=1, reghead_size=500, reghead_layers=1,
                 dropout=0.0, gat_dropout=0.0,  num_heads=1, use_skipcon=False,
-                use_batchnorm=False):
+                use_batchnorm=False, checkpoint=True, task='NodeReg'):
         """
         INPUT
         num_node_features   :   int
@@ -42,13 +43,15 @@ class GraphTransformer(Module):
         super(GraphTransformer, self).__init__()
 
         #Params
-        self.num_layers = int(num_layers)
-        self.hidden_size = int(hidden_size)
-        self.reghead_size = int(reghead_size)
+        self.num_layers     = int(num_layers)
+        self.hidden_size    = int(hidden_size)
+        self.reghead_size   = int(reghead_size)
         self.reghead_layers = int(reghead_layers)
-        self.num_heads = int(num_heads)
-        self.use_skipcon = bool(int(use_skipcon))
-        self.use_batchnorm = bool(int(use_batchnorm))
+        self.num_heads      = int(num_heads)
+        self.use_skipcon    = bool(int(use_skipcon))
+        self.use_batchnorm  = bool(int(use_batchnorm))
+        self.checkpoint     = checkpoint
+        self.task           = task
 
 
 
@@ -59,7 +62,7 @@ class GraphTransformer(Module):
         #Regression Head Layers
         self.regHead1 = Linear(self.hidden_size*self.num_heads, self.reghead_size)
         self.singleLinear = Linear(self.hidden_size*self.num_heads, num_targets)
-        self.regHeadLayers = ModuleList(Linear(self.reghead_size, self.reghead_size) for i in range(self.num_layers-2))
+        self.regHeadLayers = ModuleList(Linear(self.reghead_size, self.reghead_size) for i in range(self.reghead_layers-2))
         self.endLinear = Linear(self.reghead_size,num_targets,bias=True)
 
         #Additional Layers
@@ -67,11 +70,28 @@ class GraphTransformer(Module):
         self.dropout = Dropout(p=dropout)
         self.batchnorm = BatchNorm(self.hidden_size*self.num_heads,track_running_stats=True)
 
+    #Checkpointing functions:
+    #Function used to create run functions necessary for checkpoints
+    def run_func_factory_conv(self, layer):
+        def checkpoint_forward(*inputs):
+            out = layer(inputs[0],edge_index=inputs[1], edge_attr=inputs[2])
+            return out
+        return checkpoint_forward 
+    
+    #Function used to create run functions necessary for checkpoints
+    def run_func_factory_regHead(self, layer):
+        def checkpoint_forward(*inputs):
+            out = layer(inputs[0])
+            return out
+        return checkpoint_forward 
+
+
 
     def forward(self, data):
 
         x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr.float()
-
+        if edge_weight.dim() == 1:
+            edge_weight = edge_weight.unsqueeze(1)
 
         PRINT=False
         if PRINT:
@@ -91,30 +111,53 @@ class GraphTransformer(Module):
         #Arranging Conv Layers
         for i in range(self.num_layers -1):
             if self.use_skipcon:
-                x_ = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
+                if self.checkpoint:
+                    print('CHECKPOINTING')
+                    x_ = checkpoint(self.run_func_factory_conv(self.convLayers[i]), x, edge_index, edge_weight)
+                else:
+                    x_ = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
+                
                 if self.use_batchnorm:
                     x_ = self.batchnorm(x_)
                 x = (self.relu(x_)+x)/2
                 x = self.dropout(x)
             else:
-                x = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
+                if self.checkpoint:                    
+                    x = checkpoint(self.run_func_factory_conv(self.convLayers[i]), x, edge_index, edge_weight)
+                else:
+                    x = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
                 if self.use_batchnorm:
                     x = self.batchnorm(x)
                 x = self.relu(x)
                 x = self.dropout(x)
 
-        if self.reghead_layers == 1:
-                x = self.singleLinear(x)
+
+        if self.task != 'GraphReg':
+
+            if self.reghead_layers == 1:
+                if self.checkpoint:
+                    x = checkpoint(self.run_func_factory_regHead(self.sinlgeLinear))
+                else:
+                    x = self.singleLinear(x)
 
 
-        elif self.reghead_layers > 1:
-            x = self.regHead1(x)
+            elif self.reghead_layers > 1:
+                if self.checkpoint:
+                    x = checkpoint(self.run_func_factory_regHead(self.regHead1), x)
+                else:
+                    x = self.regHead1(x)
 
-            x = self.relu(x)
-            for i in range(self.reghead_layers-2):
-                x = self.regHeadLayers[i](x)
                 x = self.relu(x)
+                for i in range(self.reghead_layers-2):
+                    if self.checkpoint:
+                        x = checkpoint(self.run_func_factory_regHead(self.regHeadLayers[i][i]), x)
+                    else:
+                        x = self.regHeadLayers[i](x)
+                    x = self.relu(x)
 
-            x = self.endLinear(x)
+                x = self.endLinear(x)
+        else:
+            x = global_mean_pool(x,batch)
+            x = self.singleLinear(x)
 
         return x

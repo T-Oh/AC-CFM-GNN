@@ -81,6 +81,7 @@ def get_model(cfg, params):
             use_skipcon     = params['use_skipcon'],
             reghead_size    = params['reghead_size'],
             reghead_layers  = params['reghead_layers'],
+            task            = params['task']
         )
     #GraphTransformer
     elif cfg['model'] == 'GTrans':
