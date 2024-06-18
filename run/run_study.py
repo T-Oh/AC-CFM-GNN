@@ -57,7 +57,12 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     
     # getting feature and target sizes
     num_features = trainset.__getitem__(0).x.shape[1]
-    num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+    if trainset.__getitem__(0).edge_attr.dim() == 1:
+        if cfg['edge_attr'] == 'multi':     
+            print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+            num_edge_features = 1
+        else:
+            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
 
     # Calculate probabilities for masking of nodes if necessary
     if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
