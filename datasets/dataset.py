@@ -381,24 +381,31 @@ class HurricaneDataset(Dataset):
 
         Gs = torch.tensor(node_data_pre[:,4]) #Shunt conductance
         Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
-
-        
-        
-        #initial damages
-        init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
-        #set initially damaged lines to 0
-        for step in range(len(damages[scenario])):
-            if n_minus_k:
-                if damages[scenario][step,0] <= i:
-                    init_dmg[damages[scenario][step,1]] = 1 
-            else:       
-                if damages[scenario][step,0] == i:
-                    init_dmg[damages[scenario][step,1]] = 1 
                 
         #Adjacency Matrix
         bus_id = node_data_pre[:,0] #list of bus ids in order
         bus_from = edge_data[:,0]   
         bus_to = edge_data[:,1] 
+
+        #initial damages
+        init_dmg = torch.zeros(len(status)) #edge feature that is 0 except if the line was an initial damage during that step
+        #set initially damaged lines to 1
+        for step in range(len(damages[scenario])):
+            if n_minus_k:
+                if damages[scenario][step,0] <= i:
+                    init_dmg[damages[scenario][step,1]-1] = 1 
+            else:       
+                if damages[scenario][step,0] == i:
+                    init_dmg[damages[scenario][step,1]-1] = 1 
+                    j = 0
+                    while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1-j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1-j]:
+                        init_dmg[damages[scenario][step,1]-1-j] = 1 
+                        j = j+1
+                    j = 0
+                    while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1+j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1+j]:
+                        init_dmg[damages[scenario][step,1]-1+j] = 1 
+                        j = j+1
+        #print(init_dmg[1806:1818])
         
         #Features
         adj_from = []   #adjacency matrix from/to -> no edges appearing twice
@@ -454,7 +461,7 @@ class HurricaneDataset(Dataset):
             if exists: 
                 continue
             #if edge does not exist yet add it in both directions
-            elif status[j]==1:
+            elif status[j]==1 and init_dmg[j] == 0:
                 
                 #First direction
                 
