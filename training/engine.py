@@ -179,6 +179,7 @@ class Engine(object):
             #t2=time.time()
             #print(f'Training Batch took {(t1-t2)/60} mins', flush=True)
         R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        del batch
         
         if not self.return_full_output:
             example_output = total_output[0:16000]
