@@ -98,7 +98,9 @@ def get_model(cfg, params):
             gat_dropout     = params['gat_dropout'],
             num_heads       = params["heads"],
             use_skipcon     = params['use_skipcon'],
-            use_batchnorm   = params['use_batchnorm']
+            use_batchnorm   = params['use_batchnorm'],
+            checkpoint      = cfg['checkpointing'],
+            task            = params['task']
         )
     elif cfg['model'] == 'LSTM':
         print('Using GCN LSTM')
