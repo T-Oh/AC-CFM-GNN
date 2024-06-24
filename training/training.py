@@ -83,22 +83,32 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
 
 
 
-def objective(search_space, trainloader, testloader, cfg, num_features, num_edge_features, num_targets, device,
-              mask_probs):
+def objective(search_space, cfg, device,
+              mask_probs, pin_memory, N_CPUS):
+
+    #Create Datasets and Loaders
+    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+    trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
+
+    num_features = trainset.__getitem__(0).x.shape[1]
+    if trainset.__getitem__(0).edge_attr.dim() == 1:
+        if cfg['edge_attr'] == 'multi':     
+            print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+            num_edge_features = 1
+        else:
+            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
     params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     params = setup_params_from_search_space(search_space, params)
     print(params)
-    
-        
     
         
     print('\nSEARCH_SPACE:\n')
     print(search_space)
     print('PARAMS')
     print(params, flush=True)
-    if device=='cuda':
-        print('CUDA')
-        tune.utils.wait_for_gpu(target_util=0.66)
+    #if device=='cuda':
+        #print('CUDA')
+        #tune.utils.wait_for_gpu(target_util=0.66)
     model = get_model(cfg, params)
     model.to(device)
     #Choose Criterion
@@ -151,6 +161,10 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
                 'test_R2' : eval_score[1].detach()
                 }
             session.report(result)
+            torch.save(list(test_losses), cfg['dataset::path'] + "results/" + 'test_losses' + savename) #saving train losses
+            torch.save(list(train_losses), cfg['dataset::path'] + "results/" + 'train_losses' + savename) #saving train losses
+            torch.save(list(output), cfg['dataset::path'] + "results/" + 'output' + savename) #saving train losses
+            torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels' + savename) #saving train losses
 
         #LR Scheduler
         LRScheduler.step(eval_score[1].cpu())
@@ -164,10 +178,7 @@ def objective(search_space, trainloader, testloader, cfg, num_features, num_edge
             savename = '_' + key + '_' + str(int(params[key])) + savename
         else:
             savename = '_' + key + '_' + f'{params[key]:.3}'  + savename
-    torch.save(list(test_losses), cfg['dataset::path'] + "results/" + 'test_losses' + savename) #saving train losses
-    torch.save(list(train_losses), cfg['dataset::path'] + "results/" + 'train_losses' + savename) #saving train losses
-    torch.save(list(output), cfg['dataset::path'] + "results/" + 'output' + savename) #saving train losses
-    torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels' + savename) #saving train losses
+
 
     #tune.report(np.array(discrete_measure).min())  #only necessary for intermediate results
 

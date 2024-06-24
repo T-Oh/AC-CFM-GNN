@@ -49,20 +49,11 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
              #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
-    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+    #trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
     if device == 'cuda' :   pin_memory=True
     else                :   pin_memory=False
-    trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
+    #trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
    
-    
-    # getting feature and target sizes
-    num_features = trainset.__getitem__(0).x.shape[1]
-    if trainset.__getitem__(0).edge_attr.dim() == 1:
-        if cfg['edge_attr'] == 'multi':     
-            print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
-            num_edge_features = 1
-        else:
-            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
 
     # Calculate probabilities for masking of nodes if necessary
     if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
@@ -77,11 +68,22 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
         #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
         mask_probs = torch.zeros(2000)+1
      
-    #Node2Vec
-    params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+    
     
     if cfg['model'] == 'Node2Vec':
+        #Node2Vec
+        params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+        trainset, testset, _ = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+        trainloader, _ = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
         print('Creating Node2Vec Embedding')
+            # getting feature and target sizes
+        num_features = trainset.__getitem__(0).x.shape[1]
+        if trainset.__getitem__(0).edge_attr.dim() == 1:
+            if cfg['edge_attr'] == 'multi':     
+                print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+                num_edge_features = 1
+            else:
+                num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
         
         embedding = run_node2vec(cfg, trainloader, device, params, 0)
         normalized_embedding = embedding.data
@@ -113,21 +115,29 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     # set up optimizer and scheduler
     baysopt = BayesOptSearch(metric='test_R2', mode='max')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='test_R2', mode='max', max_t=cfg['epochs'], grace_period=10)
+        time_attr='training_iteration', metric='test_R2', mode='max', max_t=cfg['epochs'], grace_period=100)
 
     
     # configurations
     tune_config = tune.tune_config.TuneConfig(
-        num_samples=cfg['study::n_trials'], search_alg=baysopt, scheduler=scheduler)
+        num_samples=cfg['study::n_trials'], 
+        #raise_on_failed_trial=False,
+        #max_failures=20,
+        #queue_trials=True,
+        search_alg=baysopt,
+        scheduler=scheduler)
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
-    trainable = tune.with_parameters(objective, trainloader=trainloader, testloader=testloader, cfg=cfg, num_features=num_features,
-                                num_edge_features=num_edge_features, num_targets=1, device=device, mask_probs=mask_probs)
+    trainable = tune.with_parameters(objective,
+                                     cfg=cfg,  
+                                     device=device, 
+                                     mask_probs=mask_probs,  
+                                     pin_memory=pin_memory,
+                                     N_CPUS=N_CPUS)
     # tuner
     if not cfg['study::continue']:
-        tuner = tune.Tuner(tune.with_resources(
-            trainable,
-            resources={"cpu": 1, "gpu": N_GPUS/(N_TASKS/1)}),
+        tuner = tune.Tuner(
+            tune.with_resources(trainable, resources={"cpu": N_CPUS}),#, "gpu": N_GPUS/(N_TASKS/2)}),
             param_space=search_space,
             tune_config=tune_config,
             run_config=run_config)
