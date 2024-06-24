@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from training.training import objective
+import torch
 
 
 name = 'Analyze_Ray_Test' #Name tag added to the plots and their filenames
@@ -69,25 +70,29 @@ for file in os.listdir(path):
             #print(result_grid[i].metrics['r2'])
             if not result_grid[i].error:
                 if 'test_R2' in result_grid[i].metrics.keys():
-                    usable_trials += 1
-                    for key in result_grid[i].config.keys():
-                        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
-                                   'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
-                            params[key][i+offset] = int(result_grid[i].config[key])
-                        elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
-                            params[key][i+offset] = 0
-                        else:
-                            params[key][i+offset] = result_grid[i].config[key]
-                    for key in metrics.keys():
-                        metrics[key][i+offset] = result_grid[i].metrics[key]
-                        
-                    if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
-                        fastest_result = result_grid[i]
-                        fastest = result_grid[i].metrics['time_total_s']
-                        
-                    if result_grid[i].metrics['time_total_s'] > slowest_time and result_grid[i].metrics['time_total_s'] != 0:
-                        slowest_result = result_grid[i]
-                        slowest = result_grid[i].metrics['time_total_s']
+                    if not torch.isnan(result_grid[i].metrics['test_R2']):
+                        usable_trials += 1
+                        for key in result_grid[i].config.keys():
+                            if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
+                                    'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
+                                params[key][i+offset] = int(result_grid[i].config[key])
+                            elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
+                                params[key][i+offset] = 0
+                            else:
+                                params[key][i+offset] = result_grid[i].config[key]
+                        for key in metrics.keys():
+                            metrics[key][i+offset] = result_grid[i].metrics[key]
+                            
+                        if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
+                            fastest_result = result_grid[i]
+                            fastest = result_grid[i].metrics['time_total_s']
+                            
+                        if result_grid[i].metrics['time_total_s'] > slowest_time and result_grid[i].metrics['time_total_s'] != 0:
+                            slowest_result = result_grid[i]
+                            slowest = result_grid[i].metrics['time_total_s']
+                    else:
+                        print(f'Skipped {i} because Test R2 is nan')    
+                        unusable_trials += 1    
                         
                 else: 
                     print(f'Skipped {i} because Test R2 not in Metrics')
