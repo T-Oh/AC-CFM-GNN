@@ -163,3 +163,10 @@ def run_single(cfg, device, N_CPUS):
         ax2.plot(metrics['test_R2'], label='Test R2')
         ax2.legend()
         fig2.savefig('R2.png', bbox_inches='tight')
+
+        fig3, ax3 = plt.subplots()
+        ax3.plot(metrics['train_R2'], label='Train R2')
+        ax3.plot(metrics['test_R2'], label='Test R2')
+        ax3.legend()
+        ax3.set_ylim(0.0, 1.0)
+        fig3.savefig('R2_zoom.png', bbox_inches='tight')
