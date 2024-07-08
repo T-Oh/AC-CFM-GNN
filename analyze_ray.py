@@ -9,22 +9,43 @@ import os
 from training.training import objective
 import torch
 
-
-name = 'Analyze_Ray_Test' #Name tag added to the plots and their filenames
+#control variables
+name = 'GINE_GR' #Name tag added to the plots and their filenames
 TEMP_DIR = '/home/tohlinger/RAY_TMP2/'
+path = '/home/tohlinger/LEO/Running/GINE_ANGF_Y_GR/results/'
 
 
+#loss and R2 Plots
+i = 0
+for file in os.listdir(path):
+    if file.startswith('train_losses'):
+        train_losses    = torch.load(path+file)
+        test_losses     = torch.load(path+file.replace('train','test'))
+        
+        fig = plt.figure(i)
+        ax = plt.gca()
+        ax.plot(train_losses, label='Train Loss')
+        ax.plot(test_losses, label='Test Loss')
+        ax.legend()
+        fig.savefig(path+file.replace('train_losses','loss').replace('.pt','.png'), bbox_inches='tight')
+        plt.close()
+
+
+#RAY ANALYSIS
+#result variables
 ray.init(_temp_dir=TEMP_DIR,include_dashboard=False, num_cpus=1)
 i_file = 0
 offset = 0
-path = '/home/tohlinger/LEO/Running/GTrans_n-k_test/results/'
 unusable_trials = 0
 usable_trials = 0
 experiments_evaluated = 0
 fastest_time = 9999999
 slowest_time = 0
+best_R2 = np.NINF
 fastest_result = 0
 slowest_result = 0
+
+
 for file in os.listdir(path):
     if file.startswith('objective'):
 
@@ -82,6 +103,12 @@ for file in os.listdir(path):
                                 params[key][i+offset] = result_grid[i].config[key]
                         for key in metrics.keys():
                             metrics[key][i+offset] = result_grid[i].metrics[key]
+
+                        #Find best result, fastest result and slowest result
+                        if 'test_R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2']):
+                            if result_grid[i].metrics['test_R2'] > best_R2:
+                                best_result = result_grid[i]
+                                best_R2 = result_grid[i].metrics['test_R2']
                             
                         if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
                             fastest_result = result_grid[i]
@@ -100,21 +127,10 @@ for file in os.listdir(path):
             else: 
                 print(f'Skipped {i} because of Error')
                 unusable_trials += 1
-        
-        #Find best result, fastest result and slowest result
-        if i_file == 0:
-            best_result = result_grid[np.argmax(metrics['test_R2'])]
-
-
-
-        else:
-            if metrics['test_R2'].max() > best_result.metrics['test_R2']:
-                best_result = result_grid[np.argmax(metrics['test_R2'])-offset]
-
-                
-        
+ 
         offset = i+offset
         i_file += 1
+
 
         
 print(f'{experiments_evaluated} experiments evaluated/n')
@@ -159,6 +175,7 @@ for key in params.keys():
     ax.set_ylabel('Test R2')
     fig.savefig(key + name + ".png", bbox_inches='tight')
     i += 1
+    plt.close()
     
 #3D Plot of layers and HF
 if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
@@ -179,6 +196,11 @@ ax.set_title(name)
 ax.set_xlabel('Trial')
 ax.set_ylabel('Test R2')
 fig.savefig('history_plot_' + name + '.png', bbox_inches='tight')
+
+
+
+
+
     
     
 
