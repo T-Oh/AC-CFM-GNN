@@ -19,7 +19,7 @@ from models.run_node2vec import run_node2vec
 
 
 
-def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
+def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     """
     Runs a ray study as defined in the configuration file
 
@@ -42,17 +42,16 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     # arguments for ray
     TEMP_DIR = '/home/tohlinger/RAY_TMP2'
 
-    port_dashboard = port_dashboard
-    N_GPUS=1
     # init ray
-    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS, num_gpus=N_GPUS)
+    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS*N_CPUS, num_gpus=N_GPUS)
              #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
     #trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+    #trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
+
     if device == 'cuda' :   pin_memory=True
     else                :   pin_memory=False
-    #trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
    
 
     # Calculate probabilities for masking of nodes if necessary
@@ -69,9 +68,8 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
         mask_probs = torch.zeros(2000)+1
      
     
-    
+    #Node2Vec
     if cfg['model'] == 'Node2Vec':
-        #Node2Vec
         params = setup_params(cfg, mask_probs, num_features, num_edge_features)
         trainset, testset, _ = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
         trainloader, _ = create_loaders(cfg, trainset, testset, num_workers=int(N_CPUS), pin_memory=pin_memory)
@@ -126,6 +124,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
         #queue_trials=True,
         search_alg=baysopt,
         scheduler=scheduler)
+    
     run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
     trainable = tune.with_parameters(objective,
@@ -137,7 +136,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, port_dashboard):
     # tuner
     if not cfg['study::continue']:
         tuner = tune.Tuner(
-            tune.with_resources(trainable, resources={"cpu": N_CPUS}),#, "gpu": N_GPUS/(N_TASKS/2)}),
+            tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS/2)}),
             param_space=search_space,
             tune_config=tune_config,
             run_config=run_config)

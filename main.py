@@ -24,9 +24,11 @@ with open(configfile, "r") as io:
 #Pass Input Arguments
 N_TASKS = int(argv[1])  #should only be >1 for studies -> controls the number of parallel trials
 N_CPUS_PER_TASK = int(argv[2])   #controls the number of cpus per trial used as dataloaders (for run_single and run_crossval should be total number of cpus (used as loaders))
-port_dashboard = int(argv[3])
+N_GPUS = int(argv[3])
+port_dashboard = int(argv[4])
 print('N_TASKS:', N_TASKS)
-print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK, flush=True)    
+print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK)  
+print('N_GPUS: ', N_GPUS, flush=True)  
 
 assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
 assert not (cfg['data'] == 'DC' and cfg['stormsplit']>0), 'Stormsplit can only be used with AC data'
@@ -56,8 +58,7 @@ if device == "cuda":
 
 # Runs study if set in configuration file
 if cfg["study::run"]:
-    model = run_study(cfg, device, N_TASKS, N_CPUS_PER_TASK, port_dashboard)
-    #model = run_study(cfg, device, 1, 8123)
+    model = run_study(cfg, device, N_TASKS, N_CPUS_PER_TASK, N_GPUS, port_dashboard)
 
 #Runs crossvalidation
 elif cfg['crossvalidation']:
