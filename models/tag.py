@@ -1,6 +1,7 @@
 from torch_geometric.nn import  TAGConv, BatchNorm, global_mean_pool
 from torch.nn import Module, LeakyReLU, Dropout, Linear, ModuleList
 import torch
+from torch.utils.checkpoint import checkpoint
 
 
 
@@ -62,6 +63,12 @@ class TAGNodeReg(Module):
         #Other Layers
         self.relu = LeakyReLU()
         self.batchnorm = BatchNorm(self.hidden_size,track_running_stats=True)
+
+    def custom_activation(self, layer):
+        def checkpoint_forward(*inputs):
+            out = layer(inputs[0])
+            return out
+        return checkpoint_forward
         
 
     def forward(self, data):
@@ -80,7 +87,7 @@ class TAGNodeReg(Module):
         x = self.conv1(x, edge_index=edge_index, edge_weight=edge_weight)
         if self.use_batchnorm:
             x=self.batchnorm(x)
-        x = self.relu(x)
+        x = checkpoint(self.custom_activation(self.relu), x)
         x = self.dropout(x)
 
 
@@ -91,7 +98,7 @@ class TAGNodeReg(Module):
                 if self.use_batchnorm:
                     x_ = self.batchnorm(x_)
                 if i<self.num_layers-2:
-                    x = (self.relu(x_)+x)/2
+                    x = (checkpoint(self.custom_activation(self.relu), x_)+x)/2
                 else:
                     x = x_
 
@@ -101,26 +108,26 @@ class TAGNodeReg(Module):
                 x = self.convLayers[i](x, edge_index=edge_index, edge_weight=edge_weight)
                 if self.use_batchnorm:
                     x = self.batchnorm(x)
-                x = self.relu(x)
+                x = checkpoint(self.custom_activation(self.relu), x)
                 if i < self.num_layers-2:
                     x = self.dropout(x)
         
         if self.task != 'GraphReg':
         #Regression Head
             if self.reghead_layers == 1:
-                    x = self.singleLinear(x)
+                    x = checkpoint(self.custom_activation(self.singleLinear), x)
 
 
             elif self.reghead_layers > 1:
-                x = self.regHead1(x)
+                x = checkpoint(self.custom_activation(self.regHead1), x)
 
-                x = self.relu(x)
+                x = checkpoint(self.custom_activation(self.relu), x)
                 for i in range(self.reghead_layers-2):
-                    x = self.regHeadLayers[i](x)
-                    x = self.relu(x)
+                    x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
+                    x = checkpoint(self.custom_activation(self.relu), x)
                     #print(out)
-                x = self.endLinear(x)
+                x = checkpoint(self.custom_activation(self.endLinear), x)
         else:
             x = global_mean_pool(x, batch)
-            x = self.singleLinear(x)
+            x = checkpoint(self.custom_activation(self.singleLinear), x)
         return x

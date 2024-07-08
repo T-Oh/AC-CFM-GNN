@@ -1,6 +1,7 @@
 from torch_geometric.nn import BatchNorm, GINEConv, global_mean_pool
 from torch.nn import Module, Dropout, Linear, BatchNorm1d, LeakyReLU
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 
 
@@ -43,8 +44,8 @@ class GINE(Module):
         #use_batchnorm does not have an effect on GINE since the batchnorm is automatically used inside the layers
 
         #Params
-        print('THIS')
-        print(num_edge_features)
+
+
         self.num_layers=int(num_layers)
         self.use_skipcon = bool(int(use_skipcon))
         self.reghead_layers = int(reghead_layers)
@@ -53,6 +54,7 @@ class GINE(Module):
         reghead_size = int(reghead_size)
         
         print('Using Gine with ', num_node_features, ' Node features')
+        print('and', num_edge_features, 'Edge Features\n')
         
         #ConvLayers        
         self.convLayer1 = GINEConv(
@@ -88,6 +90,19 @@ class GINE(Module):
         print(f'Dropoutrate {dropout}')
         self.batchnorm = BatchNorm(hidden_size,track_running_stats=True)
 
+    #Custom Forward Functions for Checkpointing
+    def run_func_factory_conv(self, layer):
+        def checkpoint_forward(*inputs):
+            out = layer(inputs[0],edge_index=inputs[1], edge_attr=inputs[2])
+            return out
+        return checkpoint_forward 
+    
+    def custom_activation(self, layer):
+        def checkpoint_forward(*inputs):
+            out = layer(inputs[0])
+            return out
+        return checkpoint_forward
+
     def forward(self, data):
         
         
@@ -103,8 +118,8 @@ class GINE(Module):
             print(edge_weight)
 
 
-        x = self.convLayer1(x, edge_index=edge_index, edge_attr=edge_weight)
-        x = self.relu(x)
+        x = self.convLayer1(x, edge_index, edge_weight)
+        x = checkpoint(self.custom_activation(self.relu), x)
         x = self.dropout(x)
 
 
@@ -112,38 +127,37 @@ class GINE(Module):
         if self.use_skipcon:   
             if PRINT: print('Using Skipcon')
             for i in range(self.num_layers -1):
-                x_ = self.gines[i](x, edge_index=edge_index, edge_attr=edge_weight)
-                if i < self.num_layers-2:
-                    x = (self.relu(x_)+x)/2
-                else: 
-                    x = x_
+                x_ = self.gines[i](x, edge_index, edge_weight)
+                if i < self.num_layers-2:   x = (checkpoint(self.custom_activation(self.relu), x_)+x)/2
+                else:                       x = x_
                 x = self.dropout(x)
+
         else:
             for i in range(self.num_layers-1):
-                x = self.gines[i](x, edge_index=edge_index, edge_attr=edge_weight)
+                x = self.gines[i](x, edge_index, edge_weight)
                 if i < self.num_layers-2:
-                    x = self.relu(x)
+                    x = checkpoint(self.custom_activation(self.relu), x)
                 x = self.dropout(x)
 
 
         if self.task != 'GraphReg':
         #Regression Head
             if self.reghead_layers == 1:
-                    x = self.singleLinear(x)
+                    x = checkpoint(self.custom_activation(self.singleLinear), x)
 
 
             elif self.reghead_layers > 1:
-                x = self.regHead1(x)
+                x = checkpoint(self.custom_activation(self.regHead1), x)
 
-                x = self.relu(x)
+                x = checkpoint(self.custom_activation(self.relu), x)
                 for i in range(self.reghead_layers-2):
-                    x = self.regHeadLayers[i](x)
-                    x = self.relu(x)
+                    x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
+                    x = checkpoint(self.custom_activation(self.relu), x)
                     #print(out)
-                x = self.endLinear(x)
+                x = checkpoint(self.custom_activation(self.endLinear), x)
         else:
             x = global_mean_pool(x, batch)
-            x = self.singleLinear(x)
+            x = checkpoint(self.custom_activation(self.singleLinear), x)
 
         
         #print(x)

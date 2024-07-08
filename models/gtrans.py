@@ -78,18 +78,20 @@ class GraphTransformer(Module):
             return out
         return checkpoint_forward 
     
-    #Function used to create run functions necessary for checkpoints
-    def run_func_factory_regHead(self, layer):
+    def custom_activation(self, layer):
         def checkpoint_forward(*inputs):
             out = layer(inputs[0])
             return out
-        return checkpoint_forward 
+        return checkpoint_forward
+    
 
 
 
     def forward(self, data):
 
-        x, edge_index, edge_weight = data.x, data.edge_index, data.edge_attr.float()
+        x, edge_index, edge_weight, batch = data.x, data.edge_index, data.edge_attr.float(), data.batch
+        x.requires_grad=True
+        print('x requires_grad: ', x.requires_grad)
         if edge_weight.dim() == 1:
             edge_weight = edge_weight.unsqueeze(1)
 
@@ -101,10 +103,10 @@ class GraphTransformer(Module):
             print(edge_weight)
 
 
-        x = self.conv1(x, edge_index=edge_index, edge_attr=edge_weight)
+        x = checkpoint(self.run_func_factory_conv(self.conv1), x, edge_index, edge_weight)
         if self.use_batchnorm:
             x=self.batchnorm(x)
-        x = self.relu(x)
+        x = checkpoint(self.custom_activation(self.relu), x)
         x = self.dropout(x)
 
 
@@ -119,7 +121,7 @@ class GraphTransformer(Module):
                 
                 if self.use_batchnorm:
                     x_ = self.batchnorm(x_)
-                x = (self.relu(x_)+x)/2
+                x = (checkpoint(self.custom_activation(self.relu),x_)+x)/2
                 x = self.dropout(x)
             else:
                 if self.checkpoint:                    
@@ -128,7 +130,7 @@ class GraphTransformer(Module):
                     x = self.convLayers[i](x, edge_index=edge_index, edge_attr=edge_weight)
                 if self.use_batchnorm:
                     x = self.batchnorm(x)
-                x = self.relu(x)
+                x = checkpoint(self.custom_activation(self.relu),x)
                 x = self.dropout(x)
 
 
@@ -136,28 +138,28 @@ class GraphTransformer(Module):
 
             if self.reghead_layers == 1:
                 if self.checkpoint:
-                    x = checkpoint(self.run_func_factory_regHead(self.sinlgeLinear))
+                    x = checkpoint(self.custom_activation(self.sinlgeLinear))
                 else:
                     x = self.singleLinear(x)
 
 
             elif self.reghead_layers > 1:
                 if self.checkpoint:
-                    x = checkpoint(self.run_func_factory_regHead(self.regHead1), x)
+                    x = checkpoint(self.custom_activation(self.regHead1), x)
                 else:
                     x = self.regHead1(x)
 
                 x = self.relu(x)
                 for i in range(self.reghead_layers-2):
                     if self.checkpoint:
-                        x = checkpoint(self.run_func_factory_regHead(self.regHeadLayers[i][i]), x)
+                        x = checkpoint(self.custom_activation(self.regHeadLayers[i][i]), x)
                     else:
                         x = self.regHeadLayers[i](x)
                     x = self.relu(x)
 
-                x = self.endLinear(x)
+                x = checkpoint(self.custom_activation(self.endLinear), x)
         else:
             x = global_mean_pool(x,batch)
-            x = self.singleLinear(x)
+            x = checkpoint(self.custom_activation(self.singleLinear), x)
 
         return x
