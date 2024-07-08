@@ -165,6 +165,9 @@ def objective(search_space, cfg, device,
             torch.save(list(train_losses), cfg['dataset::path'] + "results/" + 'train_losses' + savename) #saving train losses
             torch.save(list(output), cfg['dataset::path'] + "results/" + 'output' + savename) #saving train losses
             torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels' + savename) #saving train losses
+            torch.save(list(test_R2), cfg['dataset::path'] + "results/" + 'test_R2' + savename) #saving test R2
+            torch.save(list(train_R2), cfg['dataset::path'] + "results/" + 'train_R2' + savename) #saving trai R2
+            
 
         #LR Scheduler
         LRScheduler.step(eval_score[1].cpu())
