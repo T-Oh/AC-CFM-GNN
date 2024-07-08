@@ -98,15 +98,17 @@ class Engine(object):
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
         R2score=R2Score()
-        first=True;
+        first=True
+        for param in self.model.parameters():
+            assert param.requires_grad, "Parameter does not require grad"
 
         count = 0
         for (i, batch) in enumerate(dataloader):
             """t1 = time.time()
             print('Training Batch')
             print('STart Ttime Batch:', t1, flush=True)"""
-            #self.optimizer.zero_grad(set_to_none=True)
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
+            #self.optimizer.zero_grad()
             count +=1
             #yield dataloader.collate_fn(batch)
             batch.to(self.device)
