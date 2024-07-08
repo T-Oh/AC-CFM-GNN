@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-PLOT_ONLY = False
+PLOT_ONLY = True
 NO_Va = True
 path='processed/'
-NAME = 'plotting_test'
+NAME = 'graph_label_test'
 N_NODE_FEATURES = 17    #if NodeIDs are added as features substract 2000 from N_Features
 N_EDGE_FEATURES = 1
 
@@ -43,13 +43,16 @@ def get_min_max_features(path, N_node_features, N_edge_features):
 
     node_labels_max = 0
     node_labels_min = 1e6
+    y_max = np.NINF
+    y_min = np.Inf
+
     #loop through files
     for file in os.listdir(path):
         if not file.startswith('data'):
             continue
         print(path + file)
-        x = torch.load(path+file)['x']
-        #x=data['x']
+        data = torch.load(path+file)
+        x, edge_attr, node_labels, y = data.x, data.edge_attr, data.node_labels, data.y
         for i in range(x.shape[0]):
             for j in range(len(x_max)):
                 bias = 0
@@ -57,7 +60,7 @@ def get_min_max_features(path, N_node_features, N_edge_features):
                 if x[i,j]<x_min[j]: x_min[j]=x[i,j]
 
             
-        edge_attr=torch.load(path+file)['edge_attr']
+        edge_attr = data.edge_attr
         if N_edge_features == 1:
             for i in range(len(edge_attr)):
                 if edge_attr[i] > edge_attr_max[0]: edge_attr_max[0] = edge_attr[i]
@@ -68,15 +71,15 @@ def get_min_max_features(path, N_node_features, N_edge_features):
                     if edge_attr[i,j] > edge_attr_max[j]: edge_attr_max[j] = edge_attr[i,j]
                     if edge_attr[i,j] < edge_attr_min[j]: edge_attr_min[j] = edge_attr[i,j]
 
-            
-        if torch.is_tensor(torch.load(path+file)['node_labels']):
-            print('TEST')
-            node_labels=torch.load(path+file)['node_labels']
-            for i in range(len(node_labels)):
-                if node_labels[i] > node_labels_max: node_labels_max = node_labels[i]
-                if node_labels[i] < node_labels_min: node_labels_min = node_labels[i]
+        node_labels=torch.load(path+file)['node_labels']
+        for i in range(len(node_labels)):
+            if node_labels[i] > node_labels_max: node_labels_max = node_labels[i]
+            if node_labels[i] < node_labels_min: node_labels_min = node_labels[i]
+
+        if y > y_max:   y_max = y
+        if y < y_min:   y_min = y
                 
-    return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max
+    return x_min,x_max,edge_attr_min,edge_attr_max, node_labels_min, node_labels_max, y_min, y_max
 
 
 
@@ -84,25 +87,28 @@ def get_min_max_features(path, N_node_features, N_edge_features):
 if PLOT_ONLY:
     data = np.load(NAME + '.npz')
     x_hists = data['x_hists']
-    
     x_bins = data['x_bins']
     
     edge_hists = data['edge_hists']
-
     edge_bins = data['edge_bins']
     
     node_label_hist = data['node_label_hist']
-    
     node_label_bins = data['node_label_bins']
+
+    y_hist = data['y_hist']
+    y_bins = data['y_bins']
+
     
 
 
         
 else:
-    x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max = get_min_max_features(path, N_NODE_FEATURES, N_EDGE_FEATURES)
+    x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max, y_min, y_max = get_min_max_features(path, N_NODE_FEATURES, N_EDGE_FEATURES)
     
     x_bins = np.zeros([len(x_max),10])
     edge_bins = np.zeros([N_EDGE_FEATURES, 10])
+    node_label_bins = np.arange(node_labels_min,node_labels_max+node_labels_max/10,(node_labels_max-node_labels_min)/10)
+    y_bins = np.arange(y_min, y_max+y_max/10, (y_max-y_min)/10)
     for i in range(len(x_max)):
         print(i)
         print(x_max[i])
@@ -119,22 +125,18 @@ else:
     #else:
     for i in range(N_EDGE_FEATURES):
         edge_bins[i] = np.linspace(edge_attr_min[0],edge_attr_max[0], 10)
-
         #edgebins6 = np.arange(0,1.1,1/10)
-    
-    
-    #labelbins=np.arange(label_min,label_max,(label_max-label_min)/10)
-    node_label_bins = np.arange(node_labels_min,node_labels_max+node_labels_max/10,(node_labels_max-node_labels_min)/10)
     
     
     first = True
     x_hists = np.zeros([len(x_max),10])
     edge_hists = np.zeros([N_EDGE_FEATURES,10])
+    y_hist = np.zeros(len(y_bins))
     for file in os.listdir(path):
         if file.startswith('data'):
             data=torch.load(path+file)
-            if first:
-                
+
+            if first:            
                 for i in range(len(x_max)):
                    x_hists[i] = get_hist(data['x'][:,i],x_bins[i])
 
@@ -144,11 +146,15 @@ else:
                     for i in range(N_EDGE_FEATURES):
                         edge_hists[i] = get_hist(data['edge_attr'][:,i],edge_bins[i])
 
-                #labelhist = get_hist(data['y'],labelbins)
                 node_label_hist=get_hist(data['node_labels'], node_label_bins)
+
+                for j in range(len(y_bins)-1):
+                    if data.y <= y_bins[j+1]:
+                        y_hist[j]+=1
+                        break
                 first = False
-            else:
-                
+
+            else:               
                 for i in range(len(x_max)):
                     x_hists[i] += get_hist(data['x'][:,i],x_bins[i])
 
@@ -161,11 +167,19 @@ else:
                 node_label_hist_temp = get_hist(data['node_labels'],node_label_bins)
                 node_label_hist += node_label_hist_temp
 
-    np.savez(NAME,x_hists = x_hists, edge_hists = edge_hists,
-                                     node_label_hist=node_label_hist,
-                                     x_bins = x_bins,
-                                     edge_bins = edge_bins,
-                                     node_label_bins=node_label_bins)
+                for j in range(len(y_bins)-1):
+                    if data.y <= y_bins[j+1]:
+                        y_hist[j]+=1
+                        break
+
+    np.savez(NAME,  x_hists = x_hists,
+                    edge_hists = edge_hists,
+                    node_label_hist=node_label_hist,
+                    y_hist = y_hist,
+                    x_bins = x_bins,
+                    edge_bins = edge_bins,
+                    node_label_bins=node_label_bins,
+                    y_bins = y_bins)
     
     
    
@@ -174,7 +188,15 @@ if NO_Va:
     x_hists=np.insert(x_hists,3,np.zeros(10),axis=0)
 plt.rcParams['font.size'] = 16
 plt.rcParams['figure.dpi'] = 300
+
 #Plotting
+fig0,ax0=plt.subplots()
+ax0.bar(y_bins/10, y_hist, width=(y_bins[1]-y_bins[0])/10,align='edge', color='blue')
+ax0.set_xlabel("Total Power Outage [GW]")
+ax0.set_ylabel('Number of Instances')
+fig0.savefig(path+"ac_graph_label_distr_"+NAME+".png", bbox_inches='tight')
+
+
 fig1,ax1=plt.subplots()
 ax1.bar(x_bins[0]/10,x_hists[0],width=(x_bins[0,1]-x_bins[0,0])/10,align='edge', color='green')
 #ax1.set_title("Node Feature Apparent Power")
