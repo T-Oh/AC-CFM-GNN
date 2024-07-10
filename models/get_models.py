@@ -4,6 +4,8 @@ from models.gine import GINE
 from models.baselines import ridge, MLP
 from models.gtrans import GraphTransformer
 from models.lstm import GCNLSTM
+from models.lstm_LDTSF import LSTM_LDTSF
+
 
 
 
@@ -14,8 +16,25 @@ def get_model(cfg, params):
     params
     """
 
+
+    if cfg['data'] == 'LDTSF':
+        if cfg['model'] == 'lstm':
+            model = LSTM_LDTSF(
+                num_features        = params['num_features'],
+                lstm_hidden_size    = params['lstm_hidden_size'], 
+                num_lstm_layers     = params['num_lstm_layers'],
+                reghead_size        = params['reghead_size'],
+                reghead_layers      = params['reghead_layers'],
+                dropout             = params['dropout'], 
+                gat_dropout         = params['gat_dropout'], 
+                use_skipcon         = params['use_skipcon'], 
+                use_batchnorm       = params['use_batchnorm'], 
+                len_sequence        = params['len_sequence']
+            )
+        else:
+            print('WARNING: DATATYPE SET TO LDTSF BUT MODEL IS NOT LSTM - CONTINUEING WITH LSTM_LDTSF AS MODEL')
     #RIDGE
-    if cfg['model'] == 'Ridge':
+    elif cfg['model'] == 'Ridge':
         print('Using RIDGE!\n')
         model = ridge(
             num_node_features = params["num_features"],

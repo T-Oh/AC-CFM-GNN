@@ -56,7 +56,7 @@ def run_single(cfg, device, N_CPUS):
         if cfg['model'] == 'Node2Vec':
              trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         else:
-             trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory)
+             trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'])
 
         # Calculate probabilities for masking of nodes if necessary
         if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
@@ -72,7 +72,7 @@ def run_single(cfg, device, N_CPUS):
             mask_probs = torch.zeros(trainset.__getitem__(0).x.shape[0])+1
 
 
-        # getting feature and target sizes
+        # getting feature sizes if datatype is not LDTSF
         num_features = trainset.__getitem__(0).x.shape[1]
         if trainset.__getitem__(0).edge_attr.dim() == 1:
             if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')

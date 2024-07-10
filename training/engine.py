@@ -56,9 +56,7 @@ class Engine(object):
         self.tol = tol
         self.task = task
         self.vars = var.clone()
-        print(f'Mask Probs Before adding Bias:\n{var[0:50]}')
         self.mask_probs = mask_probs_add_bias(var, mask_bias)
-        print(f'Mask Probs after adding Bias:\n{self.mask_probs[0:50]}')
         self.masks = torch.bernoulli(self.mask_probs)
         self.masking = bool(int(masking))
         self.criterion = criterion
@@ -107,41 +105,42 @@ class Engine(object):
             """t1 = time.time()
             print('Training Batch')
             print('STart Ttime Batch:', t1, flush=True)"""
+
             self.optimizer.zero_grad(set_to_none=True)
             #self.optimizer.zero_grad()
             count +=1
             #yield dataloader.collate_fn(batch)
-            batch.to(self.device)
+            
+            if isinstance(batch, tuple):
+                batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])
+            else:
+                batch.to(self.device)
 
             with autocast():
                 output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
                 output.to(self.device)
             
                 if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
-                    labels = batch.y.type(torch.FloatTensor).to(self.device)
+                    if isinstance(batch, tuple):    labels = batch[1].reshape(-1)
+                    else:                           labels = batch.y.type(torch.FloatTensor).to(self.device)
                 elif self.task == "NodeReg":
                     labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
 
  
                 #calc and backpropagate loss
                 if self.masking:
-
                     for j in range(int(len(output)/2000)):
                         if j==0:
                             self.masks=torch.bernoulli(self.mask_probs)
-
                         else:
                             self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
                         self.masks= self.masks.to('cuda:0')
                         #self.masks.to(self.device)
 
-
-
                     output = output*self.masks
                     labels = labels*self.masks
 
                 
-
                 temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
                 """self.scaler.scale(temp_loss).backward() 
                 self.scaler.step(self.optimizer)
@@ -227,9 +226,11 @@ class Engine(object):
                 count = 0
                 for batch in dataloader:
                     count += 1
-                    batch.to(self.device)
+                    if isinstance(batch, tuple):    batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  
+                    else:                           batch.to(self.device)
                     if self.task == 'GraphReg':
-                        temp_labels=batch.y
+                        if isinstance(batch, tuple):    temp_labels = batch[1].reshape(-1)
+                        else:                           temp_labels=batch.y
                     else:
                         temp_labels = batch.node_labels.type(torch.FloatTensor)
                     temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
