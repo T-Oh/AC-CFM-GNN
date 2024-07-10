@@ -15,6 +15,7 @@ from torch_geometric.loader import DataLoader
 from torch.utils.data import Subset
 from torch_geometric.utils import to_undirected
 from torch.nn.utils.rnn import pad_sequence
+import torch.utils
 
 
 
@@ -111,6 +112,8 @@ class HurricaneDataset(Dataset):
     def process(self):
         if self.data_type == 'AC' or self.data_type == 'LSTM':
             self.process_ac()
+        elif self.data_type == 'LDTSF':
+            self.process_ldtsf()
         elif self.data_type == 'n-k':
             self.process_n_minus_k()
         elif self.data_type == 'DC':
@@ -254,8 +257,48 @@ class HurricaneDataset(Dataset):
                     data = Data(x=node_feature.float(), edge_index=adj, edge_attr=torch.transpose(edge_attr,0,1), node_labels=node_labels, y=graph_label) 
                     torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             
-    
-        
+    def process_ldtsf(self):
+        '''
+        Processes the data so that the input is the sequence of initial damages and the output is the total load shed of each scenario
+        '''
+        damages = self.get_initial_damages()
+        for raw_path in self.raw_paths:
+            #skip damage file and pws file 
+            if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
+                continue
+            scenario = self.get_scenario_of_file(raw_path)
+            file=scipy.io.loadmat(raw_path)  #loads a full scenario 
+            edge_data = file['clusterresult'][0,0][4]
+            bus_from = edge_data[:,0]
+            bus_to = edge_data[:,1]
+
+            N_steps = len(file['clusterresult'][0,:])
+
+            scenario = self.get_scenario_of_file(raw_path)
+
+            x = torch.zeros([len(damages[scenario][:,1]),3206])
+            for i in range(len(damages[scenario][:,1])):
+                x[i,damages[scenario][i,1]-1] = 1    #sequence of initial damages
+                #parallel lines missing
+
+            for step in range(N_steps):
+                j=0
+                while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1-j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1-j]:
+                    x[step][damages[scenario][step,1]-1-j] = 1 
+                    j = j+1
+                j = 0
+                while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1+j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1+j]:
+                    x[step][damages[scenario][step,1]-1+j] = 1 
+                    j = j+1
+                
+            y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
+
+            data = Data(x=x, y=y)
+            torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
+
+
+
+
     def get_node_features(self, node_data_pre, node_data_post, gen_data_pre):
         '''
         extracts the unnormalized node features and labels from the raw data
@@ -405,7 +448,7 @@ class HurricaneDataset(Dataset):
                     while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1+j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1+j]:
                         init_dmg[damages[scenario][step,1]-1+j] = 1 
                         j = j+1
-        #print(init_dmg[1806:1818])
+
         
         #Features
         adj_from = []   #adjacency matrix from/to -> no edges appearing twice
@@ -624,6 +667,7 @@ class HurricaneDataset(Dataset):
                 scenario_dmgs[j,0] = index
                 index += increment
             scenario_dmgs[-1,0] = index
+
             damages.append(scenario_dmgs)
         return damages
 
@@ -660,7 +704,14 @@ class HurricaneDataset(Dataset):
             #print(f'self.embedding shape: {self.embedding.shape}')
             data.x = torch.cat([data.x.to('cpu'), self.embedding.to('cpu')], dim=1)
         return data
-    
+
+def collate_fn(batch):
+    sequences = [item.x for item in batch]
+    targets = torch.tensor([item.y for item in batch], dtype=torch.float32)
+    lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)
+    padded_sequences = pad_sequence(sequences, batch_first=True)
+    return padded_sequences, targets, lengths
+
 """def collate_lstm(batch):    #Used for LSTM 
     for instance in batch:
         print('Pre Collate x:\n', instance.x.shape)
@@ -687,15 +738,10 @@ class HurricaneDataset(Dataset):
 
 def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=0, embedding=None, data_type = 'AC', edge_attr='multi'):
     """
-    Helper function which loads the dataset, applies
-    pre-transforms and splits it into a training and a
+    Helper function which loads the dataset and splits it into a training and a
     testing set.
     Input:
         root (str) : the root folder for the dataset
-        pre_transform : pre-transform functions to be
-            applied to the dataset, can be None
-        div (float) : the ratio of training samples with
-            respect to the entire dataset
     Return:
         trainset : the training set
         testset : the testset
@@ -764,10 +810,12 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
         """elif data_type == 'LSTM':
             trainloader = DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate_lstm)
             testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate_lstm)"""
+    elif data_type == 'LDTSF':
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory)
     else:
         trainloader = DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], num_workers=num_workers, pin_memory=pin_memory)
-    
-    testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], num_workers=num_workers, pin_memory=pin_memory)
+        testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], num_workers=num_workers, pin_memory=pin_memory)
 
     if pre_compute_mean:
         mean_labels = 0.
