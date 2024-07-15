@@ -486,7 +486,7 @@ def setup_params_from_search_space(search_space, params):
             updated_params[key] = search_space[key]
     return updated_params
 
-def setup_params(cfg, mask_probs, num_features, num_edge_features):
+def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets):
     """
     Sets up the parameters dictionary for building and training a model
 
@@ -516,7 +516,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features):
 
         "num_features"          :   num_features,
         "num_edge_features"     :   num_edge_features,
-        "num_targets"           :   1,
+        "num_targets"           :   num_targets,
 
         "num_layers"    :   cfg['num_layers'],
         "hidden_size"   :   cfg['hidden_size'],

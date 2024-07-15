@@ -112,16 +112,18 @@ class Engine(object):
             #yield dataloader.collate_fn(batch)
             
             if isinstance(batch, tuple):
-                batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])
+                if self.task == 'GraphReg':   batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])    #batch[1] contains the regression label
+                elif self.task == 'GraphClass':   batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])#batch[3] contains the classification label    
+                
             else:
                 batch.to(self.device)
 
             with autocast():
-                output = self.model.forward(batch).reshape(-1)  #reshape used to make sure that output is 1 dimensional
+                output = self.model.forward(batch)#.reshape(-1)  #reshape used to make sure that output is 1 dimensional
                 output.to(self.device)
             
-                if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
-                    if isinstance(batch, tuple):    labels = batch[1].reshape(-1)
+                if self.task == "GraphReg" or self.task == 'GraphClass': #set labels according to task (GraphReg or NodeReg)
+                    if isinstance(batch, tuple):    labels = batch[1]#.reshape(-1)
                     else:                           labels = batch.y.type(torch.FloatTensor).to(self.device)
                 elif self.task == "NodeReg":
                     labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
@@ -139,9 +141,8 @@ class Engine(object):
 
                     output = output*self.masks
                     labels = labels*self.masks
-
-                
-                temp_loss = self.criterion(output.to(self.device), labels.to(self.device))#.float()
+                    
+                temp_loss = self.criterion(output.to(self.device).to(torch.double), labels.to(self.device).to(torch.double)).float()
                 """self.scaler.scale(temp_loss).backward() 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()"""
@@ -179,7 +180,8 @@ class Engine(object):
             loss += temp_loss.item()
             #t2=time.time()
             #print(f'Training Batch took {(t1-t2)/60} mins', flush=True)
-        R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        if not 'Class' in self.task:    R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
+        else:                           R2 = 0
         del batch
         
         if not self.return_full_output:
@@ -226,24 +228,22 @@ class Engine(object):
                 count = 0
                 for batch in dataloader:
                     count += 1
-                    if isinstance(batch, tuple):    batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  
+                    if isinstance(batch, tuple):
+                        if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  
+                        elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  
                     else:                           batch.to(self.device)
-                    if self.task == 'GraphReg':
-                        if isinstance(batch, tuple):    temp_labels = batch[1].reshape(-1)
+                    if self.task == 'GraphReg' or self.task == 'GraphClass':
+                        if isinstance(batch, tuple):    temp_labels = batch[1]#.reshape(-1)
                         else:                           temp_labels=batch.y
                     else:
                         temp_labels = batch.node_labels.type(torch.FloatTensor)
-                    temp_output = self.model.forward(batch).reshape(-1)#.to(self.device)
+
+                    temp_output = self.model.forward(batch)#.reshape(-1)#.to(self.device)
+
                     if first:
                         labels=temp_labels.detach().cpu()
                         output= temp_output.detach().cpu()
                         first = False
-                        """elif second:
-                        print(labels.shape)
-                        print(temp_labels.shape)
-                        labels = torch.stack([labels,temp_labels])
-                        output = torch.stack([output, temp_output])
-                        second = False"""
                     else:
                         #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
                         #output = torch.cat([output, temp_output])     #.unsqueeze(0)
@@ -254,15 +254,19 @@ class Engine(object):
                 R2torch=R2Score()
 
 
-                R2=R2torch(output.reshape(-1), labels.reshape(-1))
+                if not 'Class' in self.task:    R2 = R2torch(output.reshape(-1), labels.reshape(-1))
+                else:                           R2 = 0
                 loss = self.criterion(output, labels)
 
                 #discrete_measure = discrete_loss(output.clone(), labels.clone())
 
 
 
-                correct = ((labels-output).abs() < self.tol).sum().item()
-                accuracy = correct/len(dataloader.dataset)
+                if not 'Class' in self.task:    
+                    correct = ((labels-output).abs() < self.tol).sum().item()
+                    accuracy = correct/len(dataloader.dataset)
+                else:
+                    accuracy = 0
                 #TO end
             evaluation = [loss, R2, accuracy]#, discrete_measure/count]
             if not full_output:

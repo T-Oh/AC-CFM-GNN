@@ -291,9 +291,20 @@ class HurricaneDataset(Dataset):
                     x[step][damages[scenario][step,1]-1+j] = 1 
                     j = j+1
                 
-            y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
+            y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]/6.7109e4) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
+            y = torch.log(y+1)/torch.log(torch.tensor(6.7109e4+1))    #log normalization
+            """y_class = torch.zeros(4)
+            if y < 0.18:    y_class[0] = 1
+            elif y < 0.65:  y_class[1] = 1
+            elif y < 0.88:  y_class[2] = 1
+            else:           y_class[3] = 1"""
+            
+            if y < 0.18:    y_class = 0
+            elif y < 0.65:  y_class = 1
+            elif y < 0.88:  y_class = 2
+            else:           y_class = 3
 
-            data = Data(x=x, y=y)
+            data = Data(x=x, y=y, y_class=y_class)
             torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
 
 
@@ -708,9 +719,11 @@ class HurricaneDataset(Dataset):
 def collate_fn(batch):
     sequences = [item.x for item in batch]
     targets = torch.tensor([item.y for item in batch], dtype=torch.float32)
+    targets_class = torch.tensor([item.y_class for item in batch], dtype=torch.long)    #torch.stack([item.y_class for item in batch])
     lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)
     padded_sequences = pad_sequence(sequences, batch_first=True)
-    return padded_sequences, targets, lengths
+
+    return padded_sequences, targets, lengths, targets_class
 
 """def collate_lstm(batch):    #Used for LSTM 
     for instance in batch:

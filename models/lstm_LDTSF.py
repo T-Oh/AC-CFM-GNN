@@ -1,5 +1,5 @@
-from torch_geometric.nn import GCNConv, BatchNorm
-from torch.nn import Module, Dropout, Linear, LeakyReLU, ModuleList, LSTM
+
+from torch.nn import Module, Linear, LeakyReLU, ModuleList, LSTM
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch
 
@@ -8,11 +8,11 @@ class LSTM_LDTSF(Module):
     """
     Graph Attention Network
     """
-    def __init__(self, num_features,  
+    def __init__(self, num_features, num_targets, 
                 lstm_hidden_size, num_lstm_layers,
                 reghead_size, reghead_layers,
-                dropout, gat_dropout, use_skipcon, use_batchnorm, 
-                len_sequence):
+                gat_dropout
+                ):
         """
         INPUT
         hidden_size         :   int
@@ -38,11 +38,8 @@ class LSTM_LDTSF(Module):
         self.num_lstm_layers = int(num_lstm_layers)
         self.lstm_hidden_size = int(lstm_hidden_size)
         self.reghead_layers = int(reghead_layers)
-        self.use_skipcon = bool(int(use_skipcon))
-        self.use_batchnorm = bool(int(use_batchnorm))
 
 
-        
 
         #LSTM Layers
         self.lstm = LSTM(num_features, lstm_hidden_size, num_layers=num_lstm_layers, dropout=gat_dropout, batch_first=True)
@@ -50,14 +47,12 @@ class LSTM_LDTSF(Module):
 
         #Regression Head Layers
         self.regHead1 = Linear(lstm_hidden_size, reghead_size)
-        self.singleLinear = Linear(lstm_hidden_size, 1)
+        self.singleLinear = Linear(lstm_hidden_size, num_targets)
         self.regHeadLayers = ModuleList(Linear(reghead_size, reghead_size) for i in range(self.reghead_layers-2))
-        self.endLinear = Linear(reghead_size,1,bias=True)
+        self.endLinear = Linear(reghead_size, num_targets, bias=True)
 
         #Additional Layers
         self.relu = LeakyReLU()
-        self.dropout = Dropout(p=dropout)
-        self.batchnorm = BatchNorm(lstm_hidden_size, track_running_stats=True)
 
 
     def forward(self, data):
@@ -75,8 +70,7 @@ class LSTM_LDTSF(Module):
 
 
         #LSTM
-        #h0 = torch.zeros(self.num_lstm_layers, x.size(0), self.lstm_hidden_size).to(x.device)
-        #c0 = torch.zeros(self.num_lstm_layers, x.size(0), self.lstm_hidden_size).to(x.device)
+
         x, (hn, cn) = self.lstm(x)
         x, _ = pad_packed_sequence(x, batch_first=True)
         #x = self.singleLinear(x[:, -1, :])
@@ -89,7 +83,7 @@ class LSTM_LDTSF(Module):
 
 
         elif self.reghead_layers > 1:
-            x = self.regHead1(x)
+            x = self.regHead1(x[torch.arange(x.size(0)), lengths - 1])
 
             x = self.relu(x)
             for i in range(self.reghead_layers-2):
@@ -97,6 +91,8 @@ class LSTM_LDTSF(Module):
                 x = self.relu(x)
 
             x = self.endLinear(x)
+
+
         
 
-        return x
+        return x.to(float)

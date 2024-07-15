@@ -21,15 +21,12 @@ def get_model(cfg, params):
         if cfg['model'] == 'lstm':
             model = LSTM_LDTSF(
                 num_features        = params['num_features'],
+                num_targets         = params['num_targets'],
                 lstm_hidden_size    = params['lstm_hidden_size'], 
                 num_lstm_layers     = params['num_lstm_layers'],
                 reghead_size        = params['reghead_size'],
                 reghead_layers      = params['reghead_layers'],
-                dropout             = params['dropout'], 
-                gat_dropout         = params['gat_dropout'], 
-                use_skipcon         = params['use_skipcon'], 
-                use_batchnorm       = params['use_batchnorm'], 
-                len_sequence        = params['len_sequence']
+                gat_dropout         = params['gat_dropout']
             )
         else:
             print('WARNING: DATATYPE SET TO LDTSF BUT MODEL IS NOT LSTM - CONTINUEING WITH LSTM_LDTSF AS MODEL')
@@ -58,6 +55,7 @@ def get_model(cfg, params):
         print('Using TAG!\n')
         model = TAGNodeReg(
             num_node_features   = params['num_features'],
+            num_targets     = params['num_targets'],
             hidden_size     = params["hidden_size"],
             num_layers      = params["num_layers"],
             dropout         = params['dropout'],

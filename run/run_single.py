@@ -74,14 +74,19 @@ def run_single(cfg, device, N_CPUS):
 
         # getting feature sizes if datatype is not LDTSF
         num_features = trainset.__getitem__(0).x.shape[1]
-        if trainset.__getitem__(0).edge_attr.dim() == 1:
-            if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
-            num_edge_features = 1
+        if cfg['task'] == 'GraphReg':    num_targets = 1
+        else:                      num_targets = 4  #len(trainset.__getitem__(0).y_class)
+        if cfg['data'] != 'LDTSF': 
+            if trainset.__getitem__(0).edge_attr.dim() == 1:
+                if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+                num_edge_features = 1
+            else:
+                num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
         else:
-            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+            num_edge_features = 0
 
         #Setup Parameter dictionary for Node2Vec (mask_probs, num_features and num_edge_features should be irrelevant)
-        params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+        params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets)
 
         #Node2Vec
         if cfg['model'] == 'Node2Vec':
@@ -108,7 +113,9 @@ def run_single(cfg, device, N_CPUS):
 
         #Regular Models (GINE, GAT, TAG, MLP, GraphTransformer)
         # Init Criterion
-        if cfg['weighted_loss_label']:
+        if cfg['task'] == 'GraphClass':
+            criterion = torch.nn.CrossEntropyLoss()
+        elif cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
                 factor=torch.tensor(cfg['weighted_loss_factor']))
         else:
@@ -116,7 +123,8 @@ def run_single(cfg, device, N_CPUS):
         #criterion.to(device)
 
         # Loading GNN model
-        model = get_model(cfg, params)
+        model_ = get_model(cfg, params)
+        model = model_  #torch.compile(model_)
         model.to(device)
         pytorch_total_params = sum(p.numel() for p in model.parameters())
         print('NUMBER OF PARAMETERS:')
@@ -133,8 +141,7 @@ def run_single(cfg, device, N_CPUS):
                         tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
 
         #Run Training
-        metrics, final_eval, output, labels = run_training(
-            trainloader, testloader, engine, cfg, LRScheduler)
+        metrics, _, output, labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
 
         #Save outputs, labels and losses of first fold
         torch.save(list(output), "results/" + "output.pt")  # saving train losses
