@@ -38,18 +38,19 @@ class LSTM_LDTSF(Module):
         self.num_lstm_layers = int(num_lstm_layers)
         self.lstm_hidden_size = int(lstm_hidden_size)
         self.reghead_layers = int(reghead_layers)
+        self.reghead_size = int(reghead_size)
 
 
 
         #LSTM Layers
-        self.lstm = LSTM(num_features, lstm_hidden_size, num_layers=num_lstm_layers, dropout=gat_dropout, batch_first=True)
+        self.lstm = LSTM(num_features, self.lstm_hidden_size, num_layers=self.num_lstm_layers, dropout=gat_dropout, batch_first=True)
 
 
         #Regression Head Layers
-        self.regHead1 = Linear(lstm_hidden_size, reghead_size)
-        self.singleLinear = Linear(lstm_hidden_size, num_targets)
-        self.regHeadLayers = ModuleList(Linear(reghead_size, reghead_size) for i in range(self.reghead_layers-2))
-        self.endLinear = Linear(reghead_size, num_targets, bias=True)
+        self.regHead1 = Linear(self.lstm_hidden_size, self.reghead_size)
+        self.singleLinear = Linear(self.lstm_hidden_size, num_targets)
+        self.regHeadLayers = ModuleList(Linear(self.reghead_size, self.reghead_size) for i in range(self.reghead_layers-2))
+        self.endLinear = Linear(self.reghead_size, num_targets, bias=True)
 
         #Additional Layers
         self.relu = LeakyReLU()

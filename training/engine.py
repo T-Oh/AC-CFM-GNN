@@ -91,8 +91,6 @@ class Engine(object):
 
         """
         
-
-        
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
         R2score=R2Score()
@@ -107,14 +105,11 @@ class Engine(object):
             print('STart Ttime Batch:', t1, flush=True)"""
 
             self.optimizer.zero_grad(set_to_none=True)
-            #self.optimizer.zero_grad()
             count +=1
-            #yield dataloader.collate_fn(batch)
             
             if isinstance(batch, tuple):
-                if self.task == 'GraphReg':   batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])    #batch[1] contains the regression label
-                elif self.task == 'GraphClass':   batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])#batch[3] contains the classification label    
-                
+                if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])    #batch[1] contains the regression label
+                elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])#batch[3] contains the classification label                   
             else:
                 batch.to(self.device)
 
@@ -122,11 +117,18 @@ class Engine(object):
                 output = self.model.forward(batch)#.reshape(-1)  #reshape used to make sure that output is 1 dimensional
                 output.to(self.device)
             
-                if self.task == "GraphReg" or self.task == 'GraphClass': #set labels according to task (GraphReg or NodeReg)
-                    if isinstance(batch, tuple):    labels = batch[1]#.reshape(-1)
-                    else:                           labels = batch.y.type(torch.FloatTensor).to(self.device)
+                if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
+                    if isinstance(batch, tuple):    #tuple for LDTSF LSTM  
+                        labels = batch[1].to(torch.double)#.reshape(-1)
+                        output = output.to(torch.double).reshape(-1)
+                    else:                                                  
+                        labels = batch.y.type(torch.FloatTensor).to(self.device)
+                        output = output.reshape(-1)
+                elif self.task == 'GraphClass':
+                        labels = batch[1]
                 elif self.task == "NodeReg":
                     labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
+                    output = output.reshape(-1)
 
  
                 #calc and backpropagate loss
@@ -141,8 +143,8 @@ class Engine(object):
 
                     output = output*self.masks
                     labels = labels*self.masks
-                    
-                temp_loss = self.criterion(output.to(self.device).to(torch.double), labels.to(self.device).to(torch.double)).float()
+                
+                temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
                 """self.scaler.scale(temp_loss).backward() 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()"""
@@ -181,7 +183,7 @@ class Engine(object):
             #t2=time.time()
             #print(f'Training Batch took {(t1-t2)/60} mins', flush=True)
         if not 'Class' in self.task:    R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
-        else:                           R2 = 0
+        else:                           R2 = torch.tensor(0)
         del batch
         
         if not self.return_full_output:
@@ -231,18 +233,27 @@ class Engine(object):
                     if isinstance(batch, tuple):
                         if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  
                         elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  
-                    else:                           batch.to(self.device)
-                    if self.task == 'GraphReg' or self.task == 'GraphClass':
-                        if isinstance(batch, tuple):    temp_labels = batch[1]#.reshape(-1)
-                        else:                           temp_labels=batch.y
-                    else:
-                        temp_labels = batch.node_labels.type(torch.FloatTensor)
-
+                    else:                               batch.to(self.device)
                     temp_output = self.model.forward(batch)#.reshape(-1)#.to(self.device)
 
+                    if self.task == 'GraphReg':
+                        if isinstance(batch, tuple):    
+                            temp_labels = batch[1]#.reshape(-1)
+                            temp_output = temp_output.reshape(-1)
+                        else:                           
+                            temp_labels=batch.y
+                            temp_output = temp_output.reshape(-1)
+                    elif self.task == 'GraphClass':
+                        temp_labels = batch[1]
+                    elif self.task == 'NodeReg':
+                        temp_labels = batch.node_labels.type(torch.FloatTensor)
+                        temp_output = temp_output.reshape(-1)
+
+                    
+
                     if first:
-                        labels=temp_labels.detach().cpu()
-                        output= temp_output.detach().cpu()
+                        labels = temp_labels.detach().cpu()
+                        output = temp_output.detach().cpu()
                         first = False
                     else:
                         #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
@@ -255,7 +266,7 @@ class Engine(object):
 
 
                 if not 'Class' in self.task:    R2 = R2torch(output.reshape(-1), labels.reshape(-1))
-                else:                           R2 = 0
+                else:                           R2 = torch.tensor(0)
                 loss = self.criterion(output, labels)
 
                 #discrete_measure = discrete_loss(output.clone(), labels.clone())

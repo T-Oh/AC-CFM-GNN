@@ -422,6 +422,12 @@ def setup_searchspace(cfg):
     if cfg["study::reghead_layers_lower"] != cfg['study::reghead_layers_upper']:
         search_space['reghead_layers'] = tune.uniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1)
 
+    #LSTM Layers
+    if cfg['study::lstm_hidden_size_lower'] != cfg['study::lstm_hidden_size_upper']:
+        search_space['lstm_hidden_size'] = tune.loguniform(cfg['study::lstm_hidden_size_lower'], cfg['study::lstm_hidden_size_upper']+1)
+    if cfg["study::lstm_layers_lower"] != cfg['study::lstm_layers_upper']:
+        search_space['num_lstm_layers'] = tune.uniform(cfg["study::lstm_layers_lower"], cfg['study::lstm_layers_upper']+1)
+
     #Training
     if cfg['study::gradclip_lower'] != cfg['study::gradclip_upper']:
         search_space['gradclip'] = tune.uniform(cfg['study::gradclip_lower'], cfg['study::gradclip_upper'])

@@ -74,8 +74,9 @@ def run_single(cfg, device, N_CPUS):
 
         # getting feature sizes if datatype is not LDTSF
         num_features = trainset.__getitem__(0).x.shape[1]
-        if cfg['task'] == 'GraphReg':    num_targets = 1
-        else:                      num_targets = 4  #len(trainset.__getitem__(0).y_class)
+        if cfg['task'] in ['GraphReg', 'NodeReg']:  num_targets = 1
+        else:                                       num_targets = 4  #len(trainset.__getitem__(0).y_class)
+
         if cfg['data'] != 'LDTSF': 
             if trainset.__getitem__(0).edge_attr.dim() == 1:
                 if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
