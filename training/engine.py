@@ -107,29 +107,18 @@ class Engine(object):
             self.optimizer.zero_grad(set_to_none=True)
             count +=1
             
+            #compile batch depending on task - ifinstance implies that the data is LDTSF
             if isinstance(batch, tuple):
-                if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])    #batch[1] contains the regression label
-                elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])#batch[3] contains the classification label                   
+                if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
+                elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
             else:
                 batch.to(self.device)
 
             with autocast():
                 output = self.model.forward(batch)#.reshape(-1)  #reshape used to make sure that output is 1 dimensional
                 output.to(self.device)
-            
-                if self.task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
-                    if isinstance(batch, tuple):    #tuple for LDTSF LSTM  
-                        labels = batch[1].to(torch.double)#.reshape(-1)
-                        output = output.to(torch.double).reshape(-1)
-                    else:                                                  
-                        labels = batch.y.type(torch.FloatTensor).to(self.device)
-                        output = output.reshape(-1)
-                elif self.task == 'GraphClass':
-                        labels = batch[1]
-                elif self.task == "NodeReg":
-                    labels = batch.node_labels.type(torch.FloatTensor).to(self.device)
-                    output = output.reshape(-1)
 
+                output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)
  
                 #calc and backpropagate loss
                 if self.masking:
@@ -195,11 +184,8 @@ class Engine(object):
         
         t2 = time.time()
 
-        
-
-
-        #End TO
         return loss/count, R2, total_output, total_labels
+
 
     def eval(self, dataloader, full_output=False):
         """
@@ -219,6 +205,7 @@ class Engine(object):
 
         """
         self.model.eval()
+        R2torch=R2Score()
         with no_grad():
             with autocast():
                 loss = 0.
@@ -236,49 +223,26 @@ class Engine(object):
                     else:                               batch.to(self.device)
                     temp_output = self.model.forward(batch)#.reshape(-1)#.to(self.device)
 
-                    if self.task == 'GraphReg':
-                        if isinstance(batch, tuple):    
-                            temp_labels = batch[1]#.reshape(-1)
-                            temp_output = temp_output.reshape(-1)
-                        else:                           
-                            temp_labels=batch.y
-                            temp_output = temp_output.reshape(-1)
-                    elif self.task == 'GraphClass':
-                        temp_labels = batch[1]
-                    elif self.task == 'NodeReg':
-                        temp_labels = batch.node_labels.type(torch.FloatTensor)
-                        temp_output = temp_output.reshape(-1)
-
-                    
+                    temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device)                    
 
                     if first:
                         labels = temp_labels.detach().cpu()
                         output = temp_output.detach().cpu()
                         first = False
                     else:
-                        #labels = torch.cat([labels, temp_labels])     #.unsqueeze(0)
-                        #output = torch.cat([output, temp_output])     #.unsqueeze(0)
                         output=cat((output,temp_output.detach().cpu()),0)  
                         labels=cat((labels,temp_labels.detach().cpu()),0)
-
-                #TO
-                R2torch=R2Score()
-
 
                 if not 'Class' in self.task:    R2 = R2torch(output.reshape(-1), labels.reshape(-1))
                 else:                           R2 = torch.tensor(0)
                 loss = self.criterion(output, labels)
-
-                #discrete_measure = discrete_loss(output.clone(), labels.clone())
-
-
 
                 if not 'Class' in self.task:    
                     correct = ((labels-output).abs() < self.tol).sum().item()
                     accuracy = correct/len(dataloader.dataset)
                 else:
                     accuracy = 0
-                #TO end
+
             evaluation = [loss, R2, accuracy]#, discrete_measure/count]
             if not full_output:
                 example_output = np.array(output[0:16000].cpu())
@@ -286,3 +250,21 @@ class Engine(object):
                 return evaluation, example_output, example_labels
             else:
                 return evaluation, output, labels
+            
+
+
+def shape_and_cast_labels_and_output(output, batch, task, device):
+    if task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
+        if isinstance(batch, tuple):    #tuple for LDTSF LSTM  
+            labels = batch[1].to(torch.double)#.reshape(-1)
+            output = output.to(torch.double).reshape(-1)
+        else:                                                  
+            labels = batch.y.type(torch.FloatTensor).to(device)
+            output = output.reshape(-1)
+    elif task == 'GraphClass':
+            labels = batch[1]
+    elif task == "NodeReg":
+        labels = batch.node_labels.type(torch.FloatTensor).to(device)
+        output = output.reshape(-1)
+
+    return output, labels

@@ -5,8 +5,10 @@ Created on Fri May 12 10:02:30 2023
 @author: tobia
 """
 from datasets.dataset import create_datasets, create_loaders
-import os
 
+import numpy as np
+import os
+import logging
 import torch
 from torchmetrics import R2Score
 
@@ -118,4 +120,17 @@ def run_mean_baseline(cfg):
                       'testloss' : testloss,
                       'testR2' : testR2}
             
+    np.save('results/mean_result', result)  
+    if cfg['crossvalidation']:
+        trainloss = result['trainloss'].mean()
+        trainR2 = result['trainR2'].mean()
+        testloss = result['testloss'].mean()
+        testR2 = result['testR2'].mean()
+
+    logging.info("Final results of Mean Baseline:")
+    logging.info(f"Train Loss: {trainloss}")
+    logging.info(f"Test Loss: {testloss}")
+    logging.info(f"Train R2: {trainR2}")
+    logging.info(f'Test R2: {testR2}')
+        
     return result, means

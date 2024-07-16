@@ -10,6 +10,7 @@ from numpy.random import seed as numpy_seed
 from run.run_single import run_single
 from run.run_crossval import run_crossval
 from run.run_study import run_study
+from utils.utils import check_config_conflicts
 
 
 
@@ -30,19 +31,19 @@ print('N_TASKS:', N_TASKS)
 print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK)  
 print('N_GPUS: ', N_GPUS, flush=True)  
 
-assert not (cfg['crossvalidation'] and cfg['study::run']), 'can only run a study or the crossvalidation not both'
-assert not (cfg['data'] == 'DC' and cfg['stormsplit']>0), 'Stormsplit can only be used with AC data'
-assert not (cfg['edge_attr'] == 'multi' and cfg['model'] == 'TAG'), 'TAG can only be used with Y as edge_attr not with multi'
+check_config_conflicts(cfg)
 
 # save config in results
 shutil.copyfile("configurations/configuration.json", "results/configuration.json")
 logging.basicConfig(filename=cfg['dataset::path'] + "results/regression.log", filemode="w", level=logging.INFO)
 
 
-
-
 # choosing device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   #device = "cuda:0"
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   #device = "cuda:0"
+device = torch.device('cpu')
+print('HARDCODED USING CPU!')
+print('HARDCODED USING CPU!')
+print('HARDCODED USING CPU!')
 print(device)
  
 

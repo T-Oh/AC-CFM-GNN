@@ -8,6 +8,7 @@ import numpy as np
 import scipy.io
 import time
 import torch
+from os.path import isfile
 
 from torch_geometric.data import Dataset, Data, Batch
 from torch_geometric.loader import DataLoader
@@ -843,9 +844,10 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
 
 
 
-def calc_mask_probs(dataloader):  
+def calc_mask_probs(dataloader, cfg):  
     """
     Calculates the masking probabilities based on the variance of the node
+    If masking is turned off returns an array of ones (equivalent to no masking)
     
     Parameters
     ----------
@@ -858,21 +860,33 @@ def calc_mask_probs(dataloader):
 
     """
 
-    node_label_vars=np.zeros(2000)
-    for i, batch in enumerate(dataloader):
-        if i==0:
-            labels=batch.node_labels.clone()
+    if cfg['use_masking'] or (cfg['study::run'] and (cfg['study::masking'] or cfg['study::loss_type'])):
+        if isfile('node_label_vars.pt'):
+            print('Using existing Node Label Variances for masking')
+            mask_probs = torch.load('node_label_vars.pt')
         else:
-            labels=torch.cat((labels,batch.node_labels))
-        
-    labels=labels.reshape( int(len(labels)/2000),2000)
+            print('No node label variance file found\nCalculating Node Variances for Masking')
+            node_label_vars=np.zeros(2000)
+            for i, batch in enumerate(dataloader):
+                if i==0:
+                    labels=batch.node_labels.clone()
+                else:
+                    labels=torch.cat((labels,batch.node_labels))
+                
+            labels=labels.reshape( int(len(labels)/2000),2000)
 
-    for i in range(2000):
-        node_label_vars[i] = labels[:,i].var()
-    #scale vars
-    print(f'MAX {node_label_vars.argmax()}')
-    node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
-    return node_label_probs
+            for i in range(2000):
+                node_label_vars[i] = labels[:,i].var()
+            #scale vars
+            print(f'MAX {node_label_vars.argmax()}')
+            node_label_probs = torch.tensor(node_label_vars/node_label_vars.max())
+            mask_probs = node_label_probs
+            torch.save(mask_probs, 'node_label_vars.pt')
+    else:
+        #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
+        mask_probs = torch.zeros(2000)+1
+
+    return mask_probs
 
 
 
@@ -891,6 +905,26 @@ def mask_probs_add_bias(mask_probs, bias):
     for i in range(len(mask_probs)):
         if mask_probs_rescaled[i] > 1.0: mask_probs_rescaled[i] = 1
     return mask_probs_rescaled
+
+def get_attribute_sizes(cfg, trainset):
+    """
+    Used to get the sizes of node_features, edge_features and targets depending on data and task
+    """
+    num_features = trainset.__getitem__(0).x.shape[1]
+    if cfg['task'] in ['GraphReg', 'NodeReg']:  num_targets = 1
+    else:                                       num_targets = 4  #len(trainset.__getitem__(0).y_class)
+
+    if cfg['data'] != 'LDTSF': 
+        if trainset.__getitem__(0).edge_attr.dim() == 1:
+            if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
+            num_edge_features = 1
+        else:
+            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+    else:
+        num_edge_features = 0
+
+    return num_features, num_edge_features, num_targets
+
 
 
 def save_node2vec(embedding, labels, data_list):
