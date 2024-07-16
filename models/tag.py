@@ -10,7 +10,7 @@ class TAGNodeReg(Module):
     Topology Adaptive Graph convolutional network
     """
     def __init__(self, num_node_features=2, num_targets=1, hidden_size=16, num_layers=3, dropout=.15, K = 4, reghead_size = 64, reghead_layers = 1,
-                 use_batchnorm=False, use_skipcon=False, task='NodeReg'):
+                 use_batchnorm=False, use_skipcon=False, task='NodeReg', checkpoint=False):
         """
         INPUT
         num_node_features   :   int
@@ -47,7 +47,7 @@ class TAGNodeReg(Module):
         self.use_batchnorm = bool(int(use_batchnorm))
         self.use_skipcon = bool(int(use_skipcon))
         self.task = task
-
+        self.checkpoint = checkpoint
 
 
         #Convolutional Layers
@@ -87,7 +87,8 @@ class TAGNodeReg(Module):
         x = self.conv1(x, edge_index=edge_index, edge_weight=edge_weight)
         if self.use_batchnorm:
             x=self.batchnorm(x)
-        x = checkpoint(self.custom_activation(self.relu), x)
+        if self.checkpoint:  x = checkpoint(self.custom_activation(self.relu), x)
+        else:                   x = self.relu(x)
         x = self.dropout(x)
 
 
@@ -98,36 +99,46 @@ class TAGNodeReg(Module):
                 if self.use_batchnorm:
                     x_ = self.batchnorm(x_)
                 if i<self.num_layers-2:
-                    x = (checkpoint(self.custom_activation(self.relu), x_)+x)/2
+                    if self.checkpoint: x = (checkpoint(self.custom_activation(self.relu), x_)+x)/2
+                    else:                       x = (self.relu(x_)+x)/2
                 else:
                     x = x_
 
                 x = self.dropout(x)
-            else:
-                
+            else:  
                 x = self.convLayers[i](x, edge_index=edge_index, edge_weight=edge_weight)
                 if self.use_batchnorm:
                     x = self.batchnorm(x)
-                x = checkpoint(self.custom_activation(self.relu), x)
+                if self.checkpoint: x = checkpoint(self.custom_activation(self.relu), x)
+                else:                       x = self.relu(x)
                 if i < self.num_layers-2:
                     x = self.dropout(x)
         
+
         if self.task != 'GraphReg':
         #Regression Head
             if self.reghead_layers == 1:
-                    x = checkpoint(self.custom_activation(self.singleLinear), x)
+                if self.checkpoint: x = checkpoint(self.custom_activation(self.singleLinear), x)
+                else:               x = self.singleLinear(x)
 
 
             elif self.reghead_layers > 1:
-                x = checkpoint(self.custom_activation(self.regHead1), x)
-
-                x = checkpoint(self.custom_activation(self.relu), x)
-                for i in range(self.reghead_layers-2):
-                    x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
+                if self.checkpoint:
+                    x = checkpoint(self.custom_activation(self.regHead1), x)
                     x = checkpoint(self.custom_activation(self.relu), x)
-                    #print(out)
-                x = checkpoint(self.custom_activation(self.endLinear), x)
+                    for i in range(self.reghead_layers-2):
+                        x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
+                        x = checkpoint(self.custom_activation(self.relu), x)
+                    x = checkpoint(self.custom_activation(self.endLinear), x)
+                else:
+                    x = self.regHead1(x)
+                    x = self.relu(x)
+                    for i in range(self.reghead_layers-2):
+                        x = self.regHeadLayers[i](x)
+                        x = self.relu(x)
+                    x = self.endLinear(x)
         else:
             x = global_mean_pool(x, batch)
-            x = checkpoint(self.custom_activation(self.singleLinear), x)
+            if self.checkpoint: x = checkpoint(self.custom_activation(self.singleLinear), x)
+            else:               x = self.singleLinear(x)
         return x
