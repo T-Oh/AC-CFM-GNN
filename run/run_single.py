@@ -104,18 +104,15 @@ def run_single(cfg, device, N_CPUS):
                         tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
 
         #Run Training
-        metrics, _, output, labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
+        metrics, eval, output, labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
 
         #Save outputs, labels and losses of first fold
-        torch.save(list(output), "results/" + "output.pt")  # saving train losses
-        torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
-        torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
-        torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
-        #Set variables for logging in case crossvalidation == False
-        trainloss = torch.tensor(metrics['train_loss']).min()
-        testloss = torch.tensor(metrics['test_loss']).min()
-        trainR2 = torch.tensor(metrics['train_R2']).min()
-        testR2 = torch.tensor(metrics['test_R2']).min()
+        #torch.save(list(output), "results/" + "output.pt")  # saving train losses
+        #torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
+        #torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
+        #torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
+
+
 
 
 
@@ -141,3 +138,4 @@ def run_single(cfg, device, N_CPUS):
         ax3.legend()
         ax3.set_ylim(0.0, 1.0)
         fig3.savefig('R2_zoom.png', bbox_inches='tight')
+

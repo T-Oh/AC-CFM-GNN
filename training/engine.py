@@ -5,10 +5,8 @@ import time
 from torch import no_grad, cat
 from torch.cuda.amp import GradScaler, autocast
 from torchmetrics import R2Score
-#from torch.utils.data import collate_fn
+from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, MulticlassRecall, MulticlassAccuracy
 
-
-#from utils.utils import discrete_loss
 from datasets.dataset import mask_probs_add_bias
 
 
@@ -61,8 +59,13 @@ class Engine(object):
         self.masking = bool(int(masking))
         self.criterion = criterion
         self.return_full_output = return_full_output
-        
         self.scaler = GradScaler()  #necessary for mixed precision learning
+        self.R2Score = R2Score()
+        if 'Class' in self.task:
+            self.f1_metric = MulticlassF1Score(num_classes=4, average=None).to(device)
+            self.precision_metric = MulticlassPrecision(num_classes=4, average=None).to(device)
+            self.recall_metric = MulticlassRecall(num_classes=4, average=None).to(device)
+            self.accuracy_metric = MulticlassAccuracy(num_classes=4, average='micro').to(device)
 
         
 
@@ -93,7 +96,8 @@ class Engine(object):
         
         loss = 0.0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
-        R2score=R2Score()
+        
+
         first=True
         for param in self.model.parameters():
             assert param.requires_grad, "Parameter does not require grad"
@@ -153,15 +157,13 @@ class Engine(object):
                         total_labels=cat((total_labels,labels.detach().cpu()),0)
                     else:
                         total_output=cat((total_output,output.detach().cpu()),0)  
-                        total_labels=cat((total_labels,labels.detach().cpu()),0)
+                        total_labels=cat((total_labels,labels.detach().cpu()),0)  
 
-                      
             temp_loss.backward()
-            #print(temp_loss.grad)
             if gradclip >= 0.02:
-
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
             self.optimizer.step()
+
             #Gradient accumulation
             """
             if (i+1)%8 == 0:
@@ -169,22 +171,35 @@ class Engine(object):
                 self.optimizer.zero_grad(set_to_none=True)
             """
             loss += temp_loss.item()
-            #t2=time.time()
-            #print(f'Training Batch took {(t1-t2)/60} mins', flush=True)
-        if not 'Class' in self.task:    R2 = R2score(total_output.reshape(-1), total_labels.reshape(-1))
-        else:                           R2 = torch.tensor(0)
-        del batch
+
+            if 'Class' in self.task:
+
+                preds = torch.argmax(output, dim=1)
+                print(preds)
+                print(labels)
+                self.f1_metric.update(preds.reshape(-1), labels)
+                self.precision_metric.update(preds.reshape(-1), labels.reshape(-1))
+                self.recall_metric.update(preds.reshape(-1), labels.reshape(-1)) 
+                self.accuracy_metric.update(preds, labels)
+
+
         
+        metrics = self.compute_metrics(total_output, total_labels, loss, count)
+
+        del batch
+
         if not self.return_full_output:
             example_output = total_output[0:16000]
             example_labels = total_labels[0:16000]
             del total_output
             del total_labels
-            return loss/count, R2, example_output, example_labels
+            return metrics, example_output, example_labels
         
         t2 = time.time()
 
-        return loss/count, R2, total_output, total_labels
+
+
+        return metrics, total_output, total_labels
 
 
     def eval(self, dataloader, full_output=False):
@@ -205,7 +220,6 @@ class Engine(object):
 
         """
         self.model.eval()
-        R2torch=R2Score()
         with no_grad():
             with autocast():
                 loss = 0.
@@ -221,7 +235,7 @@ class Engine(object):
                         if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  
                         elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  
                     else:                               batch.to(self.device)
-                    temp_output = self.model.forward(batch)#.reshape(-1)#.to(self.device)
+                    temp_output = self.model.forward(batch).to(self.device)#.reshape(-1)#
 
                     temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device)                    
 
@@ -232,24 +246,48 @@ class Engine(object):
                     else:
                         output=cat((output,temp_output.detach().cpu()),0)  
                         labels=cat((labels,temp_labels.detach().cpu()),0)
+                        
+                    if 'Class' in self.task:
+                        preds = torch.argmax(temp_output, dim=1)
+                        self.f1_metric.update(preds, temp_labels.reshape(-1))
+                        self.precision_metric.update(preds, temp_labels.reshape(-1))
+                        self.recall_metric.update(preds, temp_labels.reshape(-1)) 
+                        self.accuracy_metric.update(preds, temp_labels.reshape(-1))
 
-                if not 'Class' in self.task:    R2 = R2torch(output.reshape(-1), labels.reshape(-1))
-                else:                           R2 = torch.tensor(0)
-                loss = self.criterion(output, labels)
+                loss = self.criterion(output, labels).tolist()
 
-                if not 'Class' in self.task:    
-                    correct = ((labels-output).abs() < self.tol).sum().item()
-                    accuracy = correct/len(dataloader.dataset)
-                else:
-                    accuracy = 0
+            metrics = self.compute_metrics(output, labels, loss, count)
 
-            evaluation = [loss, R2, accuracy]#, discrete_measure/count]
             if not full_output:
                 example_output = np.array(output[0:16000].cpu())
                 example_labels = np.array(labels[0:16000].cpu())
-                return evaluation, example_output, example_labels
+                return metrics, example_output, example_labels
             else:
-                return evaluation, output, labels
+                return metrics, output, labels
+
+
+
+    def compute_metrics(self, total_output, total_labels, loss, count):
+        if not 'Class' in self.task:    
+            R2 = self.R2Score(total_output.reshape(-1), total_labels.reshape(-1))
+            metrics = {
+                'loss'  : loss/count,
+                'R2'    : R2
+            }
+        else:
+            F1 = self.f1_metric.compute()
+            precision = self.precision_metric.compute()
+            recall = self.recall_metric.compute()
+            accuracy = self.accuracy_metric.compute()
+            print('THIS: ', loss)
+            metrics = {
+                'loss'  : loss/count,
+                'F1'    : F1.tolist(),
+                'precision' : precision.tolist(),
+                'recall'    : recall.tolist(),
+                'accuracy'  : accuracy.tolist()
+            }
+        return metrics
             
 
 
@@ -268,3 +306,5 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
         output = output.reshape(-1)
 
     return output, labels
+
+
