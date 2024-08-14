@@ -43,7 +43,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     TEMP_DIR = '/home/tohlinger/RAY_TMP2'
 
     # init ray
-    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS*N_CPUS, num_gpus=N_GPUS)
+    ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS*N_CPUS, num_gpus=N_GPUS, include_dashboard=False)
              #include_dashboard=True, dashboard_port=port_dashboard)
     
     # Create Datasets and Dataloaders
@@ -111,9 +111,9 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
 
 
     # set up optimizer and scheduler
-    baysopt = BayesOptSearch(metric='test_R2', mode='max')
+    baysopt = BayesOptSearch(metric='loss', mode='min')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='test_R2', mode='max', max_t=cfg['epochs'], grace_period=100)
+        time_attr='training_iteration', metric='loss', mode='min', max_t=cfg['epochs'], grace_period=100)
 
     
     # configurations
@@ -136,12 +136,12 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     # tuner
     if not cfg['study::continue']:
         tuner = tune.Tuner(
-            tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS/2)}),
+            tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS)}),
             param_space=search_space,
             tune_config=tune_config,
             run_config=run_config)
     else:
-        tuner = tune.Tuner.restore(cfg['dataset::path']+'results/'+cfg['study_ID'], trainable=trainable)
+        tuner = tune.Tuner.restore(cfg['dataset::path']+'results/'+cfg['study_ID'], trainable=tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS)}))
 
     results = tuner.fit()
     print(results)
