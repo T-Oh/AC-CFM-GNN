@@ -292,19 +292,20 @@ class HurricaneDataset(Dataset):
                     x[step][damages[scenario][step,1]-1+j] = 1 
                     j = j+1
                 
-            y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]/6.7109e4) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
-            y = torch.log(y+1)/torch.log(torch.tensor(6.7109e4+1))    #log normalization
+            y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
+
             """y_class = torch.zeros(4)
             if y < 0.18:    y_class[0] = 1
             elif y < 0.65:  y_class[1] = 1
             elif y < 0.88:  y_class[2] = 1
             else:           y_class[3] = 1"""
             
-            if y < 0.18:    y_class = 0
-            elif y < 0.65:  y_class = 1
-            elif y < 0.88:  y_class = 2
+            if y/6.7109e4 < 0.18:    y_class = 0
+            elif y/6.7109e4 < 0.65:  y_class = 1
+            elif y/6.7109e4 < 0.88:  y_class = 2
             else:           y_class = 3
 
+            y = torch.log(y+1)/torch.log(torch.tensor(6.7109e4+1))    #log normalization
             data = Data(x=x, y=y, y_class=y_class)
             torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
 
@@ -325,7 +326,7 @@ class HurricaneDataset(Dataset):
              
         P1 = torch.tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
         Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
-        S1 = torch.tensor(np.sqrt(P1**2+Q1**2))
+        S1 = np.sqrt(P1**2+Q1**2).clone().detach()
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         #Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         #Va = (Va-Va[0])%360
@@ -336,7 +337,7 @@ class HurricaneDataset(Dataset):
         
         P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
         Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
-        S2 = torch.tensor(np.sqrt(P2**2+Q2**2))
+        S2 = np.sqrt(P2**2+Q2**2).clone().detach()
         
         N_BUSES = len(node_data_pre[:,2])
  
@@ -576,7 +577,7 @@ class HurricaneDataset(Dataset):
             
             edge_attr = torch.cat([edge_attr, self_admittance], dim=0)
             edge_attr = torch.transpose(edge_attr, 0, 1)
-            edge_attr = torch.tensor(np.sqrt(edge_attr[0,:]**2+edge_attr[1,:]**2))
+            edge_attr = np.sqrt(edge_attr[0,:]**2+edge_attr[1,:]**2).clone().detach()
 
             self_connections = torch.stack([torch.arange(2000), torch.arange(2000)], dim=0)
             adj = torch.cat([adj, self_connections], dim=1)
