@@ -10,9 +10,10 @@ from training.training import objective
 import torch
 
 #control variables
-name = 'GINE_GR' #Name tag added to the plots and their filenames
+name = 'LDTSF_GC' #Name tag added to the plots and their filenames
 TEMP_DIR = '/home/tohlinger/RAY_TMP2/'
-path = '/home/tohlinger/LEO/Running/GINE_ANGF_Y_GR/results/'
+path = '/home/tohlinger/Running/LDTSF_GC/results/'
+TASK = 'GC'
 
 
 #loss and R2 Plots
@@ -42,6 +43,7 @@ experiments_evaluated = 0
 fastest_time = 9999999
 slowest_time = 0
 best_R2 = np.NINF
+best_loss = np.inf
 fastest_result = 0
 slowest_result = 0
 
@@ -64,7 +66,7 @@ for file in os.listdir(path):
             N_params = 0
             params = {}
             for i in range(N_trials):
-                if not result_grid[i].error and 'test_R2' in result_grid[i].metrics.keys():
+                if not result_grid[i].error and (TASK == 'GC' or 'test_R2' in result_grid[i].metrics.keys()):
                         for key in result_grid[i].config.keys():
                             params[key] = np.zeros(N_trials)
                             N_params += 1
@@ -90,39 +92,44 @@ for file in os.listdir(path):
             print(result_grid[i].error)
             #print(result_grid[i].metrics['r2'])
             if not result_grid[i].error:
-                if 'test_R2' in result_grid[i].metrics.keys():
-                    if not torch.isnan(result_grid[i].metrics['test_R2']):
-                        usable_trials += 1
-                        for key in result_grid[i].config.keys():
-                            if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
-                                    'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
-                                params[key][i+offset] = int(result_grid[i].config[key])
-                            elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
-                                params[key][i+offset] = 0
-                            else:
-                                params[key][i+offset] = result_grid[i].config[key]
-                        for key in metrics.keys():
-                            metrics[key][i+offset] = result_grid[i].metrics[key]
+                if TASK == 'GC' or ('test_R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2'])):
+                    
+                    usable_trials += 1
+                    for key in result_grid[i].config.keys():
+                        if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
+                                'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
+                            params[key][i+offset] = int(result_grid[i].config[key])
+                        elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
+                            params[key][i+offset] = 0
+                        else:
+                            params[key][i+offset] = result_grid[i].config[key]
+                    for key in metrics.keys():
+                        metrics[key][i+offset] = result_grid[i].metrics[key]
 
-                        #Find best result, fastest result and slowest result
+                    #Find best result, fastest result and slowest result
+                    if TASK == 'GC':
+                        if result_grid[i].metrics['test_loss'] < best_loss:
+                                best_result = result_grid[i]
+                                best_loss = result_grid[i].metrics['test_loss']
+                    else:
                         if 'test_R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2']):
                             if result_grid[i].metrics['test_R2'] > best_R2:
                                 best_result = result_grid[i]
                                 best_R2 = result_grid[i].metrics['test_R2']
-                            
-                        if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
-                            fastest_result = result_grid[i]
-                            fastest = result_grid[i].metrics['time_total_s']
-                            
-                        if result_grid[i].metrics['time_total_s'] > slowest_time and result_grid[i].metrics['time_total_s'] != 0:
-                            slowest_result = result_grid[i]
-                            slowest = result_grid[i].metrics['time_total_s']
-                    else:
-                        print(f'Skipped {i} because Test R2 is nan')    
-                        unusable_trials += 1    
+                        
+                    if result_grid[i].metrics['time_total_s'] < fastest_time and result_grid[i].metrics['time_total_s'] != 0:
+                        fastest_result = result_grid[i]
+                        fastest = result_grid[i].metrics['time_total_s']
+                        
+                    if result_grid[i].metrics['time_total_s'] > slowest_time and result_grid[i].metrics['time_total_s'] != 0:
+                        slowest_result = result_grid[i]
+                        slowest = result_grid[i].metrics['time_total_s']
+                elif 'test_R2' not in result_grid[i].metrics.keys():
+                    print(f'Skipped {i} because Test R2 not in Metrics') 
+                    unusable_trials += 1    
                         
                 else: 
-                    print(f'Skipped {i} because Test R2 not in Metrics')
+                    print(f'Skipped {i} because Test R2 is nan')                    
                     unusable_trials += 1
             else: 
                 print(f'Skipped {i} because of Error')
@@ -155,6 +162,8 @@ print(fastest_result.metrics)
 
 #PLOTTING
 #fig, axs = plt.subplots(N_params)
+if TASK == 'GC':    METRIC = metrics['test_loss']
+else:               METRIC = metrics['test_R2']
 plt.rcParams['font.size'] = 16
 plt.rcParams['figure.dpi'] = 300
 i = 0
@@ -163,13 +172,13 @@ for key in params.keys():
     ax = plt.gca()
     if key == 'LR':
         ax.set_xscale('log')
-        ax.scatter(10**params[key],metrics['test_R2'])
+        ax.scatter(10**params[key],METRIC)
     elif key == 'loss_weight':
-        ax.scatter(params[key],metrics['test_R2'], c=params['loss_type'])
+        ax.scatter(params[key],METRIC, c=params['loss_type'])
     elif key == 'mask_bias':
-        ax.scatter(params[key],metrics['test_R2'], c=params['use_masking'])
+        ax.scatter(params[key],METRIC, c=params['use_masking'])
     else:
-        ax.scatter(params[key],metrics['test_R2'])
+        ax.scatter(params[key],METRIC)
     ax.set_title(name)
     ax.set_xlabel(key)
     ax.set_ylabel('Test R2')
@@ -181,7 +190,7 @@ for key in params.keys():
 if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
     fig = plt.figure(i+1)        
     ax = fig.add_subplot(projection='3d')
-    ax.scatter(params['num_layers'], params['hidden_size'], metrics['test_R2'], c=metrics['test_R2'])
+    ax.scatter(params['num_layers'], params['hidden_size'], METRIC, c=METRIC)
     ax.set_title(name)
     ax.set_xlabel('num_layers')
     ax.set_ylabel('hidden_size')
@@ -191,7 +200,7 @@ if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
 #History Plot (R2 vs trials)
 fig = plt.figure(i+2)
 ax = fig.add_subplot()
-ax.scatter(range(len(metrics['test_R2'])), metrics['test_R2'])
+ax.scatter(range(len(METRIC)), METRIC)
 ax.set_title(name)
 ax.set_xlabel('Trial')
 ax.set_ylabel('Test R2')
