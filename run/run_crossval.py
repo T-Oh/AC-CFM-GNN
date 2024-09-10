@@ -10,8 +10,9 @@ import logging
 
 from os.path import isfile
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import numpy as np
 
-from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
+from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
 from models.get_models import get_model
 from models.run_node2vec import run_node2vec
 from utils.utils import setup_params, weighted_loss_label
@@ -32,17 +33,15 @@ def run_crossval(cfg, device, N_CPUS=0):
 
     FOLDS = 7   #number of folds
     
-    trainlosses = torch.zeros(FOLDS)
-    trainR2s = torch.zeros(FOLDS)
-    testlosses = torch.zeros(FOLDS)
-    testR2s = torch.zeros(FOLDS)
+    optim_metrics = {}
+    optim_eval = {}
     trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = 1)
     if cfg['model'] == 'Node2Vec':
         trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)     #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     else:
         if device == 'cuda' :   pin_memory=True
         else                :   pin_memory=False
-        trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory)
+        trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'])
 
     # Calculate probabilities for masking of nodes if necessary
     if cfg['use_masking']:
@@ -51,17 +50,16 @@ def run_crossval(cfg, device, N_CPUS=0):
             mask_probs = torch.load('node_label_vars.pt')
         else:
             print('No node label variance file found\nCalculating Node Variances for Masking')
-            mask_probs = calc_mask_probs(trainloader)
+            mask_probs = calc_mask_probs(trainloader, cfg)
             torch.save(mask_probs, 'node_label_vars.pt')
     else:
         #Masks are set to one in case it is wrongly used somewhere (when set to 1 masking results in multiplication with 1)
         mask_probs = torch.zeros(2000)+1
 
     # getting feature and target sizes
-    num_features = trainset.__getitem__(0).x.shape[1]
-    num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+    num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
     
-    params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+    params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets)
     
     #Node2Vec
     if cfg['model'] == 'Node2Vec':
@@ -85,9 +83,13 @@ def run_crossval(cfg, device, N_CPUS=0):
         #Setup params for following task (MLP)
         params = setup_params(cfg, mask_probs, num_features, num_edge_features)
     
+
     # Init Criterion
-    if cfg['weighted_loss_label']:
-        criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
+    if cfg['task'] == 'GraphClass':
+        criterion = torch.nn.CrossEntropyLoss()
+    elif cfg['weighted_loss_label']:
+        criterion = weighted_loss_label(
+        factor=torch.tensor(cfg['weighted_loss_factor']))
     else:
         criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
     #criterion.to(device)
@@ -95,21 +97,25 @@ def run_crossval(cfg, device, N_CPUS=0):
  
          
     for fold in range(FOLDS):
+        print('\nSTARTING FOLD', fold)
         if fold > 0:
             del trainset, testset, trainloader, testloader, model, optimizer, engine, output, labels
-            os.rename('processed/', f'processed{int(fold)}')
-            os.rename(f'processed{int(fold+1)}/', 'processed')
+
+            if not 'LDTSF' in cfg['data']:  #except for LDTSF the data has to be differently normalized for the different folds which are then saved in processed and processed 2-7
+                os.rename('processed/', f'processed{int(fold)}')
+                os.rename(f'processed{int(fold+1)}/', 'processed')
+
             if cfg['model'] == 'Node2Vec':
                 trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1, embedding=normalized_embedding.to(device))
             else:
-                trainset, testset = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1)
-            trainloader, testloader = create_loaders(cfg, trainset, testset)                        #TO the loaders contain the data and get batchsize and shuffle from cfg
+                trainset, testset, _ = create_datasets(cfg["dataset::path"],cfg=cfg, pre_transform=None, stormsplit = fold+1, data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+            trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'])                        #TO the loaders contain the data and get batchsize and shuffle from cfg
             # ReInit GNN model
         model = get_model(cfg, params)
         model.to(device)
         
         # ReInit optimizer
-        optimizer = get_optimizer(cfg, model)
+        optimizer = get_optimizer(cfg, model, params)
         
         #Init LR Scheduler
         LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=10, threshold=0.0001, verbose=True)
@@ -120,40 +126,51 @@ def run_crossval(cfg, device, N_CPUS=0):
         
         #Run Training
         metrics, final_eval, output, labels = run_training(
-            trainloader, testloader, engine, cfg, LRScheduler)
+            trainloader, testloader, engine, cfg, LRScheduler, fold=fold)
         
+        if fold == 0:
+            for key in metrics.keys():
+                if 'loss' in key:   
+                    optim_metrics[key] = [np.min(metrics[key])]
+                    optim_eval[key] = [np.min(final_eval[key])]
+                elif np.array(metrics[key]).ndim > 1:               
+                    optim_metrics[key] = [np.max(metrics[key], axis=0)]
+                    optim_eval[key] = [np.max(final_eval[key], axis=0)]
+                else:
+                    optim_metrics[key] = [np.max(metrics[key])]
+                    optim_eval[key] = [np.max(final_eval[key])]
+        else:
+            for key in metrics.keys():
+                if 'loss' in key:   
+                    optim_metrics[key].append(np.min(metrics[key]))
+                    optim_eval[key].append(np.min(final_eval[key]))
+                elif np.array(final_eval[key]).ndim > 1:
+                    optim_metrics[key].append(np.max(metrics[key], axis=0))
+                    optim_eval[key].append(np.max(final_eval[key], axis=0))
+                else:               
+                    optim_metrics[key].append(np.max(metrics[key]))
+                    optim_eval[key].append(np.max(final_eval[key]))
+
+
         #Save outputs, labels and losses of first fold
         if fold == 0:
-            torch.save(list(output), "results/" + "output.pt")  # saving train losses
-            torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
-            torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
-            torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
-            #Set variables for logging in case crossvalidation == False
-    
-        
-        #Add results of fold to lists
-        trainlosses[fold] = torch.tensor(metrics['train_loss']).min()
-        trainR2s[fold] = torch.tensor(metrics['train_R2']).max()
-        testlosses[fold] = torch.tensor(metrics['test_loss']).min()
-        testR2s[fold] = torch.tensor(metrics['test_R2']).max()
-        result = {'trainloss' : trainlosses,
-                  'trainR2' : trainR2s,
-                  'testloss' : testlosses,
-                  'testR2' : testR2s}
-        torch.save(result, 'results/crossval_results.pt')
+            torch.save(list(output), "results/" + "output_" + str(fold) + ".pt")  # saving train losses
+            torch.save(list(labels), "results/" + "labels_" + str(fold) + ".pt")  # saving train losses
+
         
             
     #Save Metrics and model after last fold
+    print(optim_eval)
+    print(optim_metrics)
+    for key in optim_metrics.keys():
+        print(f"Mean optimal test {key}: {np.array(optim_eval[key]).mean()}")
+        print(f"Mean optimal train {key}: {np.array(optim_metrics[key]).mean()}")
 
-    trainloss = trainlosses.mean()
-    trainR2 = trainR2s.mean()
-    testloss = testlosses.mean()
-    testR2 = testR2s.mean()
-    logging.info("Final results:")
-    logging.info(f'Train Loss: {trainloss}')
-    logging.info(f"Train R2: {trainR2}")
-    logging.info(f'Test Loss: {testloss}')
-    logging.info(f'Test R2: {testR2}')
+        logging.info("Final results:")
+        logging.info(f"Mean optimal test {key}: {np.array(optim_eval[key]).mean()}")
+        logging.info(f"Mean optimal train {key}: {np.array(optim_metrics[key]).mean()}")
+        
+
     torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
-        # torch.onnx.export(model,data,"supernode.onnx")
+        # torch.onnx.export(model,data,"supernode.onnx")"""
         
