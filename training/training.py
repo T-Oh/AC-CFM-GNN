@@ -15,7 +15,7 @@ from datasets.dataset import create_datasets, create_loaders, get_attribute_size
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
-def run_training(trainloader, testloader, engine, cfg, LRScheduler):
+def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     """
     
 
@@ -42,6 +42,8 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
     output=[]
     labels=[]
     TASK = cfg['task']
+    if fold == -1:  SAVENAME = ''   #name to add to the saved metrics file -> used during crossval to save the results of the different folds
+    else:           SAVENAME = str(fold)
 
     #Setup dictionary for performance metrics, metrics holds the training results and eval the evaluation results
     metrics, eval = init_metrics_vars(TASK)
@@ -65,7 +67,8 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler):
         #Logging
         temp_train_loss = metrics['loss']
         print(f'TrainLoss: {temp_train_loss}')
-        result, metrics, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['dataset::path'], '')
+
+        result, metrics, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['dataset::path'], SAVENAME)
         t2 = time.time()
         print(f'Training Epoch took {(t1-t2)/60} mins', flush=True)
 
@@ -221,10 +224,10 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
 
         logging.info(f"Epoch {epoch}: training loss {temp_train_loss} / test_loss {temp_test_loss} / train R2 {temp_train_R2}/ test R2 {temp_eval['R2']}")
         result = {
-            'train_loss' : temp_metrics['loss'],
-            'test_loss' : temp_eval['loss'].detach(),
-            'train_R2' : temp_metrics['R2'].detach(),
-            'test_R2' : temp_eval['R2'].detach()
+            'train_loss' : metrics['loss'],
+            'test_loss' : eval['loss'],
+            'train_R2' : metrics['R2'],
+            'test_R2' : eval['R2']
             }
 
 
@@ -238,10 +241,12 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
         temp_test_recall = temp_eval['recall']
         temp_test_f1 = temp_eval['F1']
 
+        print(f'Train Loss: {temp_train_loss}')
         print(f'Train Accuracy: {temp_train_accuracy}')
         print('Train Precision: ', temp_train_precision)
         print(f'Train Recall: {temp_train_recall}')
         print(f'Train F1: {temp_train_f1}')
+        print(f'Test Loss: {temp_test_loss}')
         print(f'Test Accuracy: {temp_test_accuracy}')
         print(f'Test Precision: {temp_test_precision}')
         print(f'Test Recall: {temp_test_recall}')

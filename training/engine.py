@@ -175,8 +175,6 @@ class Engine(object):
             if 'Class' in self.task:
 
                 preds = torch.argmax(output, dim=1)
-                print(preds)
-                print(labels)
                 self.f1_metric.update(preds.reshape(-1), labels)
                 self.precision_metric.update(preds.reshape(-1), labels.reshape(-1))
                 self.recall_metric.update(preds.reshape(-1), labels.reshape(-1)) 
@@ -279,7 +277,6 @@ class Engine(object):
             precision = self.precision_metric.compute()
             recall = self.recall_metric.compute()
             accuracy = self.accuracy_metric.compute()
-            print('THIS: ', loss)
             metrics = {
                 'loss'  : loss/count,
                 'F1'    : F1.tolist(),
