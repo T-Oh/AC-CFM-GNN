@@ -17,7 +17,7 @@ def get_model(cfg, params):
     """
 
 
-    if cfg['data'] == 'LDTSF':
+    if 'LDTSF' in cfg['data']:
         if cfg['model'] == 'lstm':
             model = LSTM_LDTSF(
                 num_features        = params['num_features'],
