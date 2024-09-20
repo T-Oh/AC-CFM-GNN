@@ -278,7 +278,7 @@ class Engine(object):
             recall = self.recall_metric.compute()
             accuracy = self.accuracy_metric.compute()
             metrics = {
-                'loss'  : loss/count,
+                'loss'  : float(loss/count),
                 'F1'    : F1.tolist(),
                 'precision' : precision.tolist(),
                 'recall'    : recall.tolist(),
@@ -299,8 +299,9 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
     elif task == 'GraphClass':
             labels = batch[1]
     elif task == "NodeReg":
+
         labels = batch.node_labels.type(torch.FloatTensor).to(device)
-        output = output.reshape(-1)
+        if output.dim() == 1:   output = output.reshape(-1)
 
     return output, labels
 

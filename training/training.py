@@ -51,9 +51,10 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
 
 
     for i in range(1, cfg['epochs'] + 1):
-        print('EVAL: ', eval)
+        #print('EVAL: ', eval)
 
         print(f'Epoch: {i}', flush=True)
+        #torch.cuda.synchronize()
         t1 = time.time()
 
         temp_metrics, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
@@ -66,11 +67,11 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
 
         #Logging
         temp_train_loss = metrics['loss']
-        print(f'TrainLoss: {temp_train_loss}')
+        #print(f'TrainLoss: {temp_train_loss}')
 
         result, metrics, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['dataset::path'], SAVENAME)
         t2 = time.time()
-        print(f'Training Epoch took {(t1-t2)/60} mins', flush=True)
+        print(f'Training Epoch took {(t2-t1)/60} mins', flush=True)
 
 
     output = temp_output   
@@ -157,7 +158,7 @@ def objective(search_space, cfg, device,
             
 
         #LR Scheduler
-        LRScheduler.step(temp_eval['loss'].cpu())
+        LRScheduler.step(temp_eval['loss']) #.cpu()
     
     #final_eval, output, labels = engine.eval(testloader) 
     
@@ -218,6 +219,7 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
         temp_train_R2 = temp_metrics['R2']
         temp_test_R2 = temp_eval['R2']
 
+        print(f'TrainLoss: {temp_train_loss}')
         print(f'Train R2: {temp_train_R2}')
         print(f'TestLoss: {temp_test_loss}')
         print(f'Test R2: {temp_test_R2}')
