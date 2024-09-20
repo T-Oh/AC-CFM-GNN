@@ -72,7 +72,13 @@ class TAGNodeReg(Module):
         
 
     def forward(self, data):
-        x, edge_index, edge_weight, batch = data.x, data.edge_index.type(torch.int64), data.edge_attr.float(), data.batch
+        x, edge_index, edge_weight, batch = data.x.float(), data.edge_index.type(torch.int64), data.edge_attr, data.batch
+
+        #if edge_weight is two dimensional it consists of the real and imaginary part of Y
+        if edge_weight.dim() == 2:
+            print('THIS')
+            edge_weight = torch.sqrt(edge_weight[:,0]**2+edge_weight[:,1]**2).float()
+
 
 
         PRINT=False
