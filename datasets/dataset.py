@@ -8,6 +8,7 @@ import numpy as np
 import scipy.io
 import time
 import torch
+import json
 from os.path import isfile
 
 from torch_geometric.data import Dataset, Data, Batch
@@ -111,18 +112,19 @@ class HurricaneDataset(Dataset):
         return data_list
     
     def process(self):
-        if self.data_type == 'AC' or self.data_type == 'LSTM':
+        if self.data_type in ['AC', 'LSTM', 'Zhu']:
             self.process_ac()
         elif self.data_type == 'LDTSF':
             self.process_ldtsf()
+        elif self.data_type == 'LDTSF_DC':
+            self.process_ldtsf_dc()
         elif self.data_type == 'n-k':
             self.process_n_minus_k()
         elif self.data_type == 'DC':
             self.process_dc()
         else:
             assert False, 'Datatype must be AC or DC!'
-            
-            
+
     def process_ac(self):
         """
         Loads the raw matlab data, converts it to torch
@@ -133,10 +135,12 @@ class HurricaneDataset(Dataset):
         """
         #INIT
         #load scenario file which stores the initial damages
-        damages = self.get_initial_damages()
+        if self.edge_attr == 'multi':   damages = self.get_initial_damages()
         #load initial network data
         init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
-        num_nodes = len(init_data['ans'][0,0][2])
+
+        KEY = 'clusterresult_'
+        num_nodes = len(init_data[KEY][0,0][2])
         below_threshold_count = 0
 
 
@@ -148,31 +152,41 @@ class HurricaneDataset(Dataset):
             scenario = self.get_scenario_of_file(raw_path)
             file=scipy.io.loadmat(raw_path)  #loads a full scenario 
 
+
             #loop through steps of scenario each step will be one processed data file
-            for i in range(len(file['clusterresult'][0,:])):
+            for i in range(len(file[KEY][0,:])):
                 #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
-                if self.data_type == 'LSTM' or file['clusterresult'][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
-                    if below_threshold_count<self.N_below_threshold and file['clusterresult'][0,i][21]<self.ls_threshold:
+                if self.data_type == 'LSTM' or file[KEY][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                    if below_threshold_count<self.N_below_threshold and file[KEY][0,i][21]<self.ls_threshold:
                         below_threshold_count += 1
                     #Node data
-                    if i == 0:  #in first iteration load original pwsdata as initial data  
-                        node_data_pre = init_data['ans'][0,0][2]    #ans is correct bcs its pwsdata
-                        gen_data_pre = init_data['ans'][0,0][3]
-                        edge_data = init_data['ans'][0,0][4]
+                    if i == 0:  #in first iteration load original pwsdata as initial data 
+                        node_data_pre = init_data[KEY][0,0][2] #ans is correct bcs its pwsdata
+                        gen_data_pre = init_data[KEY][0,0][3]
+                        if self.edge_attr == 'Y':                           
+                            edge_data = init_data[KEY][0,0][10]    #loading the added Admittance matrix instead of the edge data
+                        else: 
+                            edge_data = init_data[KEY][0,0][4]
                     else:
-                        node_data_pre = file['clusterresult'][0,i-1][2]   #node_data of initial condition of step i
-                        gen_data_pre = file['clusterresult'][0,i-1][3]
-                        edge_data = file['clusterresult'][0,i-1][4] #edge data of initial condition of step i
-                    if np.isnan(file['clusterresult'][0,i][21]):    #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                        node_data_pre = file[KEY][0,i-1][2]    #node_data of initial condition of step i
+                        gen_data_pre = file[KEY][0,i-1][3]
+                        if self.edge_attr == 'Y':                           
+                            edge_data = file[KEY][0,i-1][29]       #loading the added Admittance matrix instead of the edge data
+                        else:
+                            edge_data = file[KEY][0,i-1][4]         #edge data of initial condition of step i
+                    if np.isnan(file[KEY][0,i][21]):                #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
                         print('Skipping', file, i)
                         continue
-                    node_data_post = file['clusterresult'][0,i][2]   #node_data after step i for node_label_calculation
+                    node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
                     
 
-                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data                    
-                    adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
+                    node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
+                    if self.edge_attr == 'Y':   adj, edge_attr = self.get_edge_attrY(edge_data)
+                    else:                       adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
-                    graph_label = node_labels.sum()
+                    
+                    if self.data_type != 'Zhu':
+                        graph_label = node_labels.sum()
                     
                     if self.data_type == 'LSTM':
                         if i == 0:
@@ -191,16 +205,19 @@ class HurricaneDataset(Dataset):
                         if i ==0:   data_seq = [data]
                         else:       data_seq.append(data)"""
                     #save unscaled data (non LSTM)
-                    if self.data_type == 'AC':
+                    if self.data_type in ['AC']:
                         data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+                    elif self.data_type in ['Zhu']:
+                        data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
+                        torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+                    
             if self.data_type == 'LSTM':
                 data = Data(x=node_feature_seq.float(), edge_index=adj_seq, edge_attr=edge_attr_seq, node_labels=node_labels, y=graph_label_seq) 
                 torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
                 #print('Batch in Save:\n', Batch.from_data_list(data_seq))
                 #torch.save(Batch.from_data_list(data_seq), os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             #np.save('problems',np.array(problems))
-
 
 
     def process_n_minus_k(self):
@@ -263,6 +280,7 @@ class HurricaneDataset(Dataset):
         Processes the data so that the input is the sequence of initial damages and the output is the total load shed of each scenario
         '''
         damages = self.get_initial_damages()
+        
         for raw_path in self.raw_paths:
             #skip damage file and pws file 
             if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
@@ -278,36 +296,98 @@ class HurricaneDataset(Dataset):
             scenario = self.get_scenario_of_file(raw_path)
 
             x = torch.zeros([len(damages[scenario][:,1]),3206])
-            for i in range(len(damages[scenario][:,1])):
-                x[i,damages[scenario][i,1]-1] = 1    #sequence of initial damages
-                #parallel lines missing
+            #for i in range(len(damages[scenario][:,1])):
+                
 
-            for step in range(N_steps):
+            #add parallel lines to the damaged lines to x
+            step = 0
+            shifted_step = 0
+            while step < N_steps:
+                x[shifted_step,damages[scenario][step,1]-1] = 1    #sequence of initial damages
                 j=0
                 while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1-j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1-j]:
-                    x[step][damages[scenario][step,1]-1-j] = 1 
+                    x[shifted_step][damages[scenario][step,1]-1-j] = 1 
                     j = j+1
                 j = 0
                 while bus_from[damages[scenario][step,1]-1] == bus_from[damages[scenario][step,1]-1+j] and bus_to[damages[scenario][step,1]-1] == bus_to[damages[scenario][step,1]-1+j]:
-                    x[step][damages[scenario][step,1]-1+j] = 1 
+                    x[shifted_step][damages[scenario][step,1]-1+j] = 1 
                     j = j+1
-                
+
+                #check if there is another damage in the same time step
+                while step < len(damages[scenario])-1 and damages[scenario][step,0] == damages[scenario][step+1,0]:  
+                    x[shifted_step][damages[scenario][step+1,1]-1] = 1    
+                    step = step+1  
+                step = step+1
+                shifted_step = shifted_step+1
+                    
             y = torch.tensor(6.7109e4 - file['clusterresult'][0,-1][17][99]) #17 stores the 'load' array which contains the load after each PF in ACCFM 99 in the last cell of the array containing the final load of this tsep  6.7109e4 is the full load without contingency
 
-            """y_class = torch.zeros(4)
-            if y < 0.18:    y_class[0] = 1
-            elif y < 0.65:  y_class[1] = 1
-            elif y < 0.88:  y_class[2] = 1
-            else:           y_class[3] = 1"""
             
-            if y/6.7109e4 < 0.18:    y_class = 0
-            elif y/6.7109e4 < 0.65:  y_class = 1
-            elif y/6.7109e4 < 0.88:  y_class = 2
-            else:           y_class = 3
+            if y/6.7109e4 < 0.18:       y_class = 0
+            elif y/6.7109e4 < 0.65:     y_class = 1
+            elif y/6.7109e4 < 0.88:     y_class = 2
+            else:                       y_class = 3
 
             y = torch.log(y+1)/torch.log(torch.tensor(6.7109e4+1))    #log normalization
             data = Data(x=x, y=y, y_class=y_class)
             torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
+
+    def process_ldtsf_dc(self):
+        '''
+        Processes the data so that the input is the sequence of initial damages and the output is the total load shed of each scenario
+        '''
+        init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
+        edge_data = init_data['ans'][0,0][4]
+        bus_from = edge_data[:,0]
+        bus_to = edge_data[:,1]
+        scenario = 1 
+        for raw_path in self.raw_paths:
+            #skip damage file and pws file 
+               #used to create unique file identifiers 
+            if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
+                continue
+            #scenario = self.get_scenario_of_file(raw_path)
+            with open(raw_path, 'rb') as f:
+                data = json.load(f)['result']
+            for key in data.keys(): #every file contains 125 scenarios
+                damages = self.get_initial_damages_dc(data[key]['primary_dmg'])
+
+                N_steps = len(np.unique(damages[:,0]))
+
+                x = torch.zeros([N_steps,3206])
+                i = 0   #index for original damage array (damages in the same time steps appear after one another)
+                updated_index = 0   #index for the resulting array where damages in the same time step appear in the same row
+                while i < N_steps:
+                    x[updated_index,damages[i,1]-1] = 1    #sequence of initial damages
+                    #add parallel lines
+                    j=0
+                    while bus_from[damages[i,1]-1] == bus_from[damages[i,1]-1-j] and bus_to[damages[i,1]-1] == bus_to[damages[i,1]-1-j]:
+                        x[updated_index][damages[i,1]-1-j] = 1 
+                        j = j+1
+                    j = 0
+                    while bus_from[damages[i,1]-1] == bus_from[damages[i,1]-1+j] and bus_to[damages[i,1]-1] == bus_to[damages[i,1]-1+j]:
+                        x[updated_index][damages[i,1]-1+j] = 1 
+                        j = j+1
+
+                    #check if there is another damage in the same time step
+                    while i < len(damages[:,0])-1 and damages[i,0] == damages[i+1,0]:  
+                        x[updated_index,damages[i+1,1]-1] = 1    
+                        i = i+1
+                    updated_index = updated_index+1
+                    i = i+1
+
+                y = torch.tensor(6.7109e4 -data[key]['final_MW_load']*100)
+
+                
+                if y/6.7109e4 < 0.18:       y_class = 0
+                elif y/6.7109e4 < 0.65:     y_class = 1
+                elif y/6.7109e4 < 0.88:     y_class = 2
+                else:                       y_class = 3
+
+                y = torch.log(y+1)/torch.log(torch.tensor(6.7109e4+1))    #log normalization
+                processed_data = Data(x=x, y=y, y_class=y_class)
+                torch.save(processed_data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
+                scenario += 1
 
 
 
@@ -328,9 +408,10 @@ class HurricaneDataset(Dataset):
         Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
         S1 = np.sqrt(P1**2+Q1**2).clone().detach()
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
-        #Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
+        Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         #Va = (Va-Va[0])%360
-        if self.data_type in ['AC', 'n-k']:
+        if self.data_type in ['AC', 'n-k', 'Zhu']:
+            Gs = torch.tensor(node_data_pre[:,4]) #Shunt conductance
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
             baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
             Vm = Vm*baseKV
@@ -341,7 +422,7 @@ class HurricaneDataset(Dataset):
         
         N_BUSES = len(node_data_pre[:,2])
  
-        if self.data_type in ['AC', 'n-k']:
+        if self.data_type in ['AC', 'n-k', 'Zhu']:
             #one hot encoded bus types
             bus_type = torch.zeros([2000,4], dtype=torch.int32)
             for i in range(N_BUSES):
@@ -355,7 +436,7 @@ class HurricaneDataset(Dataset):
         Q1[bus_type[:,3]==1] = 0
         S1[bus_type[:,3]==1] = 0
         Vm[bus_type[:,3]==1] = 0
-        #Va[bus_type[:,3]==1] = 0
+        Va[bus_type[:,3]==1] = 0
         Bs[bus_type[:,3]==1] = 0
         
         gen_features = self.get_gen_features(gen_data_pre, node_data_pre)
@@ -363,9 +444,31 @@ class HurricaneDataset(Dataset):
             
         if self.data_type in ['AC', 'n-k']:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Bs.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
+            node_labels = torch.tensor(S1-S2)
+        elif self.data_type == 'Zhu':
+            P_injection = (gen_features[:,0]-P1)*(bus_type[:,0]+bus_type[:,1])  #P only given for PQ and PV buses
+            Q_injection = (gen_features[:,1]-Q1)*bus_type[:,0]                  #Q only given for PQ buses
+            #SPQ = torch.complex(P_injection,Q_injection)*bus_type[:,0]
+            #SPV = torch.complex(P_injection,torch.zeros(2000).double())*bus_type[:,1]
+            #S= SPQ + SPV
+            #V = torch.complex(Vm*torch.cos(np.deg2rad(Va)),Vm*torch.sin(np.deg2rad(Va)))*(bus_type[:,1]+bus_type[:,2])
+            Vreal = Vm*torch.cos(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])  #V only given for PV and slack bus
+            Vimag = Vm*torch.sin(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])
+
+            Vm2 = torch.tensor(node_data_post[:,7]) #P of all buses after step - used for calculation of Node labels
+            Va2 = torch.tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
+            bus_type2 = torch.zeros([2000,4], dtype=torch.int32)
+            for i in range(N_BUSES):
+                bus_type2[i, int(node_data_post[i,1]-1)] = 1
+            #V2 = torch.complex(Vm2*torch.cos(np.deg2rad(Va2)),Vm2*torch.sin(np.deg2rad(Va2)))*(bus_type[:,1]+bus_type[:,2])
+            V2real = Vm2*torch.cos(np.deg2rad(Va2))
+            V2imag = Vm2*torch.sin(np.deg2rad(Va2))
+
+            node_features = torch.cat([P_injection.unsqueeze(1), Q_injection.unsqueeze(1), Vreal.unsqueeze(1), Vimag.unsqueeze(1), bus_type], dim=1)
+            node_labels = torch.cat([Vreal.unsqueeze(1), Vimag.unsqueeze(1)], dim=1)
         else:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), gen_features], dim=1)
-        node_labels = torch.tensor(S1-S2)
+            node_labels = torch.tensor(S1-S2)
          
         return node_features, node_labels
     
@@ -420,10 +523,22 @@ class HurricaneDataset(Dataset):
 
         
         return gen_features
-            
+
+
+    def get_edge_attrY(self, edge_data):
+        # Threshold value
+        threshold = 1e-8
+
+        # Step 1: Get the indices of entries that satisfy the condition > 1e-8
+        mask = abs(edge_data) > threshold
+        edge_index = torch.tensor(mask).nonzero().t()
+
+        # Step 2: Extract the corresponding edge attributes (weights)
+        edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1)
+        return edge_index, edge_attr
+
     def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i, n_minus_k):
-        #Edge Data
-        #Feature Data
+
         rating = edge_data[:,5] #long term rating (MVA) - edge feature
         status = edge_data[:,10]  #1 if line is working 0 if line is not - edge feature
         resistance = edge_data[:,2]
@@ -559,25 +674,28 @@ class HurricaneDataset(Dataset):
 
         if self.edge_attr == 'Y':
             impedance = torch.tensor([resistance_feature, reactance_feature])
-            impedance = torch.transpose(impedance, 0, 1).contiguous() #(5154, 2)
-            impedance_complex = torch.view_as_complex(impedance) #(5154)
-            admittance_complex = torch.reciprocal(impedance_complex) #(5154)
+            impedance = torch.transpose(impedance, 0, 1).contiguous()   #(5154, 2)
+            impedance_complex = torch.view_as_complex(impedance)        #(5154)
+            admittance_complex = torch.reciprocal(impedance_complex)    #(5154)
             
-            edge_attr = - torch.view_as_real(admittance_complex)
+            #edge_attr = - torch.view_as_real(admittance_complex)
+            edge_attr = -admittance_complex
 
             Y = torch.zeros((2000,2000), dtype=torch.cfloat)
             for idx, edge in enumerate(adj.t().tolist()):                
                 source, target = edge
-                Y[source, target] = admittance_complex[idx]
+                Y[source, target] = - admittance_complex[idx]
             #print('Y', Y)
             admittance_sum = torch.sum(Y, dim=0) #(2000), contains (y12 + y13, y12 + y23, ...)
             
-            self_admittance = torch.cat((Gs.unsqueeze(1), Bs.unsqueeze(1)), dim=1) - torch.view_as_real(admittance_sum)
+            self_admittance = torch.complex(Gs, Bs) + admittance_sum
             #self_admittance = self_admittance + torch.view_as_real(admittance_sum) #DO POPRAWKI
+            print(f'admitance {edge_attr.shape}')
+            print(f'self admittance: {self_admittance.shape}')
             
-            edge_attr = torch.cat([edge_attr, self_admittance], dim=0)
-            edge_attr = torch.transpose(edge_attr, 0, 1)
-            edge_attr = np.sqrt(edge_attr[0,:]**2+edge_attr[1,:]**2).clone().detach()
+            edge_attr = torch.cat([edge_attr, self_admittance], dim=1)
+            #edge_attr = torch.transpose(edge_attr, 0, 1)
+            #edge_attr = np.sqrt(edge_attr[0,:]**2+edge_attr[1,:]**2).clone().detach()
 
             self_connections = torch.stack([torch.arange(2000), torch.arange(2000)], dim=0)
             adj = torch.cat([adj, self_connections], dim=1)
@@ -683,6 +801,29 @@ class HurricaneDataset(Dataset):
 
             damages.append(scenario_dmgs)
         return damages
+    
+
+    def get_initial_damages_dc(self, scenario_dmgs):
+        '''
+
+        '''
+
+        scenario_dmgs = np.array(scenario_dmgs).astype(int)
+        scenario_dmgs[:,[0,1]] = scenario_dmgs[:,[1,0]]
+        scenario_dmgs = scenario_dmgs[scenario_dmgs[:,0].argsort(axis=0)]        
+
+        #rewrite the time steps to count in steps from 0 for easier handling of multiple damages in the same time step
+        index = 0
+        for j in range(0,len(scenario_dmgs)-1):
+            increment = 0
+            if scenario_dmgs[j,0] != scenario_dmgs[j+1,0]:
+                increment = 1
+            scenario_dmgs[j,0] = index
+            index += increment
+        scenario_dmgs[-1,0] = index
+        print(scenario_dmgs)
+
+        return scenario_dmgs
 
             
 
@@ -785,17 +926,17 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     else:   
         trainsize = cfg["train_size"]
         last_train_sample = int(len_dataset*trainsize)
-        if trainsize <1:
+        """if trainsize <1:
             while data_list[last_train_sample-1,0]==data_list[last_train_sample,0]:
                 last_train_sample+=1
-            testset = Subset(dataset, range(last_train_sample, len_dataset))
-        else: testset= Subset(dataset,range(len_dataset,len_dataset))
+            #testset = Subset(dataset, range(last_train_sample, len_dataset))
+        #else: testset= Subset(dataset,range(len_dataset,len_dataset))"""
     
     trainset = Subset(dataset, range(0, last_train_sample))
     testset = Subset(dataset, range(last_train_sample, len_dataset))
     
     t2 = time.time()
-    print(f'Creating datasets took {(t1-t2)/60} mins', flush=True)
+    print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
 
     return trainset, testset, data_list 
 
@@ -825,7 +966,7 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
         """elif data_type == 'LSTM':
             trainloader = DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate_lstm)
             testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate_lstm)"""
-    elif data_type == 'LDTSF':
+    elif 'LDTSF' in data_type:
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory)
         testloader = torch.utils.data.DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate_fn, num_workers=num_workers, pin_memory=pin_memory)
     else:
@@ -839,7 +980,7 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
         mean_labels /= len(testloader) 
         testloader.mean_labels = mean_labels
 
-    print(f'Creating dataloaders took {(t1-time.time())/60} mins')
+    print(f'Creating dataloaders took {(time.time()-t1)/60} mins')
     return trainloader, testloader
 
 
@@ -912,10 +1053,11 @@ def get_attribute_sizes(cfg, trainset):
     Used to get the sizes of node_features, edge_features and targets depending on data and task
     """
     num_features = trainset.__getitem__(0).x.shape[1]
-    if cfg['task'] in ['GraphReg', 'NodeReg']:  num_targets = 1
-    else:                                       num_targets = 4  #len(trainset.__getitem__(0).y_class)
+    if cfg['data'] == 'Zhu':                        num_targets = 2 #Zhu has Real and imaginary part as nodelabels
+    elif cfg['task'] in ['GraphReg', 'NodeReg']:    num_targets = 1 #All other data has power outage as node label except for the classification tasks
+    else:                                           num_targets = 4  
 
-    if cfg['data'] != 'LDTSF': 
+    if 'LDTSF' not in cfg['data']: 
         if trainset.__getitem__(0).edge_attr.dim() == 1:
             if cfg['edge_attr'] == 'multi':     print('WARNING: CONFIG SET TO MULTIPLE FEATURES BUT DATA CONTAINS ONLY 1!')
             num_edge_features = 1
