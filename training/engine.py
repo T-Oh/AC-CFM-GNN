@@ -136,8 +136,8 @@ class Engine(object):
 
                     output = output*self.masks
                     labels = labels*self.masks
-                
-                temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
+
+                temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 """self.scaler.scale(temp_loss).backward() 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()"""
@@ -235,6 +235,7 @@ class Engine(object):
                     else:                               batch.to(self.device)
                     temp_output = self.model.forward(batch).to(self.device)#.reshape(-1)#
 
+
                     temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device)                    
 
                     if first:
@@ -251,8 +252,8 @@ class Engine(object):
                         self.precision_metric.update(preds, temp_labels.reshape(-1))
                         self.recall_metric.update(preds, temp_labels.reshape(-1)) 
                         self.accuracy_metric.update(preds, temp_labels.reshape(-1))
-
-                loss = self.criterion(output, labels).tolist()
+                    temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
+                loss += temp_loss
 
             metrics = self.compute_metrics(output, labels, loss, count)
 
@@ -266,12 +267,21 @@ class Engine(object):
 
 
     def compute_metrics(self, total_output, total_labels, loss, count):
-        if not 'Class' in self.task:    
-            R2 = self.R2Score(total_output.reshape(-1), total_labels.reshape(-1))
-            metrics = {
-                'loss'  : loss/count,
-                'R2'    : R2
-            }
+        if not 'Class' in self.task:  
+            if total_output.dim()==2:
+                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
+                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])  
+                metrics = {
+                    'loss'  : float(loss/count),
+                    'R2'    : float(R2_1),
+                    'R2_2'  : float(R2_2)
+                }
+            else:
+                R2 = self.R2Score(total_output.reshape(-1), total_labels.reshape(-1))
+                metrics = {
+                    'loss'  : float(loss/count),
+                    'R2'    : float(R2)
+                }
         else:
             F1 = self.f1_metric.compute()
             precision = self.precision_metric.compute()
@@ -301,7 +311,7 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
     elif task == "NodeReg":
 
         labels = batch.node_labels.type(torch.FloatTensor).to(device)
-        if output.dim() == 1:   output = output.reshape(-1)
+        #if output.dim() > 1:   output = output.reshape(-1)
 
     return output, labels
 
