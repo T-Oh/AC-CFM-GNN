@@ -88,7 +88,7 @@ def objective(search_space, cfg, device,
     TASK = cfg['task']
 
     #Create Datasets and Loaders
-    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
+    trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'])
     trainloader, testloader = create_loaders(cfg, trainset, testset, pin_memory=pin_memory, data_type=cfg['data'])  #, num_workers=int(N_CPUS)
 
     num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
@@ -196,11 +196,13 @@ def init_metrics_vars(TASK):
     else:
         metrics = {
             'loss'  : [],
-            'R2'    : []
+            'R2'    : [],
+            'R2_2'  : []
         }
         eval = {
             'loss'  : [],
-            'R2'    : []
+            'R2'    : [],
+            'R2_2'  : []
         }
     return metrics, eval
 
@@ -218,6 +220,9 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
     if 'Class' not in TASK:
         temp_train_R2 = temp_metrics['R2']
         temp_test_R2 = temp_eval['R2']
+        if 'R2_2' in temp_eval.keys():
+            temp_train_R2_2 = temp_metrics['R2_2']
+            temp_test_R2_2 = temp_eval['R2_2']
 
         print(f'TrainLoss: {temp_train_loss}')
         print(f'Train R2: {temp_train_R2}')
@@ -231,6 +236,12 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
             'train_R2' : metrics['R2'],
             'test_R2' : eval['R2']
             }
+        
+        if 'R2_2' in temp_eval.keys():
+            print(f'Train R2_2: {temp_train_R2_2}')
+            print(f'Test R2_2 {temp_test_R2_2}')
+            result['train_R2_2'] = metrics['R2_2']
+            result['test_R2_2'] = eval['R2_2']
 
 
     else:
