@@ -14,7 +14,7 @@ from os.path import isfile
 from torch_geometric.data import Dataset, Data, Batch
 from torch_geometric.loader import DataLoader
 #from torch.utils.data import DataLoader
-from torch.utils.data import Subset
+from torch.utils.data import Subset, random_split
 from torch_geometric.utils import to_undirected
 from torch.nn.utils.rnn import pad_sequence
 import torch.utils
@@ -53,7 +53,7 @@ class HurricaneDataset(Dataset):
         self.N_below_threshold = N_below_threshold
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
-        self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
+        #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
         #print(self.data_list)
         
         
@@ -75,8 +75,13 @@ class HurricaneDataset(Dataset):
         data_list=np.zeros((len(self.processed_file_names),2))
         idx=0  
         test_idx=0  
-        if self.stormsplit == 0:                      
-            for i in range(N_scenarios):
+        if self.stormsplit == 0:   
+            for file in self.processed_file_names:
+                if file.startswith('data'):
+                    scenario, step = self.get_scenario_step_of_file(file)
+                    data_list[idx,:] = [scenario, step]                   
+                    idx += 1
+            """for i in range(N_scenarios):
                 first=True
                 for file in self.processed_file_names:
                     if file.startswith(f'data_{i+1}_'):
@@ -93,7 +98,7 @@ class HurricaneDataset(Dataset):
     
                     data_list[idx:idx+len(scenario_list),1]=scenario_list
                     data_list[idx:idx+len(scenario_list),0]=i+1
-                    idx+=len(scenario_list)
+                    idx+=len(scenario_list)"""
              
                 
         #Stormsplit
@@ -112,7 +117,7 @@ class HurricaneDataset(Dataset):
         return data_list
     
     def process(self):
-        if self.data_type in ['AC', 'LSTM', 'Zhu']:
+        if self.data_type in ['AC', 'LSTM', 'Zhu', 'ANGF_Vcf']:
             self.process_ac()
         elif self.data_type == 'LDTSF':
             self.process_ldtsf()
@@ -185,8 +190,7 @@ class HurricaneDataset(Dataset):
                     else:                       adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
                     
-                    if self.data_type != 'Zhu':
-                        graph_label = node_labels.sum()
+                    graph_label = node_labels.sum()
                     
                     if self.data_type == 'LSTM':
                         if i == 0:
@@ -205,11 +209,11 @@ class HurricaneDataset(Dataset):
                         if i ==0:   data_seq = [data]
                         else:       data_seq.append(data)"""
                     #save unscaled data (non LSTM)
-                    if self.data_type in ['AC']:
+                    if self.data_type in ['AC', 'ANGF_Vcf']:
                         data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
                     elif self.data_type in ['Zhu']:
-                        data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels) 
+                        data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
                     
             if self.data_type == 'LSTM':
@@ -410,7 +414,7 @@ class HurricaneDataset(Dataset):
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         #Va = (Va-Va[0])%360
-        if self.data_type in ['AC', 'n-k', 'Zhu']:
+        if self.data_type in ['AC', 'n-k', 'Zhu', 'ANGF_Vcf']:
             Gs = torch.tensor(node_data_pre[:,4]) #Shunt conductance
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
             baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
@@ -422,7 +426,7 @@ class HurricaneDataset(Dataset):
         
         N_BUSES = len(node_data_pre[:,2])
  
-        if self.data_type in ['AC', 'n-k', 'Zhu']:
+        if self.data_type in ['AC', 'n-k', 'Zhu', 'ANGF_Vcf']:
             #one hot encoded bus types
             bus_type = torch.zeros([2000,4], dtype=torch.int32)
             for i in range(N_BUSES):
@@ -441,17 +445,14 @@ class HurricaneDataset(Dataset):
         
         gen_features = self.get_gen_features(gen_data_pre, node_data_pre)
 
-            
+        #node Features for AC (ANGF_CE_Y) and n-k data
         if self.data_type in ['AC', 'n-k']:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Bs.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
             node_labels = torch.tensor(S1-S2)
+        #Node features for Zhu data
         elif self.data_type == 'Zhu':
             P_injection = (gen_features[:,0]-P1)*(bus_type[:,0]+bus_type[:,1])  #P only given for PQ and PV buses
             Q_injection = (gen_features[:,1]-Q1)*bus_type[:,0]                  #Q only given for PQ buses
-            #SPQ = torch.complex(P_injection,Q_injection)*bus_type[:,0]
-            #SPV = torch.complex(P_injection,torch.zeros(2000).double())*bus_type[:,1]
-            #S= SPQ + SPV
-            #V = torch.complex(Vm*torch.cos(np.deg2rad(Va)),Vm*torch.sin(np.deg2rad(Va)))*(bus_type[:,1]+bus_type[:,2])
             Vreal = Vm*torch.cos(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])  #V only given for PV and slack bus
             Vimag = Vm*torch.sin(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])
 
@@ -460,12 +461,20 @@ class HurricaneDataset(Dataset):
             bus_type2 = torch.zeros([2000,4], dtype=torch.int32)
             for i in range(N_BUSES):
                 bus_type2[i, int(node_data_post[i,1]-1)] = 1
-            #V2 = torch.complex(Vm2*torch.cos(np.deg2rad(Va2)),Vm2*torch.sin(np.deg2rad(Va2)))*(bus_type[:,1]+bus_type[:,2])
             V2real = Vm2*torch.cos(np.deg2rad(Va2))
             V2imag = Vm2*torch.sin(np.deg2rad(Va2))
 
             node_features = torch.cat([P_injection.unsqueeze(1), Q_injection.unsqueeze(1), Vreal.unsqueeze(1), Vimag.unsqueeze(1), bus_type], dim=1)
-            node_labels = torch.cat([Vreal.unsqueeze(1), Vimag.unsqueeze(1)], dim=1)
+            node_labels = torch.cat([V2real.unsqueeze(1), V2imag.unsqueeze(1), (S1-S2).unsqueeze(1)], dim=1)     #S1-S2 is passed not to be used as node feature but for the graph labels
+        #Node features for ANGF_Vcf data
+        elif self.data_type == 'ANGF_Vcf':
+            Vreal = Vm*torch.cos(np.deg2rad(Va))
+            Vimag = Vm*torch.sin(np.deg2rad(Va))
+            P_injection = (gen_features[:,0]-P1)
+            Q_injection = (gen_features[:,1]-Q1)
+            node_features = torch.cat([P_injection.reshape(-1,1), Q_injection.reshape(-1,1), Vreal.reshape(-1,1), Vimag.reshape(-1,1), bus_type, gen_features[:,2:]], dim=1)
+            node_labels = torch.tensor(S1-S2)
+
         else:
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), gen_features], dim=1)
             node_labels = torch.tensor(S1-S2)
@@ -473,7 +482,7 @@ class HurricaneDataset(Dataset):
         return node_features, node_labels
     
     def get_gen_features(self, gen_data_pre, node_data_pre):
-        if self.data_type in ['AC', 'n-k']:
+        if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:
             gen_features = torch.zeros(2000, 9)
         else: gen_features = torch.zeros(2000,2)
         node_index = 0
@@ -485,7 +494,7 @@ class HurricaneDataset(Dataset):
 
                 if gen_data_pre[i,7] >0 and node_data_pre[node_index,1]!=4:    #if generator is active and bus is active
                     gen_features[node_index][:2] += torch.tensor(gen_data_pre[i,1:3])    #only adds p and q if the generator is active since ac-cfm does not update inactive buses
-                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:  #Features not added for TimeSeries
                         gen_features[node_index][6] = 1
                         if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
                         else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
@@ -494,7 +503,7 @@ class HurricaneDataset(Dataset):
                         else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
 
                 elif node_data_pre[node_index,1] != 4:   #if gen is inactive but bus is active
-                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:  #Features not added for TimeSeries
                         gen_features[node_index][6] = gen_features[node_index][6]   #if bus is active but generator isnt leave state as is since an active gen could be connected
                         #set lower limits and voltage set point only to inactive values if there are no existing values yet
                         if gen_features[node_index][3] == 0: gen_features[node_index][3] = gen_data_pre[i,4]    #Pmin
@@ -503,7 +512,7 @@ class HurricaneDataset(Dataset):
 
                 else:   #this case is only entered if bus is inactive then all gens should also be counted as inactive 
                     gen_features[node_index][:2] = 0
-                    if self.data_type in ['AC', 'n-k']:  #Features not added for TimeSeries
+                    if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:  #Features not added for TimeSeries
                         if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
                         else:                                   gen_features[node_index][3]=min([gen_features[node_index][3],torch.tensor(gen_data_pre[i,4])])
                         gen_features[node_index][4] = torch.tensor(gen_data_pre[i,5])
@@ -511,14 +520,14 @@ class HurricaneDataset(Dataset):
                         if gen_features[node_index][8] == 0:    gen_features[node_index][8]=torch.tensor(gen_data_pre[i,9])
                         else:                                   gen_features[node_index][8]=min([gen_features[node_index][8],torch.tensor(gen_data_pre[i,9])])
                         
-                if self.data_type in ['AC', 'n-k']:  #features that are treated equally for active and inactive busses and generatos
+                if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:  #features that are treated equally for active and inactive busses and generatos
                     gen_features[node_index][2] += torch.tensor(gen_data_pre[i,3])    
                     gen_features[node_index][5] += torch.tensor(gen_data_pre[i,6])
                     gen_features[node_index][7] += torch.tensor(gen_data_pre[i,8])
                     
 
                 
-        if self.data_type in ['AC', 'n-k']:
+        if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:
             gen_features = torch.cat([gen_features[:,:6], gen_features[:,7:], gen_features[:,6].reshape(-1,1)], dim=1)
 
         
@@ -845,18 +854,18 @@ class HurricaneDataset(Dataset):
     
     
     def __getitem__(self,idx):
-        scenario=int(self.data_list[idx,0])
-        step=int(self.data_list[idx,1])
-        data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'
-                                       f'_{step}.pt'))
+        #scenario=int(self.data_list[idx,0])
+        #step=int(self.data_list[idx,1])
+        #data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
+        data = torch.load(os.path.join(self.processed_dir, self.processed_file_names[idx]))
         #print('HARDCODED MANUALLY REMOVING 4TH FEATURE IN X -> IN ORDER TO REMOVE VOLTAGE ANGLE WITHOUT REPROCESSING EVERYTHING')
         #data.x = torch.cat([data.x[:3],data.x[4:]])
         #print(data.x.shape)
-        if self.embedding != None:
+        #if self.embedding != None:
             #embedding = torch.cat([self.embedding]*int(len(data.x)/2000))
             #print(f'Embedding shape: {embedding.shape}')
             #print(f'self.embedding shape: {self.embedding.shape}')
-            data.x = torch.cat([data.x.to('cpu'), self.embedding.to('cpu')], dim=1)
+            #data.x = torch.cat([data.x.to('cpu'), self.embedding.to('cpu')], dim=1)
         return data
 
 def collate_fn(batch):
@@ -908,7 +917,7 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     print(t1, flush=True)
     dataset = HurricaneDataset(root=root,use_supernode=cfg["supernode"], pre_transform=pre_transform,N_Scenarios=cfg["n_scenarios"], stormsplit=stormsplit, 
                                embedding=embedding, data_type=data_type, edge_attr=edge_attr, ls_threshold=cfg['ls_threshold'], N_below_threshold=cfg['N_below_threshold'])
-    data_list = dataset.data_list
+    #data_list = dataset.data_list
 
     if num_samples is None:
         len_dataset=len(dataset)
@@ -917,10 +926,11 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     print(f'Len Dataset: {len_dataset}')
     #Get last train sample if stormsplit
     if stormsplit != 0:
-        for i in range(len(data_list)):
-            if str(data_list[i,0]).startswith(str(stormsplit)):
-                last_train_sample=i
-                break
+        print('NO STORMSPLIT AT THE MOMENT')
+    #    for i in range(len(data_list)):
+    #        if str(data_list[i,0]).startswith(str(stormsplit)):
+    #            last_train_sample=i
+    #            break
 
     #Get last train sample if no stormsplit
     else:   
@@ -932,13 +942,15 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
             #testset = Subset(dataset, range(last_train_sample, len_dataset))
         #else: testset= Subset(dataset,range(len_dataset,len_dataset))"""
     
-    trainset = Subset(dataset, range(0, last_train_sample))
-    testset = Subset(dataset, range(last_train_sample, len_dataset))
+    #trainset = Subset(dataset, range(0, last_train_sample))
+    #testset = Subset(dataset, range(last_train_sample, len_dataset))
+
+    trainset, testset = random_split(dataset, [last_train_sample, len_dataset-last_train_sample])
     
     t2 = time.time()
     print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
 
-    return trainset, testset, data_list 
+    return trainset, testset#, data_list 
 
 def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=False, data_type='AC', num_workers=0, pin_memory=False): 
     """
