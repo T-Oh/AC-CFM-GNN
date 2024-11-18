@@ -36,7 +36,7 @@ def run_single(cfg, device, N_CPUS):
         else:                   pin_memory = False
 
         # Create Datasets and Dataloaders
-        trainset, testset, _ = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+        trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
         if cfg['model'] == 'Node2Vec':
              trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         else:
@@ -101,14 +101,14 @@ def run_single(cfg, device, N_CPUS):
 
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,
-                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'])
+                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'], return_full_output=True)
 
         #Run Training
         metrics, eval, output, labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
 
         #Save outputs, labels and losses of first fold
-        #torch.save(list(output), "results/" + "output.pt")  # saving train losses
-        #torch.save(list(labels), "results/" + "labels.pt")  # saving train losses
+        torch.save(output, "results/" + "output.pt")  # saving train losses
+        torch.save(labels, "results/" + "labels.pt")  # saving train losses
         #torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
         #torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
 

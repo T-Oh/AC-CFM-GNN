@@ -113,7 +113,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     # set up optimizer and scheduler
     baysopt = BayesOptSearch(metric='loss', mode='min')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='loss', mode='min', max_t=cfg['epochs'], grace_period=100)
+        time_attr='training_iteration', metric='loss', mode='min', max_t=cfg['epochs'], grace_period=10)
 
     
     # configurations

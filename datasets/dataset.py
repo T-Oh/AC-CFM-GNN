@@ -9,6 +9,7 @@ import scipy.io
 import time
 import torch
 import json
+import h5py
 from os.path import isfile
 
 from torch_geometric.data import Dataset, Data, Batch
@@ -117,7 +118,7 @@ class HurricaneDataset(Dataset):
         return data_list
     
     def process(self):
-        if self.data_type in ['AC', 'LSTM', 'Zhu', 'ANGF_Vcf']:
+        if self.data_type in ['AC', 'LSTM', 'Zhu', 'Zhu_mat73', 'ANGF_Vcf']:
             self.process_ac()
         elif self.data_type == 'LDTSF':
             self.process_ldtsf()
@@ -141,11 +142,12 @@ class HurricaneDataset(Dataset):
         #INIT
         #load scenario file which stores the initial damages
         if self.edge_attr == 'multi':   damages = self.get_initial_damages()
-        #load initial network data
-        init_data = scipy.io.loadmat('raw/' + 'pwsdata.mat')
-
         KEY = 'clusterresult_'
-        num_nodes = len(init_data[KEY][0,0][2])
+        #load initial network data
+        init_data, filetype = self.load_mat_file('raw/' + 'pwsdata.mat')
+
+
+        num_nodes = 2000    #len(init_data[KEY][0,0][2])
         below_threshold_count = 0
 
 
@@ -155,17 +157,31 @@ class HurricaneDataset(Dataset):
             if 'Hurricane' in raw_path or 'pwsdata' in raw_path:
                 continue
             scenario = self.get_scenario_of_file(raw_path)
-            file=scipy.io.loadmat(raw_path)  #loads a full scenario 
+            file, filetype = self.load_mat_file(raw_path)  #loads a full scenario 
 
 
             #loop through steps of scenario each step will be one processed data file
-            for i in range(len(file[KEY][0,:])):
+            if filetype == 'Zhu_mat73':
+                ls_tot_ref = file[KEY]['ls_total']
+                len_scenario = len(ls_tot_ref)              
+                ls_tot = []
+                for step in range(len_scenario):
+                    ls_tot_deref = file[ls_tot_ref[step,0]]
+                    ls_tot.append(ls_tot_deref[()])
+
+            else:
+                len_scenario = len(file[KEY][0,:])
+                ls_tot = []
+                for step in range(len_scenario):
+                    ls_tot.append(file[KEY][0,step][21])
+
+            for i in range(len_scenario):
                 #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
-                if self.data_type == 'LSTM' or file[KEY][0,i][21]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
-                    if below_threshold_count<self.N_below_threshold and file[KEY][0,i][21]<self.ls_threshold:
+                if self.data_type == 'LSTM' or ls_tot[i]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                    if below_threshold_count<self.N_below_threshold and ls_tot[i]<self.ls_threshold:
                         below_threshold_count += 1
                     #Node data
-                    if i == 0:  #in first iteration load original pwsdata as initial data 
+                    """if i == 0:  #in first iteration load original pwsdata as initial data 
                         node_data_pre = init_data[KEY][0,0][2] #ans is correct bcs its pwsdata
                         gen_data_pre = init_data[KEY][0,0][3]
                         if self.edge_attr == 'Y':                           
@@ -178,16 +194,23 @@ class HurricaneDataset(Dataset):
                         if self.edge_attr == 'Y':                           
                             edge_data = file[KEY][0,i-1][29]       #loading the added Admittance matrix instead of the edge data
                         else:
-                            edge_data = file[KEY][0,i-1][4]         #edge data of initial condition of step i
-                    if np.isnan(file[KEY][0,i][21]):                #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                            edge_data = file[KEY][0,i-1][4]         #edge data of initial condition of step i"""
+                    print(4)
+                    if np.isnan(ls_tot[i]):                #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
                         print('Skipping', file, i)
                         continue
-                    node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
+                    node_data_pre, gen_data_pre, edge_data, node_data_post = self.get_data(init_data, file, KEY, i, filetype)
+
+
+                    #node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
                     
 
                     node_feature, node_labels = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
-                    if self.edge_attr == 'Y':   adj, edge_attr = self.get_edge_attrY(edge_data)
-                    else:                       adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
+                    if self.edge_attr == 'Y': 
+                        if i!=0 and filetype == 'Zhu_mat73':  adj, edge_attr = self.get_edge_attrY_Zhumat73(edge_data)
+                        else:                                       adj, edge_attr = self.get_edge_attrY(edge_data)
+                    else: 
+                        adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
                     
                     graph_label = node_labels.sum()
@@ -212,7 +235,7 @@ class HurricaneDataset(Dataset):
                     if self.data_type in ['AC', 'ANGF_Vcf']:
                         data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-                    elif self.data_type in ['Zhu']:
+                    elif self.data_type in ['Zhu', 'Zhu_mat73']:
                         data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label) 
                         torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
                     
@@ -223,6 +246,74 @@ class HurricaneDataset(Dataset):
                 #torch.save(Batch.from_data_list(data_seq), os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
             #np.save('problems',np.array(problems))
 
+
+    def get_data(self, init_data, file, KEY, i, filetype):
+        if i == 0:  #in first iteration load original pwsdata as initial data 
+            node_data_pre = init_data[KEY][0,0][2] #ans is correct bcs its pwsdata
+            gen_data_pre = init_data[KEY][0,0][3]
+            if self.edge_attr == 'Y':                           
+                edge_data = init_data[KEY][0,0][10]    #loading the added Admittance matrix instead of the edge data
+            else: 
+                edge_data = init_data[KEY][0,0][4]
+            if filetype == 'Zhu_mat73':           #Zhu_mat73 is only necessary for Ike and Harvey where the files were too big and need to be saved in the newer mat7.3 format
+
+                node_data_post = []
+                bus_data_ref = file[KEY]['bus']
+                ref = bus_data_ref[i, 0]  # Get the object reference
+                dereferenced_data = file[ref]  # Dereference it
+                node_data_post.append(dereferenced_data[()])  # Append the actual data
+                node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)            
+            else:
+                node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
+
+        else:
+            if filetype == 'Zhu_mat73':
+                node_data_pre = []
+                bus_data_ref = file[KEY]['bus']
+                ref = bus_data_ref[i-1, 0]
+                dereferenced_data = file[ref]
+                node_data_pre.append(dereferenced_data[()])
+
+                gen_data_pre = []
+                gen_data_ref = file[KEY]['gen']
+                ref = gen_data_ref[i-1,0]
+                dereferenced_data = file[ref]
+                gen_data_pre.append(dereferenced_data[()])
+
+                edge_data = []
+                edge_data_ref = file[KEY]['Ybus_ext']
+                ref = edge_data_ref[i-1,0]
+                dereferenced_data = file[ref]
+                edge_data.append(dereferenced_data[()])
+
+                node_data_post = []
+                bus_data_ref = file[KEY]['bus']
+                ref = bus_data_ref[i, 0]  # Get the object reference
+                dereferenced_data = file[ref]  # Dereference it
+                node_data_post.append(dereferenced_data[()])  # Append the actual data
+
+                node_data_pre = torch.tensor(np.array(node_data_pre).squeeze()).transpose(0,1)
+                node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)
+                edge_data = torch.tensor([np.array(edge_data)['real'].squeeze(), np.array(edge_data)['imag'].squeeze()])
+                edge_data = torch.complex(edge_data[0],edge_data[1])
+                gen_data_pre = torch.tensor(np.array(gen_data_pre).squeeze()).transpose(0,1)
+
+            else:
+                node_data_pre = []
+                gen_data_pre = []
+                edge_data = []
+                node_data_pre_ref = file[KEY]['bus']
+                
+                node_data_pre = file[KEY][0,i-1][2]    #node_data of initial condition of step i
+                gen_data_pre = file[KEY][0,i-1][3]
+                if self.edge_attr == 'Y':                           
+                    edge_data = file[KEY][0,i-1][29]       #loading the added Admittance matrix instead of the edge data
+                else:
+                    edge_data = file[KEY][0,i-1][4]         #edge data of initial condition of step i
+                node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
+            
+            
+        return node_data_pre, gen_data_pre, edge_data, node_data_post
 
     def process_n_minus_k(self):
         """
@@ -407,14 +498,15 @@ class HurricaneDataset(Dataset):
             node_features:  torch.tensor of node features
             node_labels:    torch.tensor of node labels
         '''
-             
+        print('HEHEHEHEHE')
+        print(node_data_pre.shape)
         P1 = torch.tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
         Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
         S1 = np.sqrt(P1**2+Q1**2).clone().detach()
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         #Va = (Va-Va[0])%360
-        if self.data_type in ['AC', 'n-k', 'Zhu', 'ANGF_Vcf']:
+        if self.data_type in ['AC', 'n-k', 'Zhu', 'Zhu_mat73', 'ANGF_Vcf']:
             Gs = torch.tensor(node_data_pre[:,4]) #Shunt conductance
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
             baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
@@ -426,9 +518,10 @@ class HurricaneDataset(Dataset):
         
         N_BUSES = len(node_data_pre[:,2])
  
-        if self.data_type in ['AC', 'n-k', 'Zhu', 'ANGF_Vcf']:
+        if self.data_type in ['AC', 'n-k', 'Zhu', 'Zhu_mat73', 'ANGF_Vcf']:
             #one hot encoded bus types
             bus_type = torch.zeros([2000,4], dtype=torch.int32)
+
             for i in range(N_BUSES):
                 bus_type[i, int(node_data_pre[i,1]-1)] = 1
         
@@ -450,13 +543,13 @@ class HurricaneDataset(Dataset):
             node_features = torch.cat([P1.reshape(-1,1), Q1.reshape(-1,1), Vm.reshape(-1,1), Bs.reshape(-1,1), bus_type, gen_features, node_ID], dim=1)
             node_labels = torch.tensor(S1-S2)
         #Node features for Zhu data
-        elif self.data_type == 'Zhu':
+        elif self.data_type in ['Zhu', 'Zhu_mat73']:
             P_injection = (gen_features[:,0]-P1)*(bus_type[:,0]+bus_type[:,1])  #P only given for PQ and PV buses
             Q_injection = (gen_features[:,1]-Q1)*bus_type[:,0]                  #Q only given for PQ buses
             Vreal = Vm*torch.cos(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])  #V only given for PV and slack bus
             Vimag = Vm*torch.sin(np.deg2rad(Va))*(bus_type[:,1]+bus_type[:,2])
 
-            Vm2 = torch.tensor(node_data_post[:,7]) #P of all buses after step - used for calculation of Node labels
+            Vm2 = torch.tensor(node_data_post[:,7]*node_data_post[:,9]) #P of all buses after step - used for calculation of Node labels
             Va2 = torch.tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
             bus_type2 = torch.zeros([2000,4], dtype=torch.int32)
             for i in range(N_BUSES):
@@ -543,8 +636,24 @@ class HurricaneDataset(Dataset):
         edge_index = torch.tensor(mask).nonzero().t()
 
         # Step 2: Extract the corresponding edge attributes (weights)
+        
         edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1)
         return edge_index, edge_attr
+    
+    def get_edge_attrY_Zhumat73(self, edge_data):
+        # Threshold value
+        threshold = 1e-8
+
+        # Step 1: Get the indices of entries that satisfy the condition > 1e-8
+        print(edge_data.shape)
+        mask = abs(edge_data) > threshold
+        edge_index = torch.tensor(mask).nonzero().t()
+
+        # Step 2: Extract the corresponding edge attributes (weights)
+        edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1) 
+        #edge_attr = torch.cat([torch.complex(torch.tensor(edge_data[edge_index[0], edge_index[1]][0]), torch.tensor(edge_data[edge_index[0], edge_index[1]][1]))], dim=1)
+        return edge_index, edge_attr
+
 
     def get_edge_features(self, edge_data, damages, node_data_pre, scenario, i, n_minus_k):
 
@@ -867,6 +976,20 @@ class HurricaneDataset(Dataset):
             #print(f'self.embedding shape: {self.embedding.shape}')
             #data.x = torch.cat([data.x.to('cpu'), self.embedding.to('cpu')], dim=1)
         return data
+    
+    def load_mat_file(self, file_path):
+        try:
+        # Attempt to load using scipy (works for MATLAB files below v7.3)
+            #data = scipy.io.loadmat(file_path)
+            #filetype = 'Zhu'
+            return scipy.io.loadmat(file_path), 'Zhu'   #data, filetype
+
+        except NotImplementedError:
+            f = h5py.File(file_path, 'r')
+            data = f
+            filetype = 'Zhu_mat73'
+
+            return data, filetype
 
 def collate_fn(batch):
     sequences = [item.x for item in batch]
@@ -1109,3 +1232,4 @@ def save_node2vec(embedding, labels, data_list):
         data=Data(x=x ,y=y)
         torch.save(data, f'node2vec/data_{int(data_list[i,0])}_{int(data_list[i,1])}.pt')
     
+
