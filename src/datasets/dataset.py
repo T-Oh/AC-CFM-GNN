@@ -54,6 +54,7 @@ class HurricaneDataset(Dataset):
         self.N_below_threshold = N_below_threshold
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
+        self. data_list = self.processed_file_names
         #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
         #print(self.data_list)
         
@@ -961,7 +962,7 @@ class HurricaneDataset(Dataset):
         #scenario=int(self.data_list[idx,0])
         #step=int(self.data_list[idx,1])
         #data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
-        data = torch.load(os.path.join(self.processed_dir, self.processed_file_names[idx]))
+        data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
         #print('HARDCODED MANUALLY REMOVING 4TH FEATURE IN X -> IN ORDER TO REMOVE VOLTAGE ANGLE WITHOUT REPROCESSING EVERYTHING')
         #data.x = torch.cat([data.x[:3],data.x[4:]])
         #print(data.x.shape)
