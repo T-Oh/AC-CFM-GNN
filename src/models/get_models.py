@@ -147,13 +147,14 @@ def get_model(cfg, params):
             num_conv_layers     = params['num_layers'],
             lstm_hidden_size    = params['lstm_hidden_size'],
             num_lstm_layers     = params['num_lstm_layers'],
-            #reghead_size    = params['reghead_size'],
-            #reghead_layers  = params['reghead_layers'],
+            reghead_size    = params['reghead_size'],
+            reghead_layers  = params['reghead_layers'],
             #num_targets     = params['num_targets'],
-            #dropout         = params['dropout'],
-            #gat_dropout     = params['gat_dropout'],
-            #use_skipcon     = params['use_skipcon'],
-            #use_batchnorm   = params['use_batchnorm'],
+            dropout         = params['dropout'],
+            gat_dropout     = params['gat_dropout'],
+            num_heads       = params["heads"],  
+            use_skipcon     = params['use_skipcon'],
+            use_batchnorm   = params['use_batchnorm'],
             #len_sequence    = params['len_sequence']
         )
 

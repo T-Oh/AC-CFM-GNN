@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
 
 class GAT_LSTM(nn.Module):
-    def __init__(self, num_node_features, conv_hidden_size, num_conv_targets, num_conv_layers, lstm_hidden_size, num_lstm_layers):
+    def __init__(self, num_node_features, conv_hidden_size, num_conv_targets, num_conv_layers, lstm_hidden_size, num_lstm_layers, reghead_size, reghead_layers, dropout, gat_dropout, num_heads, use_skipcon, use_batchnorm):
         super(GAT_LSTM, self).__init__()
 
         print(f'num_node_features: {num_node_features}')
@@ -16,23 +16,34 @@ class GAT_LSTM(nn.Module):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # GAT Layer(s)
         self.gat_layers = nn.ModuleList()
-        self.gat_layers.append(GATv2Conv(num_node_features, conv_hidden_size, heads=1, edge_dim=2))
+        self.gat_layers.append(GATv2Conv(num_node_features, conv_hidden_size, heads=num_heads, edge_dim=2, dropout=gat_dropout))
         
         for _ in range(1, num_conv_layers - 1):
-            self.gat_layers.append(GATv2Conv(conv_hidden_size, conv_hidden_size, heads=1, edge_dim=2))
-        
-        self.gat_layers.append(GATv2Conv(conv_hidden_size, num_conv_targets, heads=1, edge_dim=2))
-        
+            self.gat_layers.append(GATv2Conv(conv_hidden_size*num_heads, conv_hidden_size, heads=num_heads, edge_dim=2, dropout=gat_dropout))
+        self.gat_layers.append(GATv2Conv(conv_hidden_size*num_heads, num_conv_targets, heads=num_heads, edge_dim=2, dropout=gat_dropout))
+
         # LSTM
         self.lstm = nn.LSTM(
-            input_size=num_conv_targets*2000,
+            input_size=num_conv_targets*num_heads*2000,
             hidden_size=lstm_hidden_size,
             num_layers=num_lstm_layers,
-            batch_first=True
+            batch_first=True,
+            dropout=dropout
         )
         
         # Output layer
-        self.fc = nn.Linear(lstm_hidden_size, 1)  # Example output layer
+        # Fully connected layers for regression head
+        self.reghead_layers_list = []
+        input_size = lstm_hidden_size
+        for i in range(reghead_layers - 1):
+            self.reghead_layers_list.append(nn.Linear(input_size, reghead_size//(i+1)))
+            self.reghead_layers_list.append(nn.ReLU())
+            self.reghead_layers_list.append(nn.Dropout(dropout))
+            input_size = reghead_size//(i+1)
+        self.reghead_layers_list.append(nn.Linear(input_size, 1))  # Final output layer
+        self.fc = nn.Sequential(*self.reghead_layers_list)
+
+        self.relu = nn.ReLU()
     
     def forward(self, sequences):
         """
@@ -53,6 +64,7 @@ class GAT_LSTM(nn.Module):
                 # GAT forward pass through all GAT layers
                 for gat_layer in self.gat_layers:
                     x = gat_layer(x, edge_index, edge_attr=edge_attr)
+                    x = self.relu(x)
                 timestep_embeddings.append(x.reshape(-1))
                 del x, edge_index, edge_attr, batch_graph
             
@@ -72,8 +84,11 @@ class GAT_LSTM(nn.Module):
         #print(f'lstm_inputs shape: {lstm_inputs.shape}')
         # LSTM forward pass
         lstm_output, _ = self.lstm(lstm_inputs)  # Shape: [num_sequences, sequence_length, lstm_hidden_dim]
+        lstm_output = self.relu(lstm_output)
         #print(f'lstm_output shape: {lstm_output.shape}')
         # Take the last output of the LSTM (or apply additional layers if needed)
+
+        # Pass the LSTM output through the fully connected layers
         final_output = self.fc(lstm_output[:, -1, :])  # Shape: [num_sequences, output_dim]
         #print(f'final_output shape: {final_output.shape}')
         return final_output
