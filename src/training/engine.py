@@ -302,7 +302,7 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
     if task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
         if isinstance(batch, tuple):    #tuple for TSF  
             if isinstance(batch[1][0], int):    #for GATLSTM the tuple contains the sequence lenghts at batch[1] which is int
-                labels = [batch[0][i].y.sum() for i in range(len(batch[0]))]
+                labels = [batch[0][i].y_cummulative[-1] for i in range(len(batch[0]))]
                 labels = torch.stack(labels).to(torch.double)
             else:                               #otherwise its LDTSF
                 labels = batch[1].to(torch.double)#.reshape(-1)
