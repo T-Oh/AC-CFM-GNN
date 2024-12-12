@@ -279,8 +279,27 @@ class HurricaneDataset(Dataset):
 
                 node_data_pre = torch.tensor(np.array(node_data_pre).squeeze()).transpose(0,1)
                 node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)
-                edge_data = torch.tensor([np.array(edge_data)['real'].squeeze(), np.array(edge_data)['imag'].squeeze()])
-                edge_data = torch.complex(edge_data[0],edge_data[1])
+
+                # Convert edge_data to a NumPy array for processing
+                edge_data_array = np.array(edge_data)
+
+                # Check if 'dtype' exists and whether it has named fields
+                if hasattr(edge_data_array, 'dtype') and edge_data_array.dtype.names:
+                    # Extract real and imaginary parts
+                    real_part = edge_data_array['real'].squeeze()
+                    imag_part = edge_data_array['imag'].squeeze()
+                else:
+                    # No dtype field, treat the entire array as the real part
+                    real_part = edge_data_array.squeeze()
+                    imag_part = np.zeros_like(real_part)
+                # Create the complex tensor
+                edge_data = torch.complex(torch.tensor(real_part), torch.tensor(imag_part))
+
+
+                # Create the complex tensor
+                edge_data = torch.complex(torch.tensor(real_part), torch.tensor(imag_part))
+
+
                 gen_data_pre = torch.tensor(np.array(gen_data_pre).squeeze()).transpose(0,1)
 
             else:
@@ -637,7 +656,6 @@ class HurricaneDataset(Dataset):
         threshold = 1e-8
 
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
-        print(edge_data.shape)
         mask = abs(edge_data) > threshold
         edge_index = torch.tensor(mask).nonzero().t()
 
@@ -800,8 +818,6 @@ class HurricaneDataset(Dataset):
             
             self_admittance = torch.complex(Gs, Bs) + admittance_sum
             #self_admittance = self_admittance + torch.view_as_real(admittance_sum) #DO POPRAWKI
-            print(f'admitance {edge_attr.shape}')
-            print(f'self admittance: {self_admittance.shape}')
             
             edge_attr = torch.cat([edge_attr, self_admittance], dim=1)
             #edge_attr = torch.transpose(edge_attr, 0, 1)
@@ -849,7 +865,6 @@ class HurricaneDataset(Dataset):
         while name[j+i].isnumeric():
             j+=1
         scenario=int(name[i:i+j])
-        print(scenario)
         return scenario
     
     #TO
