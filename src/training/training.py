@@ -155,8 +155,8 @@ def objective(search_space, cfg, device,
             result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['dataset::path'], savename)              
             session.report(temp_eval)
 
-            torch.save(list(output), cfg['dataset::path'] + "results/" + 'output.pt') #saving train losses
-            torch.save(list(labels), cfg['dataset::path'] + "results/" + 'labels.pt') #saving train losses
+            torch.save(list(output), cfg['cfg_path'] + "results/" + 'output.pt') #saving train losses
+            torch.save(list(labels), cfg['cfg_path'] + "results/" + 'labels.pt') #saving train losses
             
 
         #LR Scheduler

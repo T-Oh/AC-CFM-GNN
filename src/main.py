@@ -23,8 +23,8 @@ configfile = "configurations/configuration.json"
 #Create results folder
 os.makedirs('results/plots', exist_ok=True)
 with open(configfile, "r") as io:
-    cfg = json.load(io)
-PATH = cfg["dataset::path"]
+    cfg = json5.load(io)
+PATH = cfg["cfg_path"]
 
 #Pass Input Arguments
 N_TASKS = int(argv[1])  #should only be >1 for studies -> controls the number of parallel trials
