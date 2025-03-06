@@ -27,7 +27,9 @@ def get_model(cfg, params):
                 num_lstm_layers     = params['num_lstm_layers'],
                 reghead_size        = params['reghead_size'],
                 reghead_layers      = params['reghead_layers'],
-                gat_dropout         = params['gat_dropout']
+                gat_dropout         = params['gat_dropout'],
+                max_seq_length      = params['max_seq_length'],
+                task                = params['task']   
             )
         else:
             print('WARNING: DATATYPE SET TO LDTSF BUT MODEL IS NOT LSTM - CONTINUEING WITH LSTM_LDTSF AS MODEL')
@@ -155,7 +157,8 @@ def get_model(cfg, params):
             num_heads       = params["heads"],  
             use_skipcon     = params['use_skipcon'],
             use_batchnorm   = params['use_batchnorm'],
-            #len_sequence    = params['len_sequence']
+            max_seq_length      = params['max_seq_length'],
+            task                = params['task']   
         )
 
 
