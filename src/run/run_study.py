@@ -18,7 +18,6 @@ from training.training import objective
 from models.run_node2vec import run_node2vec
 
 
-
 def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     """
     Runs a ray study as defined in the configuration file
@@ -111,9 +110,9 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
 
 
     # set up optimizer and scheduler
-    baysopt = BayesOptSearch(metric='loss', mode='min')
+    baysopt = BayesOptSearch(metric='test_loss', mode='min')
     scheduler = tune.schedulers.ASHAScheduler(
-        time_attr='training_iteration', metric='loss', mode='min', max_t=cfg['epochs'], grace_period=10)
+        time_attr='training_iteration', metric='test_loss', mode='min', max_t=cfg['epochs'], grace_period=cfg['grace_period'])
 
     
     # configurations
@@ -125,7 +124,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
         search_alg=baysopt,
         scheduler=scheduler)
     
-    run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/')#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
+    run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/', name=cfg['study_ID'])#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
     trainable = tune.with_parameters(objective,
                                      cfg=cfg,  

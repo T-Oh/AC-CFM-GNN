@@ -4,15 +4,13 @@ Created on Thu May 25 16:29:21 2023
 
 @author: tobia
 """
-import numpy as np
+
 import torch
-import logging
-import matplotlib.pyplot as plt
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
-from datasets.dataset_graphlstm import create_lstm_dataset, create_lstm_dataloader
+from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
@@ -20,6 +18,7 @@ from utils.utils import weighted_loss_label, setup_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
+
 
 def run_single(cfg, device, N_CPUS):
     """
@@ -37,10 +36,10 @@ def run_single(cfg, device, N_CPUS):
         else:                   pin_memory = False
 
         # Create Datasets and Dataloaders
-        
+        max_seq_length = -1
         if cfg['model'] == 'Node2Vec':
              trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
-             trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
+             trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         elif cfg['model'] == 'GATLSTM':
             # Split dataset into train and test indices
             trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'])
@@ -49,7 +48,7 @@ def run_single(cfg, device, N_CPUS):
             testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
         else:
              trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
-             trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'])
+             trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
 
         # Calculate probabilities for masking of nodes if necessary
         mask_probs = calc_mask_probs(trainloader, cfg)
@@ -59,33 +58,15 @@ def run_single(cfg, device, N_CPUS):
         num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
 
         #Setup Parameter dictionary for Node2Vec (mask_probs, num_features and num_edge_features should be irrelevant)
-        params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets)
+        params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length)
 
         #Node2Vec
-        if cfg['model'] == 'Node2Vec':
-
-            embedding = run_node2vec(cfg, trainloader, device, params, 0)
-            normalized_embedding = embedding.data
-            #Normalize the Embedding
-            print(embedding.shape)
-            for i in range(embedding.shape[1]):
-                normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
-
-            # Create Datasets and Dataloaders
-            trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
-            trainloader, testloader = create_loaders(cfg, trainset, testset)
-
-            # getting feature and target sizes
-            num_features = trainset.__getitem__(0).x.shape[1]
-            num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
-
-            #Setup params for following task (MLP)
-            params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+        if cfg['model'] == 'Node2Vec':  trainloader, testloader, params = setup_node2vec(cfg, device, trainloader, mask_probs, params)
 
 
         #Regular Models (GINE, GAT, TAG, MLP, GraphTransformer)
         # Init Criterion
-        if cfg['task'] == 'GraphClass':
+        if cfg['task'] in ['GraphClass', 'typeIIClass']:
             criterion = torch.nn.CrossEntropyLoss()
         elif cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
@@ -113,7 +94,7 @@ def run_single(cfg, device, N_CPUS):
                         tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'], return_full_output=True)
 
         #Run Training
-        metrics, eval, output, labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
+        _, _, output, labels, test_output, test_labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)
 
         #Save outputs, labels and losses of first fold
         torch.save(output, "results/" + "output.pt")  # saving train losses
@@ -122,32 +103,29 @@ def run_single(cfg, device, N_CPUS):
         torch.save(labels, "results/" + "test_labels.pt")  # saving train losses
         #torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
         #torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
-
-
-
-
-
+    
         torch.save(model.state_dict(), "results/" + cfg["model"] + ".pt")
 
-        #if device.type != 'cuda':
-        print('Plotting...')
-        for key in metrics:
-            fig1, ax1 = plt.subplots()
-            ax1.plot(metrics[key], label='Train' + key)
-            ax1.plot(eval[key], label='Test' + key)
-            ax1.legend()
-            fig1.savefig('results/'+key+'.png', bbox_inches='tight')
-"""
-        fig2, ax2 = plt.subplots()
-        ax2.plot(metrics['R2'], label='Train R2')
-        ax2.plot(eval['R2'], label='Test R2')
-        ax2.legend()
-        fig2.savefig('R2.png', bbox_inches='tight')
 
-        fig3, ax3 = plt.subplots()
-        ax3.plot(metrics['R2'], label='Train R2')
-        ax3.plot(eval['R2'], label='Test R2')
-        ax3.legend()
-        ax3.set_ylim(0.0, 1.0)
-        fig3.savefig('R2_zoom.png', bbox_inches='tight')"""
 
+def setup_node2vec(cfg, device, trainloader, mask_probs, params):
+    embedding = run_node2vec(cfg, trainloader, device, params, 0)
+    normalized_embedding = embedding.data
+            #Normalize the Embedding
+    print(embedding.shape)
+    for i in range(embedding.shape[1]):
+        normalized_embedding[:,i] = embedding[:,i].data/embedding[:,i].data.max()
+
+            # Create Datasets and Dataloaders
+    trainset, testset, data_list = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], embedding=normalized_embedding.to(device))
+    trainloader, testloader = create_loaders(cfg, trainset, testset)
+
+            # getting feature and target sizes
+    num_features = trainset.__getitem__(0).x.shape[1]
+    num_edge_features = trainset.__getitem__(0).edge_attr.shape[1]
+
+            #Setup params for following task (MLP)
+    params = setup_params(cfg, mask_probs, num_features, num_edge_features)
+    return trainloader, testloader, params
+
+        
