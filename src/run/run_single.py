@@ -117,6 +117,8 @@ def run_single(cfg, device, N_CPUS):
         #Save outputs, labels and losses of first fold
         torch.save(output, "results/" + "output.pt")  # saving train losses
         torch.save(labels, "results/" + "labels.pt")  # saving train losses
+        torch.save(output, "results/" + "test_output.pt")  # saving train losses
+        torch.save(labels, "results/" + "test_labels.pt")  # saving train losses
         #torch.save(list(metrics['train_loss']), "results/" + "train_losses.pt")  # saving train losses
         #torch.save(list(metrics['test_loss']), "results/" + "test_losses.pt")  # saving train losses
 

@@ -3,6 +3,7 @@ import torch
 import json5
 import shutil
 import time
+import os
 
 from sys import argv
 from numpy.random import seed as numpy_seed
@@ -19,6 +20,8 @@ start = time.time()
 
 # Loading training configuration
 configfile = "configurations/configuration.json"
+#Create results folder
+os.makedirs('results/plots', exist_ok=True)
 with open(configfile, "r") as io:
     cfg = json.load(io)
 PATH = cfg["dataset::path"]

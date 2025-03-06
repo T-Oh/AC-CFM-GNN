@@ -76,6 +76,8 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
 
     output = temp_output   
     labels = temp_labels
+    #Plotting
+    plotting(metrics_, eval, output, labels, 'results/plots/', '', TASK)
 
     
     return metrics, eval, output, labels
@@ -160,18 +162,13 @@ def objective(search_space, cfg, device,
         #LR Scheduler
         LRScheduler.step(temp_eval['loss']) #.cpu()
     
-    #final_eval, output, labels = engine.eval(testloader) 
-    
+        if i == cfg['epochs']-1:
+            end = time.time()
+            logging.info(f'Runtime: {(end-start)/60} min')
+            #Plotting
+            #session = train.get_session()
+            plotting(metrics,evaluation, output, labels, cfg['cfg_path']+ 'results/plots/', NAME, TASK)
 
-
-
-
-    #tune.report(np.array(discrete_measure).min())  #only necessary for intermediate results
-
-
-    end = time.time()
-    logging.info(f'Runtime: {(end-start)/60} min')
-    #discrete_measure = torch.tensor(discrete_measure).detach()
 
 
     return result
