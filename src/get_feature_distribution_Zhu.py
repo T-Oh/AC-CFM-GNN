@@ -9,27 +9,35 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-PLOT_ONLY = True
+PLOT_ONLY = False
 NO_Va = True
 path='processed/'
-NAME = 'addY_unnormalized'
-N_NODE_FEATURES = 8   #if NodeIDs are added as features subtract 2000 from N_Features
+NAME = 'Zhu'
+SAVE_FILE = 'min_max_values_'+NAME+'.npz'
+LOAD_MIN_MAX = False
+N_NODE_FEATURES = 4   #if NodeIDs are added as features subtract 2000 from N_Features
 N_EDGE_FEATURES = 2
 N_TARGETS = 2
 N_GRAPH_LABELS = 0
 
 def get_hist(data, bins):
-    hist = np.zeros(len(bins))
+    """hist = np.zeros(len(bins))
     for i in range(len(data)):
         for j in range(len(bins)-1):
             if data[i] <= bins[j+1]:
                 hist[j] += 1
-                break
-    return hist
+                break"""
+    return np.histogram(data, bins=bins)[0]
 
 
-def get_min_max_features(processed_dir, n_node_features, n_edge_features, n_targets):
+def get_min_max_features(processed_dir, n_node_features, n_edge_features, n_targets, SAVE_FILE, LOAD_MIN_MAX):
     #identifies and saves the min and max values as well as the mean values of all features and labels of the data
+    
+    if LOAD_MIN_MAX and os.path.exists(SAVE_FILE):
+        data = np.load(SAVE_FILE)
+        return (data['x_min'], data['x_max'], data['edge_attr_min'], data['edge_attr_max'],
+                data['node_labels_min'], data['node_labels_max'], data['graph_labels_min'].item(),
+                data['graph_labels_max'].item())
     
     #Variables to save the min/max/means
     x_max=torch.zeros(n_node_features)
@@ -68,33 +76,37 @@ def get_min_max_features(processed_dir, n_node_features, n_edge_features, n_targ
             data = torch.load(processed_dir +'/' + file)
             #Nodes
             x = data['x']
-            for i in range(x.shape[0]): #node_loop
-                for j in range(len(x_max)): #feature_loop
-                    if x[i,j]>x_max[j]: x_max[j]=x[i,j]
-                    if x[i,j]<x_min[j]: x_min[j]=x[i,j]
+            for j in range(len(x_max)): #feature_loop
+                x_max[j] = max(x_max[j], x[:,j].max())
+                x_min[j] = min(x_min[j], x[:,j].min())
+
 
             #Edges
             edge_attr = data['edge_attr']
             if edge_attr.dim() == 1: edge_attr = edge_attr.unsqueeze(1)
-            for i in range(len(edge_attr)):
-                for j in range(len(edge_attr_max)):
-                    if edge_attr[i,j]>edge_attr_max[j]: edge_attr_max[j]=edge_attr[i,j]
-                    if edge_attr[i,j]<edge_attr_min[j]: edge_attr_min[j]=edge_attr[i,j]
+            for j in range(len(edge_attr_max)):
+                edge_attr_max[j] = max(edge_attr_max[j], edge_attr[:,j].max())
+                edge_attr_min[j] = min(edge_attr_min[j], edge_attr[:,j].min())
+
 
 
                 
             #Node Labels
             node_labels = data['node_labels']
-            for i in range(len(node_labels)):
-                for j in range(len(node_labels_min)):
-                    if node_labels[i,j] > node_labels_max[j]: node_labels_max[j] = node_labels[i,j]
-                    if node_labels[i,j] < node_labels_min[j]: node_labels_min[j] = node_labels[i,j]
+            for j in range(len(node_labels_min)):
+                node_labels_max[j] = max(node_labels_max[j], node_labels[:,j].max())
+                node_labels_min[j] = min(node_labels_min[j], node_labels[:,j].min())
 
             #Graph Labels
             if 'y' in data.keys:   
                 graph_label = data['y']
                 if graph_label > graph_labels_max: graph_labels_max = graph_label
                 if graph_label < graph_labels_min: graph_labels_min = graph_label
+
+    np.savez(SAVE_FILE, x_min=x_min.numpy(), x_max=x_max.numpy(),
+             edge_attr_min=edge_attr_min.numpy(), edge_attr_max=edge_attr_max.numpy(),
+             node_labels_min=node_labels_min.numpy(), node_labels_max=node_labels_max.numpy(),
+             graph_labels_min=graph_labels_min, graph_labels_max=graph_labels_max)
 
             
         
@@ -115,29 +127,29 @@ if PLOT_ONLY:
     y_bins = data['y_bins']
 
 else:
-    x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max, y_min, y_max = get_min_max_features(path, N_NODE_FEATURES, N_EDGE_FEATURES, N_TARGETS)
+    x_min, x_max, edge_attr_min, edge_attr_max, node_labels_min, node_labels_max, y_min, y_max = get_min_max_features(path, N_NODE_FEATURES, N_EDGE_FEATURES, N_TARGETS, SAVE_FILE, LOAD_MIN_MAX)
 
-    x_bins = np.zeros([len(x_max), 10])
-    edge_bins = np.zeros([N_EDGE_FEATURES, 10])
-    node_label_bins = np.zeros([len(node_labels_max), 10])
-    y_bins = np.linspace(y_min, y_max, 10)
+    x_bins = np.zeros([len(x_max), 100])
+    edge_bins = np.zeros([N_EDGE_FEATURES, 100])
+    node_label_bins = np.zeros([len(node_labels_max), 100])
+    y_bins = np.linspace(y_min, y_max, 100)
 
     for i in range(len(x_max)):
-        x_bins[i] = np.linspace(x_min[i], x_max[i], 10)
+        x_bins[i] = np.linspace(x_min[i], x_max[i], 100)
 
     for i in range(N_EDGE_FEATURES):
-        edge_bins[i] = np.linspace(edge_attr_min[i], edge_attr_max[i], 10)
+        edge_bins[i] = np.linspace(edge_attr_min[i], edge_attr_max[i], 100)
 
     for i in range(len(node_labels_max)):
         print(node_labels_min[i])
         print(node_labels_max[i])
-        node_label_bins[i] = np.linspace(node_labels_min[i], node_labels_max[i], 10)
+        node_label_bins[i] = np.linspace(node_labels_min[i], node_labels_max[i], 100)
 
 
     first = True
-    x_hists = np.zeros([len(x_max), 10])
-    edge_hists = np.zeros([N_EDGE_FEATURES, 10])
-    node_label_hists = np.zeros([len(node_labels_max), 10])
+    x_hists = np.zeros([len(x_max), 99])
+    edge_hists = np.zeros([N_EDGE_FEATURES, 99])
+    node_label_hists = np.zeros([len(node_labels_max), 99])
     y_hist = np.zeros(len(y_bins))
 
     for file in os.listdir(path):
@@ -192,38 +204,38 @@ plt.rcParams['figure.dpi'] = 300
 
 # Plotting
 fig1, ax1 = plt.subplots()
-ax1.bar(x_bins[0], x_hists[0], width=(x_bins[0, 1]-x_bins[0, 0]), align='edge', color='green')
+ax1.bar(x_bins[0][:-1], x_hists[0], width=(x_bins[0, 1]-x_bins[0, 0]), align='edge', color='green')
 ax1.set_xlabel("Active Power [GW]")
 ax1.set_ylabel('Number of Nodes')
 fig1.savefig(path+"ac_node_feature_distr_P_"+NAME+".png", bbox_inches='tight')
 
 fig2, ax2 = plt.subplots()
-ax2.bar(x_bins[1], x_hists[1], width=(x_bins[1, 1]-x_bins[1, 0]), align='edge', color='green')
+ax2.bar(x_bins[1][:-1], x_hists[1], width=(x_bins[1, 1]-x_bins[1, 0]), align='edge', color='green')
 ax2.set_xlabel("Reactive Power [MVAr]")
 ax2.set_ylabel('Number of Nodes')
 fig2.savefig(path+"ac_node_feature_distr_Q_"+NAME+".png", bbox_inches='tight')
 
 fig11, ax11 = plt.subplots()
-ax11.bar(x_bins[2], x_hists[2], width=x_bins[2, 1]-x_bins[2, 0], align='edge', color='green')
-ax11.set_xlabel("Voltage real [p.u.]")
+ax11.bar(x_bins[2][:-1], x_hists[2], width=x_bins[2, 1]-x_bins[2, 0], align='edge', color='green')
+ax11.set_xlabel("Voltage real [kV]")
 ax11.set_ylabel('Number of Nodes')
 fig11.savefig(path+"ac_node_feature_distr_Vreal_"+NAME+".png", bbox_inches='tight')
 
 fig12, ax12 = plt.subplots()
-ax12.bar(x_bins[3], x_hists[3], width=x_bins[3, 1]-x_bins[3, 0], align='edge', color='green')
-ax12.set_xlabel("Voltage imag")
+ax12.bar(x_bins[3][:-1], x_hists[3], width=x_bins[3, 1]-x_bins[3, 0], align='edge', color='green')
+ax12.set_xlabel("Voltage imag [kV]")
 ax12.set_ylabel('Number of Nodes')
 fig12.savefig(path+"ac_node_feature_distr_Vimag_"+NAME+".png", bbox_inches='tight')
 
 #Edge Features
 fig3, ax3 = plt.subplots()
-ax3.bar(edge_bins[0], edge_hists[0], width=(edge_bins[0, 1]-edge_bins[0, 0]), align='edge', color='orange')
+ax3.bar(edge_bins[0][:-1], edge_hists[0], width=(edge_bins[0, 1]-edge_bins[0, 0]), align='edge', color='orange')
 ax3.set_xlabel("Y real")
 ax3.set_ylabel('Number of Edges')
 fig3.savefig(path+"ac_edge_feature_distr_Yreal"+NAME+".png", bbox_inches='tight')
 
 fig4, ax4 = plt.subplots()
-ax4.bar(edge_bins[1], edge_hists[1], width=(edge_bins[1, 1]-edge_bins[1, 0]), align='edge', color='orange')
+ax4.bar(edge_bins[1][:-1], edge_hists[1], width=(edge_bins[1, 1]-edge_bins[1, 0]), align='edge', color='orange')
 ax4.set_xlabel("Y real")
 ax4.set_ylabel('Number of Edges')
 fig4.savefig(path+"ac_edge_feature_distr_Yimag"+NAME+".png", bbox_inches='tight')
@@ -237,7 +249,7 @@ fig5.savefig(path+"ac_graph_label_distr"+NAME+".png", bbox_inches='tight')
 
 for i in range(node_label_bins.shape[0]):
     fig, ax = plt.subplots()
-    ax.bar(node_label_bins[i], node_label_hists[i], width=(node_label_bins[i][1] - node_label_bins[i][0]), align='edge', color='red')
+    ax.bar(node_label_bins[i][:-1], node_label_hists[i], width=(node_label_bins[i][1] - node_label_bins[i][0]), align='edge', color='red')
     ax.set_xlabel(f"Label {i} Voltage [p.u.]")
     ax.set_ylabel('Number of Nodes')
 

@@ -13,8 +13,8 @@ from torch_geometric.data import Data
 def main():
     processed_dir = 'processed/'
     normalized_dir = 'normalized/'
-    data_stats_file = 'unnormalized_data_stats_ANGF_Vcf.npy'
-    N_NODE_FEATURES = 8    #if NodeIDs are added as features substract 2000 from N_Features
+    data_stats_file = 'unnormalized_data_stats_Zhu_nobustype.npy'
+    N_NODE_FEATURES = 4    #if NodeIDs are added as features substract 2000 from N_Features
     N_EDGE_FEATURES = 2
     GEN_FEATURE_BIAS = -1   #Used to mark where the generator features start in the node features (used to skip the 4 one hot encoded bus type features) set to -1 if no generator features are used
     N_TARGETS = 2

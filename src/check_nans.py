@@ -51,6 +51,13 @@ for file in os.listdir(path_from_processed):
                 N_files_NaNs += 1
                 move = True
                 break
+
+        if not move and data.y < 0:
+            print(f'{file} has outliers in ls_tot')
+            shutil.move(path_from_processed + file, path_dump + file)
+            N_files_outliers += 1
+            move = True
+            continue
 """
         # Check for and remove data with outliers  
         if not move and (any(data.edge_attr[:, 1] > 5000) or any(data.edge_attr[:, 2] > 4000)):

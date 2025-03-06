@@ -12,10 +12,10 @@ import glob
 import pickle
 
 #control variables
-name = 'Test2' #Name tag added to the plots and their filenames
+name = 'test' #Name tag added to the plots and their filenames
 TEMP_DIR = '/home/tohlinger/RAY_TMP2/'
 path = '/home/tohlinger/HUI/Documents/hi-accf-ml/results/'
-TASK = 'NR'
+TASK = 'GR'
 
 def plot_result_files(path):
     # Get all result files matching the pattern 'results_*.pkl'
@@ -88,18 +88,34 @@ def plot_result_files(path):
                     plt.close()
                 else:
                     # Plot the metric for a single list of values (non-multiclass metric)
+                    #Zoomed to -1,1
                     plt.figure()
                     plt.plot(train_values, label='Train')
                     plt.plot(test_values, label='Test')
                     plt.xlabel('Epoch')
                     plt.ylabel(metric_name)
-                    plt.ylim((0,1))
+                    plt.ylim((-1,1))
                     plt.title(f'{metric_name}')
                     plt.legend()
 
                     # Save the plot with the filename indicating the result file
                     result_filename = os.path.splitext(os.path.basename(result_file))[0]
                     plot_filename = f'plots/{result_filename}_{metric_name}_zoom.png'
+                    plt.savefig(plot_filename)
+                    plt.close()
+
+                    # Plot the metric for a single list of values (non-multiclass metric)
+                    plt.figure()
+                    plt.plot(train_values, label='Train')
+                    plt.plot(test_values, label='Test')
+                    plt.xlabel('Epoch')
+                    plt.ylabel(metric_name)
+                    plt.title(f'{metric_name}')
+                    plt.legend()
+
+                    # Save the plot with the filename indicating the result file
+                    result_filename = os.path.splitext(os.path.basename(result_file))[0]
+                    plot_filename = f'plots/{result_filename}_{metric_name}.png'
                     plt.savefig(plot_filename)
                     plt.close()
 
@@ -146,10 +162,9 @@ slowest_result = 0
 
 
 for file in os.listdir(path):
-    if file.startswith(name):
+    if file.startswith('objective'):
 
         experiments_evaluated += 1
-
 
         tuner = tune.Tuner.restore(path+file, objective)
         result_grid=tuner.get_results()
@@ -190,7 +205,7 @@ for file in os.listdir(path):
             print(result_grid[i].error)
             #print(result_grid[i].metrics['r2'])
             if not result_grid[i].error:
-                if TASK == 'GC' or ('test_R2' in result_grid[i].metrics.keys() and not torch.isnan(torch.tensor(result_grid[i].metrics['test_R2']))):
+                if TASK == 'GC' or ('test_R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2'])):
                     
                     usable_trials += 1
                     for key in result_grid[i].config.keys():
@@ -210,7 +225,7 @@ for file in os.listdir(path):
                                 best_result = result_grid[i]
                                 best_loss = result_grid[i].metrics['test_loss']
                     else:
-                        if 'test_R2' in result_grid[i].metrics.keys() and not torch.isnan(torch.tensor(result_grid[i].metrics['test_R2'])):
+                        if 'R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2']):
                             if result_grid[i].metrics['test_R2'] > best_R2:
                                 best_result = result_grid[i]
                                 best_R2 = result_grid[i].metrics['test_R2']

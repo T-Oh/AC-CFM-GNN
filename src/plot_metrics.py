@@ -5,10 +5,10 @@ import glob
 import numpy as np
 
 # Ensure the directory exists for saving plots
-os.makedirs('plots', exist_ok=True)
+os.makedirs('results/plots', exist_ok=True)
 
 # Get all result files matching the pattern 'results_*.pkl'
-result_files = glob.glob('/home/tohlinger/LEO/Running/LDTSF_DC/results/results_*.pkl')
+result_files = glob.glob('/home/tohlinger/LEO/Results/LDTSF/GC/subset_crossval/results/results_*.pkl')
 
 # Dictionary to store optimal values for each metric across all files
 optimal_metrics = {}
@@ -74,7 +74,7 @@ for result_file in result_files:
 
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
-                plot_filename = f'plots/{result_filename}_{metric_name}_all_classes.png'
+                plot_filename = f'results/plots/{result_filename}_{metric_name}_all_classes.png'
                 plt.savefig(plot_filename)
                 plt.close()
             else:
@@ -90,7 +90,7 @@ for result_file in result_files:
 
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
-                plot_filename = f'plots/{result_filename}_{metric_name}_zoom.png'
+                plot_filename = f'results/plots/{result_filename}_{metric_name}_zoom.png'
                 plt.savefig(plot_filename)
                 plt.close()
 
