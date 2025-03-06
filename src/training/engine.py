@@ -61,7 +61,7 @@ class Engine(object):
         self.return_full_output = return_full_output
         self.scaler = GradScaler()  #necessary for mixed precision learning
         self.R2Score = R2Score()
-        if 'Class' in self.task:
+        if 'Class' in self.task or self.task=='typeII':
             self.f1_metric = MulticlassF1Score(num_classes=4, average=None).to(device)
             self.precision_metric = MulticlassPrecision(num_classes=4, average=None).to(device)
             self.recall_metric = MulticlassRecall(num_classes=4, average=None).to(device)
@@ -108,6 +108,7 @@ class Engine(object):
             print('Training Batch')
             print('STart Ttime Batch:', t1, flush=True)"""
 
+
             self.optimizer.zero_grad(set_to_none=True)
             count +=1
             
@@ -115,10 +116,13 @@ class Engine(object):
             if isinstance(batch, tuple) and not self.model.__class__.__name__ == 'GAT_LSTM':
                 if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
                 elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
+                elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
             elif not self.model.__class__.__name__ == 'GAT_LSTM':   
                 batch.to(self.device)
 
             with autocast():
+                #print('BATCH')
+                #print(batch)
                 output = self.model.forward(batch)#.reshape(-1)  #reshape used to make sure that output is 1 dimensional
                 output.to(self.device)
 
@@ -136,8 +140,10 @@ class Engine(object):
 
                     output = output*self.masks
                     labels = labels*self.masks
-
-                temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
+                if self.task == 'typeIIClass':
+                    temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
+                else:
+                    temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 """self.scaler.scale(temp_loss).backward() 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()"""
@@ -173,8 +179,11 @@ class Engine(object):
             loss += temp_loss.item()
 
             if 'Class' in self.task:
-
-                preds = torch.argmax(output, dim=1)
+                if self.task == 'typeIIClass':  
+                    labels = labels.reshape(-1)
+                    preds = torch.argmax(output, dim=1)
+                else:
+                    preds = torch.argmax(output, dim=0)
                 self.f1_metric.update(preds.reshape(-1), labels)
                 self.precision_metric.update(preds.reshape(-1), labels.reshape(-1))
                 self.recall_metric.update(preds.reshape(-1), labels.reshape(-1)) 
@@ -228,16 +237,17 @@ class Engine(object):
                 for batch in dataloader:
                     count += 1
                     #compile batch depending on task - ifinstance implies that the data is LDTSF
+
                     if isinstance(batch, tuple) and not self.model.__class__.__name__ == 'GAT_LSTM':
                         if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
                         elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
+                        elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
                     elif not self.model.__class__.__name__ == 'GAT_LSTM':   
                         batch.to(self.device)
+
                     temp_output = self.model.forward(batch).to(self.device)#.reshape(-1)#
-
-
+                    #print(f'Temp Output shape {temp_output.shape}')
                     temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device)                    
-
                     if first:
                         labels = temp_labels.detach().cpu()
                         output = temp_output.detach().cpu()
@@ -247,12 +257,20 @@ class Engine(object):
                         labels=cat((labels,temp_labels.detach().cpu()),0)
                         
                     if 'Class' in self.task:
-                        preds = torch.argmax(temp_output, dim=1)
+                        if self.task == 'typeIIClass':  
+                            temp_labels = temp_labels.reshape(-1)
+                            preds = torch.argmax(temp_output, dim=1)
+                            temp_loss = self.criterion(temp_output, temp_labels).tolist()
+                        else:
+                            preds = torch.argmax(temp_output, dim=1)
+                            temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
                         self.f1_metric.update(preds, temp_labels.reshape(-1))
                         self.precision_metric.update(preds, temp_labels.reshape(-1))
                         self.recall_metric.update(preds, temp_labels.reshape(-1)) 
                         self.accuracy_metric.update(preds, temp_labels.reshape(-1))
-                    temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
+                        
+                    else:
+                        temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
                 loss += temp_loss
 
             metrics = self.compute_metrics(output, labels, loss, count)
@@ -268,6 +286,16 @@ class Engine(object):
 
     def compute_metrics(self, total_output, total_labels, loss, count):
         if not 'Class' in self.task:  
+            if total_output.dim() == 3:
+                total_output = total_output.reshape(-1, 2)
+                total_labels = total_labels.reshape(-1, 2)
+                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
+                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])  
+                metrics = {
+                    'loss'  : float(loss/count),
+                    'R2'    : float(R2_1),
+                    'R2_2'  : float(R2_2)
+                }
             if total_output.dim()==2:
                 R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
                 R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])  
@@ -299,25 +327,40 @@ class Engine(object):
 
 
 def shape_and_cast_labels_and_output(output, batch, task, device):
+    #Graph Regressions
     if task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
+        #Time Series Forecasting
         if isinstance(batch, tuple):    #tuple for TSF  
+            #Graph Time Series Forecasting (GTSF)
             if isinstance(batch[1][0], int):    #for GATLSTM the tuple contains the sequence lenghts at batch[1] which is int
                 labels = [batch[0][i].y_cummulative[-1] for i in range(len(batch[0]))]
                 labels = torch.stack(labels).to(torch.double)
-            else:                               #otherwise its LDTSF
+                output = output.to(torch.double).reshape(-1)
+            #Line Damge Time Series Forecasting (LDTSF)
+            else:                              
                 labels = batch[1].to(torch.double)#.reshape(-1)
-            output = output.to(torch.double).reshape(-1)
+            
         else:                                                  
             labels = batch.y.type(torch.FloatTensor).to(device)
             output = output.reshape(-1)
-    elif task == 'GraphClass':
-            labels = batch[1]
-    elif task == "NodeReg":
+    elif task in ['GraphClass', 'typeIIClass']:
+            labels = batch[1].to(torch.long).reshape(-1) 
+            output = output.transpose(0,1)
 
-        labels = batch.node_labels.type(torch.FloatTensor).to(device)
+ 
+    elif task == "NodeReg":
+        if isinstance(batch, tuple):    #tuple for TSF  
+            #Graph Time Series Forecasting (GTSF)
+            if isinstance(batch[1][0], int):    #for GATLSTM the tuple contains the sequence lenghts at batch[1] which is int
+                labels = [batch[0][i].node_labels[-2000:,:] for i in range(len(batch[0]))]
+                labels = torch.stack(labels)
+                #output = output.to(torch.double).reshape(-1)
+            else:   assert False, 'Using wrong data with GTSF'
+                
+        else:
+            labels = batch.node_labels.type(torch.FloatTensor).to(device)
         #if output.dim() > 1:   output = output.reshape(-1)
-    print('Output:', output)
-    print('Labels:', labels)
+
 
     return output.to(device), labels.to(device)
 

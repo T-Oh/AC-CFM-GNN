@@ -62,8 +62,10 @@ def setup_searchspace(cfg):
         search_space['reghead_layers'] = tune.uniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1)
 
     #LSTM Layers
+    if cfg['study::num_conv_targets_lower'] != cfg['study::num_conv_targets_upper']:
+        search_space['num_conv_targets'] = tune.uniform(cfg['study::num_conv_targets_lower'], cfg['study::num_conv_targets_upper']+1)
     if cfg['study::lstm_hidden_size_lower'] != cfg['study::lstm_hidden_size_upper']:
-        search_space['lstm_hidden_size'] = tune.loguniform(cfg['study::lstm_hidden_size_lower'], cfg['study::lstm_hidden_size_upper']+1)
+        search_space['lstm_hidden_size'] = tune.uniform(cfg['study::lstm_hidden_size_lower'], cfg['study::lstm_hidden_size_upper']+1)
     if cfg["study::lstm_layers_lower"] != cfg['study::lstm_layers_upper']:
         search_space['num_lstm_layers'] = tune.uniform(cfg["study::lstm_layers_lower"], cfg['study::lstm_layers_upper']+1)
 
@@ -131,7 +133,7 @@ def setup_params_from_search_space(search_space, params):
             updated_params[key] = search_space[key]
     return updated_params
 
-def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets):
+def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_length):
     """
     Sets up the parameters dictionary for building and training a model
 
@@ -190,7 +192,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets):
         "num_conv_targets"  :   cfg['num_conv_targets'],
         'lstm_hidden_size'  :   cfg['lstm_hidden_size'],
         'num_lstm_layers'   :   cfg['num_lstm_layers'],
-        'len_sequence'      :   12,
+        'max_seq_length'      :   max_length,
 
         #Params for Node2vec
         'embedding_dim'   :   cfg['embedding_dim'],
@@ -200,6 +202,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets):
         'num_negative_samples'    :   cfg['num_negative_samples'],
         'p'     :   cfg['p'],
         'q'     :   cfg['q'],
+
     }
     return params
 
