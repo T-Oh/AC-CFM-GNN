@@ -17,7 +17,7 @@ from utils.utils import check_config_conflicts
 
 # get time
 start = time.time()
-
+print('NOT USING BUS TYPES AS FEATURES')
 # Loading training configuration
 configfile = "configurations/configuration.json"
 #Create results folder

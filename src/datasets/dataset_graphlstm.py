@@ -38,11 +38,15 @@ class dataset_graphlstm(Dataset):
         timestep_files = sorted(os.listdir(seq_dir))  # Ensure timesteps are ordered
 
         # Load timesteps lazily
-        timesteps = [self.static_data]  # Add static data as the first timestep
+        timesteps = [self.static_data.clone()]  # Add static data as the first timestep
+        timesteps[0].x = timesteps[0].x[:, :4]  # Keep only the first 4 node features
+
         for file in timestep_files:
             timestep_path = os.path.join(seq_dir, file)
             graph_data = torch.load(timestep_path)  # Load graph data for this timestep
+            graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
             timesteps.append(graph_data)
+
         return timesteps
 
 
