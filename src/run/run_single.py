@@ -42,10 +42,11 @@ def run_single(cfg, device, N_CPUS):
              trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
              trainloader, testloader = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         elif cfg['model'] == 'GATLSTM':
-            trainset = create_lstm_dataset(cfg["dataset::path"])
-            testset = trainset
-            trainloader = create_lstm_dataloader(trainset, cfg['train_set::batchsize'], True)
-            testloader = create_lstm_dataloader(testset, cfg['test_set::batchsize'], True)
+            # Split dataset into train and test indices
+            trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'])
+            # Create DataLoaders for train and test sets
+            trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
+            testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
         else:
              trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
              trainloader, testloader = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'])

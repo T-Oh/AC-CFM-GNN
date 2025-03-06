@@ -62,7 +62,6 @@ def collate_fn(batch):
         batched_graph = Batch.from_data_list(sequence)
         batched_sequences.append(batched_graph)
 
-
     return batched_sequences, sequence_lengths
 
 
