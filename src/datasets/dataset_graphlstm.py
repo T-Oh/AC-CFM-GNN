@@ -1,30 +1,34 @@
 import os
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, random_split
 from torch_geometric.data import Batch
-from torch.utils.data import DataLoader
 
-class LazyTimeseriesGraphDataset(Dataset):
-    def __init__(self, root_dir):
+class dataset_graphlstm(Dataset):
+    def __init__(self, root_dir, sequence_indices=None):
         """
         root_dir: Path to the directory containing sequences and timesteps.
+        sequence_indices: Indices of sequences to include in this dataset.
         """
-        self.root_dir = os.path.join(root_dir + 'processed/')
+        # Ensure the root directory ends with 'processed/' without duplication
+        if not root_dir.endswith('processed/'):
+            self.root_dir = os.path.join(root_dir, 'processed/')
+        else:
+            self.root_dir = root_dir
+
         self.sequence_paths = sorted(
             [entry for entry in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, entry))]
         )
         self.static_data = torch.load(os.path.join(self.root_dir, 'data_static.pt'))
-        self.sequence_lengths = {}
 
-        # Precompute sequence lengths
-        for seq in self.sequence_paths:
-            seq_dir = os.path.join(self.root_dir, seq)
-            timesteps = sorted(os.listdir(seq_dir))  # List of timestep files
-            self.sequence_lengths[seq] = len(timesteps)
+        # Filter sequences by indices
+        if sequence_indices is not None:
+            self.sequence_paths = [self.sequence_paths[i] for i in sequence_indices]
+
 
     def __len__(self):
         return len(self.sequence_paths)
-
+    
+    
     def __getitem__(self, idx):
         """
         Returns all timesteps for a single sequence as a list of Data objects.
@@ -64,11 +68,30 @@ def collate_fn(batch):
 
     return batched_sequences, sequence_lengths
 
+def create_train_test_split(dataset, train_ratio=0.8, random_seed=42):
+    """
+    Splits the dataset into train and test sets at the sequence level.
+    """
+    dataset_size = len(dataset)
+    train_size = int(dataset_size * train_ratio)
+    test_size = dataset_size - train_size
+    torch.manual_seed(random_seed)
+    train_indices, test_indices = random_split(range(dataset_size), [train_size, test_size])
+    return train_indices, test_indices
 
-def create_lstm_dataset(root_dir):
-    dataset = LazyTimeseriesGraphDataset(root_dir=root_dir)
-    return dataset
-def create_lstm_dataloader(dataset, batch_size, shuffle):
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=True)
+def create_lstm_datasets(root_dir, train_ratio, random_seed):
+    dataset = dataset_graphlstm(root_dir=root_dir)
+    train_indices, test_indices =create_train_test_split(dataset, train_ratio, random_seed)
+    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices)
+    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices)
+
+    return trainset, testset
+
+def create_lstm_dataloader(dataset, batch_size, shuffle):   #indices,
+    """
+    Creates a DataLoader for the given dataset and indices.
+    """
+    #subset = dataset_graphlstm(dataset.root_dir, sequence_indices=indices)
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle)
     return loader
 
