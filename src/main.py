@@ -1,6 +1,6 @@
 import logging
 import torch
-import json
+import json5
 import shutil
 import time
 

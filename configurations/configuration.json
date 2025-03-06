@@ -1,67 +1,63 @@
 {
-    "cfg_path": "",
-    "dataset": "hurricane_line_priority",
-    "dataset::path": "/home/tohlinger/HUI/Documents/hi-accf-ml/",
-    "study_ID": "objective_2024-03-04_14-23-08/",
+    /*General Settings*/
+    "cfg_path": "/home/tohlinger/Documents/hi-accf-ml/",         
+    "dataset::path": "/home/tohlinger/Documents/hi-accf-ml/",    
 
-    "task":"GraphReg",
-    "data":"LSTM",
-    "edge_attr": "Y",
-    "ls_threshold" : 0.0,
-    "N_below_threshold" : 100,
+    /*Data Settings*/
+    "data":"Zhu_nobustype",          //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, 'hu_nobustype
+    "edge_attr": "Y",       //edge_attr: Y, multi
+    "ls_threshold" : 0.2,   //Load shed threshold under which only N_below_threshold samples are collected
+    "N_below_threshold" : 5,
     "n_scenarios":10000,
 
+    /*General Run Control*/
     "crossvalidation" : false,
     "study::run" : false,
     "study::continue": false,
+    "study_ID": "Test2",
 
-    "train_size":0.8,
-    "stormsplit" : 0,
-    "test_set::batchsize": 2,
-    "train_set::batchsize": 2,
-    "train_set::shuffle": false,
+    //Specific Run Control
     "checkpointing": false,
-
-    "epochs": 3,
-    "N2V_epochs": 20,
-    "model": "GATLSTM",
-    "supernode":false,
+    "epochs": 100,
     "output_freq" : 1,
     
+    /*Data split settings*/
+    "train_size":1,
+    "stormsplit" : 0,
+    "test_set::batchsize": 1,
+    "train_set::batchsize": 1,
+    "train_set::shuffle": false,
 
-    "num_layers": 2,
-    "hidden_size": 32,
+    /*Model Settings*/
+    "task":"NodeReg",   //GraphReg, GraphClass, NodeReg, typeIIClass (possibly more)
+    "model": "TAG",
+    "num_layers": 3,
+    "hidden_size": 128,
+    //Regression Head Settings
     "reghead_size": 256,
-    "reghead_layers" : 2,
-
-    "num_conv_targets"  : 2,
-    "lstm_hidden_size"  : 500,
-    "num_lstm_layers"   : 1,
-   
-    "dropout": 0.041,
-    "gradclip" : 10,
+    "reghead_layers" : 3,
+    //LSTM Settings
+    "num_conv_targets"  : 8,
+    "lstm_hidden_size"  : 64,
+    "num_lstm_layers"   : 1, 
+    //Others
+    "dropout": 0.0,
     "use_batchnorm" : true,
     "use_skipcon" : true,
+    //GAT Settings
+    "num_heads" : 2,
+    "gat_dropout" : 0.0,
+    //TAG Settings
+    "tag_jumps" : 7,
+
+    /*Loss Settings*/
+    "gradclip" : 10,
     "use_masking" : false,
-    "mask_bias" : 0.032,
+    "mask_bias" : 1.0,
     "weighted_loss_label" : false,
     "weighted_loss_factor" : 1.1,
 
-    "num_heads" : 2,
-    "gat_dropout" : 0.35,
-
-    "tag_jumps" : 5,
-
-    "embedding_dim" : 16,
-    "walk_length" : 5,
-    "context_size" : 1,
-    "walks_per_node" : 1,
-    "num_negative_samples" : 1,
-    "p" : 1,
-    "q" : 1,
-    
-    "accuracy_tolerance":0.15,
-
+    /*Optimizer Settings*/
     "optim::LR": 2e-3,
     "optim::betas": [
         0.9,
@@ -73,12 +69,21 @@
     "optim::nesterov": false,
     "optim::optimizer": "Adam",
     "optim::weight_decay": 1e-4,
+
+    /*Node2Vec Control*/
+    "N2V": false,
+    "N2V_epochs": 20,
+    "embedding_dim" : 16,
+    "walk_length" : 5,
+    "context_size" : 1,
+    "walks_per_node" : 1,
+    "num_negative_samples" : 1,
+    "p" : 1,
+    "q" : 1,
     
-    "manual_seed" : 7,
-
-
-
+    /*Study Settings*/
     "study::n_trials" : 4,
+    "grace_period" : 1,
 
     "study::lr::lower" : -7,
     "study::lr::upper" : -3,
@@ -91,6 +96,9 @@
 
     "study::hidden_features_lower" : 16,
     "study::hidden_features_upper" : 64,
+
+    "study::num_conv_targets_lower" : 4,
+    "study::num_conv_targets_upper" : 64,
 
     "study::lstm_layers_lower" : 1,
     "study::lstm_layers_upper" : 4,
@@ -132,6 +140,7 @@
 
     "study::loss_type" : false,
 
+    //Node2Vec Study Settings
     "study::embedding_dim_lower" : 32,
     "study::embedding_dim_upper" : 32,
     "study::walk_length_lower" : 30,
@@ -145,5 +154,10 @@
     "study::p_lower" : 2,
     "study::p_upper" : 2,
     "study::q_lower" : 2,
-    "study::q_upper" : 2
+    "study::q_upper" : 2,
+
+    /*Others*/
+    "manual_seed" : 7,
+    "accuracy_tolerance":0.15,
+    "supernode" : false
 }
