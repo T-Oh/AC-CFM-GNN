@@ -17,6 +17,14 @@ crash.log
 
 *.mat
 
+*.fig
+
+*.jpg
+
+*.npy
+
+*.pkl
+
 training/engine_orig.py
 
 configurations/configuration-LAPTOP-NE62V7DS.json
@@ -671,3 +679,6 @@ results/objective_2024-03-11_11-18-50/objective_cb87122b_1_LR=-6.7528,weight_dec
 raw/clusterresults_3.mat
 processed/unnormalized_data_stats.npy
 damage_files/Hurricane_Claudette_gamma8.3e-5_scenarios.txt
+.vscode/settings.json
+data/raw_orig/_network_437_1723.fig
+study_output.txt
