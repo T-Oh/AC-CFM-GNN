@@ -76,7 +76,6 @@ class TAGNodeReg(Module):
 
         #if edge_weight is two dimensional it consists of the real and imaginary part of Y
         if edge_weight.dim() == 2:
-            print('THIS')
             edge_weight = torch.sqrt(edge_weight[:,0]**2+edge_weight[:,1]**2).float()
 
 
@@ -121,30 +120,30 @@ class TAGNodeReg(Module):
                     x = self.dropout(x)
         
 
-        if self.task != 'GraphReg':
+        if self.task == 'GraphReg': x = global_mean_pool(x, batch)
         #Regression Head
-            if self.reghead_layers == 1:
-                if self.checkpoint: x = checkpoint(self.custom_activation(self.singleLinear), x)
-                else:               x = self.singleLinear(x)
-
-
-            elif self.reghead_layers > 1:
-                if self.checkpoint:
-                    x = checkpoint(self.custom_activation(self.regHead1), x)
-                    x = checkpoint(self.custom_activation(self.relu), x)
-                    for i in range(self.reghead_layers-2):
-                        x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
-                        x = checkpoint(self.custom_activation(self.relu), x)
-                    x = checkpoint(self.custom_activation(self.endLinear), x)
-                else:
-                    x = self.regHead1(x)
-                    x = self.relu(x)
-                    for i in range(self.reghead_layers-2):
-                        x = self.regHeadLayers[i](x)
-                        x = self.relu(x)
-                    x = self.endLinear(x)
-        else:
-            x = global_mean_pool(x, batch)
+        if self.reghead_layers == 1:
             if self.checkpoint: x = checkpoint(self.custom_activation(self.singleLinear), x)
             else:               x = self.singleLinear(x)
+
+
+        elif self.reghead_layers > 1:
+            if self.checkpoint:
+                x = checkpoint(self.custom_activation(self.regHead1), x)
+                x = checkpoint(self.custom_activation(self.relu), x)
+                for i in range(self.reghead_layers-2):
+                    x = checkpoint(self.custom_activation(self.regHeadLayers[i]), x)
+                    x = checkpoint(self.custom_activation(self.relu), x)
+                x = checkpoint(self.custom_activation(self.endLinear), x)
+            else:
+                x = self.regHead1(x)
+                x = self.relu(x)
+                for i in range(self.reghead_layers-2):
+                    x = self.regHeadLayers[i](x)
+                    x = self.relu(x)
+                x = self.endLinear(x)
+        """else:
+            x = global_mean_pool(x, batch)
+            if self.checkpoint: x = checkpoint(self.custom_activation(self.singleLinear), x)
+            else:               x = self.singleLinear(x)"""
         return x
