@@ -14,7 +14,7 @@ from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloa
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import weighted_loss_label, setup_params
+from utils.utils import weighted_loss_label, setup_params, state_loss
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
@@ -42,7 +42,7 @@ def run_single(cfg, device, N_CPUS):
              trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         elif cfg['model'] == 'GATLSTM':
             # Split dataset into train and test indices
-            trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'])
+            trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], stormsplit=cfg['stormsplit'])
             # Create DataLoaders for train and test sets
             trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
             testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
@@ -71,8 +71,11 @@ def run_single(cfg, device, N_CPUS):
         elif cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
             factor=torch.tensor(cfg['weighted_loss_factor']))
+        elif cfg['task'] == 'StateReg':
+            criterion = state_loss(cfg['weighted_loss_factor'])
         else:
             criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
+
         #criterion.to(device)
 
         # Loading GNN model
