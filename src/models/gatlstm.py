@@ -69,12 +69,23 @@ class GAT_LSTM(nn.Module):
             self.reghead_layers_list.append(nn.ReLU())
             self.reghead_layers_list.append(nn.Dropout(self.dropout))
             input_size = self.reghead_size // (i + 1)
-        if self.task == 'NodeReg':
+        if self.task in ['NodeReg', 'StateReg']:
             self.final_layer1 = nn.Linear(input_size, 2000)  # Final output layer 
             self.final_layer2 = nn.Linear(input_size, 2000)  # Final output layer    
         else:
             self.reghead_layers_list.append(nn.Linear(input_size, 1))  # Final output layer
         self.fc = nn.Sequential(*self.reghead_layers_list)
+
+        if self.task == 'StateReg':
+            self.edge_reghead_layers_list = []
+            input_size = self.lstm_hidden_size
+            for i in range(self.reghead_layers - 1):
+                self.reghead_layers_list.append(nn.Linear(input_size, self.reghead_size // (i + 1)))
+                self.reghead_layers_list.append(nn.ReLU())
+                self.reghead_layers_list.append(nn.Dropout(self.dropout))
+                input_size = self.reghead_size // (i + 1)
+            self.edge_final_layer = nn.Linear(input_size, 2*7064)  # Final output layer
+            self.fc_edge = nn.Sequential(*self.edge_reghead_layers_list)
 
         self.relu = nn.ReLU()
 
@@ -104,7 +115,6 @@ class GAT_LSTM(nn.Module):
 
                     # Add skip connection
                     if self.use_skipcon and skip_connection is not None and x.shape == skip_connection.shape:
-                        print(f'i: {i}')
                         x = (x + skip_connection)/2
 
                 timestep_embeddings.append(x.reshape(-1))
@@ -123,9 +133,14 @@ class GAT_LSTM(nn.Module):
         lstm_output = self.relu(lstm_output)
 
         # Pass the LSTM output through the fully connected layers
-        final_output = self.fc(lstm_output[:, -1, :])
-        if self.task == 'NodeReg':
-            final_output1 = self.final_layer1(final_output)
-            final_output2 = self.final_layer2(final_output)
+        final_lstm_output = self.fc(lstm_output[:, -1, :])
+        if self.task in ['NodeReg', 'StateReg']:
+            final_output1 = self.final_layer1(final_lstm_output)
+            final_output2 = self.final_layer2(final_lstm_output)
             final_output = torch.stack((final_output1, final_output2), dim=-1)
+            if self.task == 'StateReg':
+                final_output3 = self.edge_final_layer(final_lstm_output)
+                #final_output3 = torch.softmax(final_output3, dim=-1)
+                final_output = (final_output, final_output3.reshape(-1, 2, 7064))
+
         return final_output
