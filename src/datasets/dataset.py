@@ -55,7 +55,7 @@ class HurricaneDataset(Dataset):
         self.N_below_threshold = N_below_threshold
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
-        self. data_list = self.processed_file_names
+        self.data_list = self.processed_file_names
         #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
 
         
@@ -134,7 +134,7 @@ class HurricaneDataset(Dataset):
         init_data, filetype = self.load_mat_file('raw/' + 'pwsdata.mat')
         #For LSTM we add a single file that is the static solution with no damages which will be used to pad the sequences
         if self.data_type == 'LSTM':
-            self.save_static_data(KEY, init_data, filetype)
+            adj_init = self.save_static_data(KEY, init_data, filetype)
 
         below_threshold_count = 0
 
@@ -170,8 +170,8 @@ class HurricaneDataset(Dataset):
                         else:                           continue
 
                     #extract necessary data
-                    if i == 0:  node_data_pre, gen_data_pre, edge_data, node_data_post, edge_IDs = self.get_data(init_data, file, KEY, i, filetype)                    
-                    else:       node_data_pre, gen_data_pre, edge_data, node_data_post, _ = self.get_data(init_data, file, KEY, i, filetype)                    
+                    if i == 0:  node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, edge_IDs = self.get_data(init_data, file, KEY, i, filetype)                    
+                    else:       node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, _ = self.get_data(init_data, file, KEY, i, filetype)                    
 
                     #extract node features and labels from data
                     node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
@@ -179,10 +179,14 @@ class HurricaneDataset(Dataset):
                     #extract edge features from data
                     if self.edge_attr == 'Y':
                         decoded_damages = self.decode_damage(damages[scenario], i, node_data_pre[:,0], edge_IDs)
-                        if i!=0 and filetype == 'Zhu_mat73':  adj, edge_attr = self.get_edge_attrY_Zhumat73(edge_data, decoded_damages)
-                        else:                                 adj, edge_attr = self.get_edge_attrY(edge_data, decoded_damages)
+                        if i!=0 and filetype == 'Zhu_mat73':  
+                            adj, edge_attr = self.get_edge_attrY_Zhumat73(edge_data_pre, decoded_damages)
+                            if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY_Zhumat73(edge_data_post, [])
+                        else:    
+                            adj, edge_attr = self.get_edge_attrY(edge_data_pre, decoded_damages)
+                            if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY(edge_data_post, [])
                     else: 
-                        adj, edge_attr = self.get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k=False)
+                        adj, edge_attr = self.get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
                     #save unscaled data (non LSTM)
                     if self.data_type in ['AC', 'ANGF_Vcf']:
@@ -195,7 +199,10 @@ class HurricaneDataset(Dataset):
                     
                 if self.data_type == 'LSTM':
                     cummulative_ls += graph_label
-                    data = Data(x=node_feature.to(torch.float32), edge_index=adj, edge_attr=edge_attr.to(torch.float32), node_labels=node_labels.to(torch.float32), y=graph_label.to(torch.float32), y_cummulative=torch.tensor(cummulative_ls).to(torch.float32)) 
+                    edge_labels = self.get_edge_labels(adj_init, adj_post, edge_attr_post)
+                    data = Data(x=node_feature.to(torch.float32), edge_index=adj, edge_attr=edge_attr.to(torch.float32), node_labels=node_labels.to(torch.float32), 
+                                y=graph_label.to(torch.float32), y_cummulative=torch.tensor(cummulative_ls).to(torch.float32), 
+                                edge_labels=torch.tensor(edge_labels).to(torch.float32)) 
                     scenario_dir = os.path.join(self.root, f'processed/scenario_{scenario}')
                     os.makedirs(scenario_dir, exist_ok=True)
                     torch.save(data, os.path.join(scenario_dir, f'data_{scenario}_{i}.pt'))
@@ -216,25 +223,30 @@ class HurricaneDataset(Dataset):
         return len_scenario,ls_tot
 
     def save_static_data(self, KEY, init_data, filetype):
-        node_data_pre, gen_data_pre, edge_data, node_data_post, _ = self.get_data(init_data, init_data, KEY, 0, filetype)                    
-        node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
         assert self.edge_attr == 'Y', 'Edge attribute must be Y for static data' 
-        adj, edge_attr = self.get_edge_attrY(edge_data, [])
+        node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, _ = self.get_data(init_data, init_data, KEY, -1, filetype)                    
+        node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
 
-        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr.float(), node_labels=node_labels.float(), y=graph_label.float(), y_cummulative=torch.tensor(0).to(torch.float32))
+        adj, edge_attr = self.get_edge_attrY(edge_data_pre, [])
+        edge_labels = self.get_edge_labels(adj, adj, edge_attr)
+
+        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr.float(), node_labels=node_labels.float(), y=graph_label.float(), 
+                    y_cummulative=torch.tensor(0).to(torch.float32), edge_labels=edge_labels.to(torch.float32))
         torch.save(data, os.path.join(self.processed_dir, f'data_static.pt'))
+        #returns the adjacency matrix of the static data which is used to determine the edge labels in the LSTM data
+        return adj
 
 
 
     def get_data(self, init_data, file, KEY, i, filetype):
-        if i == 0:  #in first iteration load original pwsdata as initial data 
+        if i <= 0:  #in first iteration load original pwsdata as initial data 
             node_data_pre = init_data[KEY][0,0][2] 
             gen_data_pre = init_data[KEY][0,0][3]
             if self.edge_attr == 'Y':                           
-                edge_data = init_data[KEY][0,0][10]    #loading the added Admittance matrix instead of the edge data
+                edge_data_pre = init_data[KEY][0,0][10]    #loading the added Admittance matrix instead of the edge data
                 edge_IDs = init_data[KEY][0,0][4][:,:2]
             else: 
-                edge_data = init_data[KEY][0,0][4]
+                edge_data_pre = init_data[KEY][0,0][4]
 
             if filetype == 'Zhu_mat73':           #Zhu_mat73 is only necessary for Ike and Harvey where the files were too big and need to be saved in the newer mat7.3 format
                 node_data_post = []
@@ -242,9 +254,19 @@ class HurricaneDataset(Dataset):
                 ref = bus_data_ref[i, 0]  # Get the object reference
                 dereferenced_data = file[ref]  # Dereference it
                 node_data_post.append(dereferenced_data[()])  # Append the actual data
-                node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)            
+                node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)  
+
+                edge_data_post = []
+                edge_data_ref = file[KEY]['Ybus_ext']
+                ref = edge_data_ref[i,0]
+                dereferenced_data = file[ref]
+                edge_data_post.append(dereferenced_data[()])          
             else:
                 node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
+                if i == -1: edge_data_post = edge_data_pre
+                else:       
+                    edge_data_post = file[KEY][0,i][29][0]   #edge data after step i for edge_label_calculation
+                
 
         else:
             edge_IDs = None
@@ -261,11 +283,11 @@ class HurricaneDataset(Dataset):
                 dereferenced_data = file[ref]
                 gen_data_pre.append(dereferenced_data[()])
 
-                edge_data = []
+                edge_data_pre = []
                 edge_data_ref = file[KEY]['Ybus_ext']
                 ref = edge_data_ref[i-1,0]
                 dereferenced_data = file[ref]
-                edge_data.append(dereferenced_data[()])
+                edge_data_pre.append(dereferenced_data[()])
 
                 node_data_post = []
                 bus_data_ref = file[KEY]['bus']
@@ -273,47 +295,62 @@ class HurricaneDataset(Dataset):
                 dereferenced_data = file[ref]  # Dereference it
                 node_data_post.append(dereferenced_data[()])  # Append the actual data
 
+                edge_data_post = []
+                edge_data_ref = file[KEY]['Ybus_ext']
+                ref = edge_data_ref[i,0]
+                dereferenced_data = file[ref]
+                edge_data_post.append(dereferenced_data[()])
+
                 node_data_pre = torch.tensor(np.array(node_data_pre).squeeze()).transpose(0,1)
                 node_data_post = torch.tensor(np.array(node_data_post).squeeze()).transpose(0,1)
 
                 # Convert edge_data to a NumPy array for processing
-                edge_data_array = np.array(edge_data)
+                edge_data_pre_array = np.array(edge_data_pre)
+                edge_data_post_array = np.array(edge_data_post)
 
                 # Check if 'dtype' exists and whether it has named fields
-                if hasattr(edge_data_array, 'dtype') and edge_data_array.dtype.names:
+                if hasattr(edge_data_pre_array, 'dtype') and edge_data_pre_array.dtype.names:
                     # Extract real and imaginary parts
-                    real_part = edge_data_array['real'].squeeze()
-                    imag_part = edge_data_array['imag'].squeeze()
+                    real_part_pre = edge_data_pre_array['real'].squeeze()
+                    imag_part_pre = edge_data_pre_array['imag'].squeeze()
                 else:
                     # No dtype field, treat the entire array as the real part
-                    real_part = edge_data_array.squeeze()
-                    imag_part = np.zeros_like(real_part)
-                # Create the complex tensor
-                edge_data = torch.complex(torch.tensor(real_part), torch.tensor(imag_part))
+                    real_part_pre = edge_data_pre_array.squeeze()
+                    imag_part_pre = np.zeros_like(real_part_pre)
 
+                # Check if 'dtype' exists and whether it has named fields
+                if hasattr(edge_data_post_array, 'dtype') and edge_data_post_array.dtype.names:
+                    # Extract real and imaginary parts
+                    real_part_post = edge_data_post_array['real'].squeeze()
+                    imag_part_post = edge_data_post_array['imag'].squeeze()
+                else:
+                    # No dtype field, treat the entire array as the real part
+                    real_part_post = edge_data_post_array.squeeze()
+                    imag_part_post = np.zeros_like(real_part_post)
 
-                # Create the complex tensor
-                edge_data = torch.complex(torch.tensor(real_part), torch.tensor(imag_part))
-
+                # Create the complex tensors
+                edge_data_pre = torch.complex(torch.tensor(real_part_pre), torch.tensor(imag_part_pre))
+                edge_data_post = torch.complex(torch.tensor(real_part_post), torch.tensor(imag_part_post))
 
                 gen_data_pre = torch.tensor(np.array(gen_data_pre).squeeze()).transpose(0,1)
 
             else:
                 node_data_pre = []
                 gen_data_pre = []
-                edge_data = []
-                node_data_pre_ref = file[KEY]['bus']
+                edge_data_pre = []
+                edge_data_post = []
                 
                 node_data_pre = file[KEY][0,i-1][2]    #node_data of initial condition of step i
                 gen_data_pre = file[KEY][0,i-1][3]
                 if self.edge_attr == 'Y':                           
-                    edge_data = file[KEY][0,i-1][29]       #loading the added Admittance matrix instead of the edge data
+                    edge_data_pre = file[KEY][0,i-1][29]       #loading the added Admittance matrix instead of the edge data
+                    edge_data_post = file[KEY][0,i][29]       #loading the added Admittance matrix instead of the edge data
                 else:
-                    edge_data = file[KEY][0,i-1][4]         #edge data of initial condition of step i
+                    edge_data_pre = file[KEY][0,i-1][4]         #edge data of initial condition of step i
                 node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
             
             
-        return node_data_pre, gen_data_pre, edge_data, node_data_post, edge_IDs
+        return node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, edge_IDs
 
            
     def process_ldtsf(self):
@@ -442,6 +479,40 @@ class HurricaneDataset(Dataset):
                 torch.save(processed_data, os.path.join(self.processed_dir, f'data_{scenario}_{N_steps}.pt'))
                 scenario += 1
 
+
+
+    def get_edge_labels(self, adj_init, adj_post, edge_attr_post):
+        '''
+        Calculates the binary edge labels for the LSTM data.
+        
+        Parameters:
+        - adj_init: torch.Tensor (2, E_init) - Initial edge_index
+        - adj_post: torch.Tensor (2, E_post) - Updated edge_index
+        - edge_attr_post: torch.Tensor (E_post,) - Updated edge attributes (e.g., admittance)
+        - threshold: float - Threshold for determining edge labels
+        
+        Returns:
+        - edge_labels: torch.Tensor (E_init,) - Binary labels for edges in adj_init
+        '''
+        
+        threshold = 1e-8
+        # Convert edges to set for fast lookup
+        adj_post_set = {tuple(edge.tolist()) for edge in adj_post.T}
+
+        # Edge labels
+        edge_labels = torch.zeros(adj_init.shape[1], dtype=torch.long)
+
+        # Iterate over edges in the initial adjacency matrix
+        for i, edge in enumerate(adj_init.T):
+            edge_tuple = tuple(edge.tolist())
+
+            if edge_tuple in adj_post_set:
+                # Get index of the edge in adj_post
+                idx = (adj_post.T == edge).all(dim=1).nonzero(as_tuple=True)[0]
+                if len(idx) > 0:  # Edge exists in updated graph
+                    edge_labels[i] = 1 if abs(edge_attr_post[idx[0],0]) >= threshold or abs(edge_attr_post[idx[0],1]) >= threshold  else 0
+
+        return torch.tensor(edge_labels)
 
 
 
@@ -616,15 +687,22 @@ class HurricaneDataset(Dataset):
     def get_edge_attrY(self, edge_data, decoded_damages):
         "decoded_damages is encoded as [[bus_from, bus_to]], with python indices (0-1999)"
         #Deactivate damaged lines
-        for i in range(len(decoded_damages)):
-            edge_data[decoded_damages[i][0],decoded_damages[i][1]] = 0
-            edge_data[decoded_damages[i][1],decoded_damages[i][0]] = 0
+        if decoded_damages != []:
+            for i in range(len(decoded_damages)):
+                edge_data[decoded_damages[i][0],decoded_damages[i][1]] = 0
+                edge_data[decoded_damages[i][1],decoded_damages[i][0]] = 0
         # Threshold value
         threshold = 1e-8
 
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
-        mask = abs(edge_data) > threshold
+        if len(edge_data) == 1: 
+            edge_data = torch.complex(torch.tensor(edge_data[0]['real']), torch.tensor(edge_data[0]['imag']))
+            mask = np.abs(edge_data) > threshold
+        else:                   
+            mask = np.abs(edge_data) > threshold
         edge_index = torch.tensor(mask).nonzero().t()
+
+
 
         # Step 2: Extract the corresponding edge attributes (weights)
         
