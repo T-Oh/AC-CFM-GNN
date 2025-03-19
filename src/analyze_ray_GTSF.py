@@ -12,10 +12,10 @@ import glob
 import pickle
 
 #control variables
-name = 'test' #Name tag added to the plots and their filenames
+NAME = 'Test_StateReg' #Name tag added to the plots and their filenames
 TEMP_DIR = '/home/tohlinger/RAY_TMP2/'
-path = '/home/tohlinger/HUI/Documents/hi-accf-ml/results/'
-TASK = 'GR'
+PATH = '/home/tohlinger/Documents/hi-accf-ml/results/'
+TASK = 'StateReg'
 
 def plot_result_files(path):
     # Get all result files matching the pattern 'results_*.pkl'
@@ -142,7 +142,7 @@ def plot_result_files(path):
 os.makedirs('plots', exist_ok=True)
 
 # Call the function
-plot_result_files(path)
+plot_result_files(PATH)
 
 
 #RAY ANALYSIS
@@ -161,12 +161,12 @@ fastest_result = 0
 slowest_result = 0
 
 
-for file in os.listdir(path):
-    if file.startswith('objective'):
+for file in os.listdir(PATH):
+    if file.startswith(NAME):
 
         experiments_evaluated += 1
 
-        tuner = tune.Tuner.restore(path+file, objective)
+        tuner = tune.Tuner.restore(PATH+file, objective)
         result_grid=tuner.get_results()
         print(result_grid)
         
@@ -176,14 +176,21 @@ for file in os.listdir(path):
         if i_file == 0:
             N_params = 0
             params = {}
+            metrics = {}
             for i in range(N_trials):
                 if not result_grid[i].error and (TASK == 'GC' or 'test_R2' in result_grid[i].metrics.keys()):
                         for key in result_grid[i].config.keys():
                             params[key] = np.zeros(N_trials)
                             N_params += 1
                         break
-            
-            metrics = {
+            for i in range(N_trials):
+                if not result_grid[i].error:
+                    for key in result_grid[i].metrics.keys():
+                        if key in ['train_loss', 'test_loss', 'train_R2', 'train_R2_2', 'test_R2', 'test_R2_2', 'time_total_s', 'train_accuracy', 'test_accuracy', 'train_F1', 'test_F1', 'train_precision', 'test_precision',
+                                    'train_recall', 'test_recall']:  
+                            metrics[key] = np.zeros(N_trials)
+                    break
+            """metrics = {
                 'train_loss' :  np.zeros(N_trials),
                 'test_loss' :   np.zeros(N_trials),
                 'train_R2' :    np.zeros(N_trials),
@@ -191,7 +198,7 @@ for file in os.listdir(path):
                 'test_R2' :     np.zeros(N_trials),
                 'test_R2_2' :     np.zeros(N_trials),
                 'time_total_s'  :   np.zeros(N_trials)
-                }
+                }"""
         else:
             for key in metrics.keys():
                 metrics[key] = np.append(metrics[key],np.zeros(N_trials))
@@ -203,14 +210,13 @@ for file in os.listdir(path):
         for i in range(N_trials):
             print(i)
             print(result_grid[i].error)
-            #print(result_grid[i].metrics['r2'])
             if not result_grid[i].error:
-                if TASK == 'GC' or ('test_R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2'])):
+                if TASK == 'GC' or ('test_R2' in result_grid[i].metrics.keys() and not np.isnan(result_grid[i].metrics['test_R2'])):
                     
                     usable_trials += 1
                     for key in result_grid[i].config.keys():
                         if key in ['num_layers', 'hidden_size', 'embedding_dim', 'walk_length', 'reghead_size', 'reghead_layers', 'K', 'num_heads',
-                                'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon']:
+                                'loss_type', 'use_batchnorm', 'use_masking', 'use_skipcon', 'num_lstm_layers', 'lstm_hidden_size', 'num_conv_targets']:
                             params[key][i+offset] = int(result_grid[i].config[key])
                         elif key == 'gradclip' and result_grid[i].config[key] < 0.02:                            
                             params[key][i+offset] = 0
@@ -225,7 +231,7 @@ for file in os.listdir(path):
                                 best_result = result_grid[i]
                                 best_loss = result_grid[i].metrics['test_loss']
                     else:
-                        if 'R2' in result_grid[i].metrics.keys() and not torch.isnan(result_grid[i].metrics['test_R2']):
+                        if 'test_R2' in result_grid[i].metrics.keys() and not np.isnan(result_grid[i].metrics['test_R2']):
                             if result_grid[i].metrics['test_R2'] > best_R2:
                                 best_result = result_grid[i]
                                 best_R2 = result_grid[i].metrics['test_R2']
@@ -287,15 +293,15 @@ for key in params.keys():
         ax.set_xscale('log')
         ax.scatter(10**params[key],METRIC)
     elif key == 'loss_weight':
-        ax.scatter(params[key],METRIC, c=params['loss_type'])
+        ax.scatter(params[key],METRIC)
     elif key == 'mask_bias':
         ax.scatter(params[key],METRIC, c=params['use_masking'])
     else:
         ax.scatter(params[key],METRIC)
-    ax.set_title(name)
+    ax.set_title(NAME)
     ax.set_xlabel(key)
     ax.set_ylabel('Test R2')
-    fig.savefig('plots/'+key + name + ".png", bbox_inches='tight')
+    fig.savefig('plots/'+key + NAME + ".png", bbox_inches='tight')
     i += 1
     plt.close()
 
@@ -306,16 +312,16 @@ for key in params.keys():
         ax.set_xscale('log')
         ax.scatter(10**params[key],METRIC)
     elif key == 'loss_weight':
-        ax.scatter(params[key],METRIC, c=params['loss_type'])
+        ax.scatter(params[key],METRIC)
     elif key == 'mask_bias':
         ax.scatter(params[key],METRIC, c=params['use_masking'])
     else:
         ax.scatter(params[key],METRIC)
     ax.set_ylim(-1,1)
-    ax.set_title(name)
+    ax.set_title(NAME)
     ax.set_xlabel(key)
     ax.set_ylabel('Test R2')
-    fig.savefig('plots/'+key + name + ".png", bbox_inches='tight')
+    fig.savefig('plots/'+key + NAME + "_zoom.png", bbox_inches='tight')
     i += 1
     plt.close()
     
@@ -324,132 +330,27 @@ if 'num_layers' in params.keys() and 'hidden_size' in params.keys():
     fig = plt.figure(i+1)        
     ax = fig.add_subplot(projection='3d')
     ax.scatter(params['num_layers'], params['hidden_size'], METRIC, c=METRIC)
-    ax.set_title(name)
+    ax.set_title(NAME)
     ax.set_xlabel('num_layers')
     ax.set_ylabel('hidden_size')
     ax.set_zlabel('Train R2')
-    fig.savefig('plots/'+'Layers_HF_R2' + name + ".png", bbox_inches='tight')
+    fig.savefig('plots/'+'Layers_HF_R2' + NAME + ".png", bbox_inches='tight')
     
 #History Plot (R2 vs trials)
 fig = plt.figure(i+2)
 ax = fig.add_subplot()
 ax.scatter(range(len(METRIC)), METRIC)
-ax.set_title(name)
+ax.set_title(NAME)
 ax.set_xlabel('Trial')
 ax.set_ylabel('Test R2')
-fig.savefig('plots/'+'history_plot_' + name + '.png', bbox_inches='tight')
+fig.savefig('plots/'+'history_plot_' + NAME + '.png', bbox_inches='tight')
 
 #Zoomed history plot
 fig = plt.figure(i+2)
 ax = fig.add_subplot()
 ax.scatter(range(len(METRIC)), METRIC)
 ax.set_ylim(-1,1)
-ax.set_title(name)
+ax.set_title(NAME)
 ax.set_xlabel('Trial')
 ax.set_ylabel('Test R2')
-fig.savefig('plots/'+'history_plot_' + name + '.png', bbox_inches='tight')
-
-
-
-
-
-    
-    
-
-
-"""
-fig1,ax1=plt.subplots()
-ax1.scatter(gc,R2)
-ax1.set_title("")
-#ax1.set_xscale("log")
-ax1.set_xlabel("Gradclip")
-ax1.set_ylabel('R2')
-fig1.savefig("GC_R2_25_" + name + ".png")
-
-fig2,ax2=plt.subplots()
-ax2.scatter(np.array(HF),np.array(R2))
-ax2.set_title("")
-ax2.set_xlabel("N Hidden Features")
-ax2.set_ylabel('R2')
-fig2.savefig("HF_R2_25_" + name + ".png")
-
-fig3,ax3=plt.subplots()
-ax3.scatter(LR,R2)
-ax3.set_title("")
-ax3.set_xscale("log");
-ax3.set_xlabel("Learning Rate")
-ax3.set_ylabel('R2')
-fig3.savefig("LR_R2_25_" + name + ".png")
-
-fig4,ax4=plt.subplots()
-ax4.scatter(layers,R2)
-ax4.set_title("")
-ax4.set_xlabel("N Layers")
-ax4.set_ylabel('R2')
-fig4.savefig("layers_R2_25_" + name + ".png")
-
-fig5,ax5=plt.subplots()
-ax5.scatter(skipcon,R2)
-ax5.set_title("")
-ax5.set_xlabel("use_skipcon")
-ax5.set_ylabel('R2')
-fig5.savefig("skipcon_R2_25_" + name + ".png")
-
-fig7,ax7=plt.subplots()
-ax7.scatter(dropout,R2)
-ax7.set_title("")
-ax7.set_xlabel("dropout")
-ax7.set_ylabel('R2')
-fig7.savefig("dropout_cR2_25_" + name + ".png")
-
-fig9,ax9=plt.subplots()
-ax9.scatter(RHS,R2)
-ax9.set_title("")
-ax9.set_xlabel("Reghead Hidden Features")
-ax9.set_ylabel('R2')
-fig9.savefig("RHsize_R2_25_" + name + ".png")
-
-fig8,ax8=plt.subplots()
-ax8.scatter(RHL,R2)
-ax8.set_title("")
-ax8.set_xlabel("RegHead Layers")
-ax8.set_ylabel('R2')
-fig8.savefig("RHL_R2_25_" + name + ".png")
-
-
-fig6 = plt.figure()
-ax6 = fig6.add_subplot(projection='3d')
-ax6.scatter(dropout,layers, R2,c =R2)
-ax6.set_title("")
-ax6.set_xlabel("dropout")
-ax6.set_ylabel('N Layers')
-ax6.set_zlabel('R2')
-fig6.savefig("dropout_layers_R2_25_" + name + ".png")
-
-fig6 = plt.figure()
-ax6 = fig6.add_subplot(projection='3d')
-ax6.scatter(gc,HF, R2,c=R2)
-ax6.set_title("")
-ax6.set_xlabel("Gradclip Norm")
-ax6.set_ylabel('N HF')
-ax6.set_zlabel('R2')
-fig6.savefig("GC_HF_R2_25_" + name + ".png")
-
-fig6 = plt.figure()
-ax6 = fig6.add_subplot(projection='3d')
-ax6.scatter(HF,layers, R2,c=R2)
-ax6.set_title("")
-ax6.set_xlabel("N HF")
-ax6.set_ylabel('N Layers')
-ax6.set_zlabel('R2')
-fig6.savefig("HF_layers_R2_25_" + name + ".png")
-
-fig6 = plt.figure()
-ax6 = fig6.add_subplot(projection='3d')
-ax6.scatter(RHL,RHS, R2,c=R2)
-ax6.set_title("")
-ax6.set_xlabel("N Reghead Layers")
-ax6.set_ylabel('N Reghead Features')
-ax6.set_zlabel('R2')
-fig6.savefig("RHL_RHS_R2_25_" + name + ".png")
-"""
+fig.savefig('plots/'+'history_plot_' + NAME + '.png', bbox_inches='tight')
