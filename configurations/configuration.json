@@ -4,7 +4,7 @@
     "dataset::path": "/home/tohlinger/Documents/hi-accf-ml/",    
 
     /*Data Settings*/
-    "data":"Zhu_nobustype",          //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, 'hu_nobustype
+    "data":"LSTM",          //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
     "edge_attr": "Y",       //edge_attr: Y, multi
     "ls_threshold" : 0.2,   //Load shed threshold under which only N_below_threshold samples are collected
     "N_below_threshold" : 5,
@@ -23,88 +23,53 @@
     "n_scenarios":1229,
 
     "crossvalidation" : false,
-    "study::run" : false,
+    "study::run" : true,
     "study::continue": false,
-    "study_ID": "Test2",
+    "study_ID": "Test_StateReg  ",
 
     //Specific Run Control
     "checkpointing": false,
-    "epochs": 100,
-    "study::run" : true,
-    "study::continue": true,
-    "study::parallel_trials": 4,
-
-    "epochs": 50,
-    "N2V_epochs": 20,
-    "model": "GINE",
-    "supernode":false,
+    "epochs": 10,
     "output_freq" : 1,
     
     /*Data split settings*/
-    "train_size":1,
+    "train_size": 0.5,
     "stormsplit" : 0,
-    "test_set::batchsize": 1,
-    "train_set::batchsize": 1,
+    "test_set::batchsize": 3,
+    "train_set::batchsize": 3,
     "train_set::shuffle": false,
 
     /*Model Settings*/
-    "task":"NodeReg",   //GraphReg, GraphClass, NodeReg, typeIIClass (possibly more)
-    "model": "TAG",
-    "num_layers": 3,
-    "hidden_size": 128,
+    "task":"StateReg",   //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg (possibly more)
+    "model": "GATLSTM", //GAT, TAG, GATLSTM
+    "num_layers": 2,
+    "hidden_size": 182,
     //Regression Head Settings
-    "reghead_size": 256,
-    "reghead_layers" : 3,
+    "reghead_size": 76,
+    "reghead_layers" : 2,
     //LSTM Settings
     "num_conv_targets"  : 8,
     "lstm_hidden_size"  : 64,
-    "num_lstm_layers"   : 1, 
+    "num_lstm_layers"   : 2, 
     //Others
-    "dropout": 0.0,
-    "gradclip" : 0.0,
+    "dropout": 0.00,
     "use_batchnorm" : true,
-    "use_skipcon" : true,
+    "use_skipcon" : false,
     //GAT Settings
-    "num_heads" : 2,
+    "num_heads" : 1,
     "gat_dropout" : 0.0,
     //TAG Settings
-    "tag_jumps" : 7,
+    "tag_jumps" : 4,
 
     /*Loss Settings*/
-    "gradclip" : 10,
+    "gradclip" : 7.1,
     "use_masking" : false,
     "mask_bias" : 1.0,
     "weighted_loss_label" : false,
-    "weighted_loss_factor" : 1.1,
+    "weighted_loss_factor" : 0.2,
 
     /*Optimizer Settings*/
-    "optim::LR": 2e-3,
-    "num_heads" : 2,
-    "gat_dropout" : 0.1,
-
-    "tag_jumps" : 22,
-
-    "num_conv_targets"  : 32,
-    "lstm_hidden_size"  : 64,
-    "num_lstm_layers"   : 1,
-
-    "embedding_dim" : 16,
-    "walk_length" : 5,
-    "context_size" : 1,
-    "walks_per_node" : 1,
-    "num_negative_samples" : 1,
-    "p" : 1,
-    "q" : 1,
-    
-    "train_size":0.8,
-    "stormsplit" : 4,
-    "test_set::batchsize": 1,
-    "train_set::batchsize": 1,
-    "train_set::shuffle": false,
-
-    "accuracy_tolerance":0.15,
-
-    "optim::LR": 2e-4,
+    "optim::LR": 1e-3,
     "optim::betas": [
         0.9,
         0.999
@@ -128,7 +93,7 @@
     "q" : 1,
     
     /*Study Settings*/
-    "study::n_trials" : 4,
+    "study::n_trials" : 2,
     "grace_period" : 1,
     "optim::weight_decay": 2e-7,
     
@@ -179,8 +144,8 @@
     "study::mask_bias_lower" : 0.5,
     "study::mask_bias_upper" : 0.5,
 
-    "study::loss_weight_lower" : 10,
-    "study::loss_weight_upper" : 10,
+    "study::loss_weight_lower" : 0.01,
+    "study::loss_weight_upper" : 0.5,
 
     "study::heads_lower" : 1,
     "study::heads_upper" : 5,
