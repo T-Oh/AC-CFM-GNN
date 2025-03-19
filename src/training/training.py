@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space
+from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 
@@ -41,10 +41,6 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
 
     """
     
-    train_loss = []
-    train_R2 = []
-    test_loss = []
-    test_R2 = []
     output=[]
     labels=[]
     TASK = cfg['task']
@@ -66,9 +62,9 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
         temp_metrics, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
 
         if cfg['train_size'] == 1:
-            temp_eval, _, _ = engine.eval(trainloader)    #TO change back to testloader if train_size <1
+            temp_eval, test_output, test_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
         else:
-            temp_eval, _, _ = engine.eval(testloader)
+            temp_eval, test_output, test_labels = engine.eval(testloader)
         LRScheduler.step(temp_eval['loss'])
 
         _, metrics_, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['cfg_path'], SAVENAME)
@@ -82,7 +78,7 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     plotting(metrics_, eval, output, labels, 'results/plots/', '', TASK)
 
     
-    return metrics, eval, output, labels
+    return metrics, eval, output, labels, test_output, test_labels
 
 
 
@@ -99,7 +95,7 @@ def objective(search_space, cfg, device,
             trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     elif cfg['model'] == 'GATLSTM':
         # Split dataset into train and test indices
-        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'])
+        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'],cfg['stormsplit'])
         # Create DataLoaders for train and test sets
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
@@ -111,8 +107,7 @@ def objective(search_space, cfg, device,
 
     params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length)
     params = setup_params_from_search_space(search_space, params)
-
-    print(params)  
+ 
     print('\nSEARCH_SPACE:\n')
     print(search_space)
     print('PARAMS')
@@ -129,6 +124,8 @@ def objective(search_space, cfg, device,
     #Choose Criterion
     if TASK == 'GraphClass':
         criterion = torch.nn.CrossEntropyLoss().to(device)
+    elif TASK == 'StateReg':
+        criterion = state_loss(params['loss_weight'])
     elif cfg['weighted_loss_label']:
         criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
     else:
@@ -168,13 +165,34 @@ def objective(search_space, cfg, device,
                     savename = '_' + key + '_' + str(int(params[key])) + savename
                 else:
                     savename = '_' + key + '_' + f'{params[key]:.2}'  + savename"""
-            result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['cfg_path'], NAME)              
-            temp_report = { 'train_loss' : temp_metrics['loss'],
-                            'test_loss' : temp_eval['loss'],
-                            'train_R2' : temp_metrics['R2'],
-                            'test_R2' : temp_eval['R2'],
-                            'train_R2_2' : temp_metrics['R2_2'],
-                            'test_R2_2' : temp_eval['R2_2']}
+            result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['cfg_path'], NAME)      
+            if TASK == 'StateReg':        
+                temp_report = { 'train_loss' : temp_metrics['loss'],
+                                'test_loss' : temp_eval['loss'],
+                                'train_R2' : temp_metrics['R2'],
+                                'test_R2' : temp_eval['R2'],
+                                'train_R2_2' : temp_metrics['R2_2'],
+                                'test_R2_2' : temp_eval['R2_2'],
+                                'train_accuracy' : temp_metrics['accuracy'],
+                                'test_accuracy' : temp_eval['accuracy'],
+                                'train_precision' : temp_metrics['precision'],
+                                'test_precision' : temp_eval['precision'],
+                                'train_recall' : temp_metrics['recall'],
+                                'test_recall' : temp_eval['recall'],
+                                'train_F1' : temp_metrics['F1'],
+                                'test_F1' : temp_eval['F1'],
+                                'train_node_loss' : temp_metrics['node_loss'],
+                                'test_node_loss' : temp_eval['node_loss'],
+                                'train_edge_loss' : temp_metrics['edge_loss'],
+                                'test_edge_loss' : temp_eval['edge_loss']
+                                }
+            else:
+                temp_report = { 'train_loss' : temp_metrics['loss'],
+                                'test_loss' : temp_eval['loss'],
+                                'train_R2' : temp_metrics['R2'],
+                                'test_R2' : temp_eval['R2'],
+                                'train_R2_2' : temp_metrics['R2_2'],
+                                'test_R2_2' : temp_eval['R2_2']}
             session.report(temp_report)   
 
             torch.save(list(output), cfg['cfg_path'] + "results/" + 'output.pt') #saving train losses
@@ -211,6 +229,29 @@ def init_metrics_vars(TASK):
             'precision' : [],
             'recall'    : [],
             'F1'        : []
+        }
+    elif TASK == 'StateReg':
+        metrics = { 
+            'loss'  : [],
+            'R2'    : [],
+            'R2_2'  : [],
+            'accuracy'  : [],
+            'precision' : [],
+            'recall'    : [],
+            'F1'        : [],
+            'node_loss' : [],
+            'edge_loss' : []
+        }
+        eval = {
+            'loss'  : [],
+            'R2'    : [],
+            'R2_2'  : [],
+            'accuracy'  : [],
+            'precision' : [],
+            'recall'    : [],
+            'F1'        : [],
+            'node_loss' : [],
+            'edge_loss' : []
         }
     else:
         metrics = {
@@ -261,6 +302,43 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
             print(f'Test R2_2 {temp_test_R2_2}')
             result['train_R2_2'] = metrics['R2_2']
             result['test_R2_2'] = eval['R2_2']
+
+        if TASK == 'StateReg':
+            temp_train_accuracy = temp_metrics['accuracy']
+            temp_train_precision = temp_metrics['precision']
+            temp_train_recall = temp_metrics['recall']
+            temp_train_f1 = temp_metrics['F1']
+            temp_test_accuracy = temp_eval['accuracy']
+            temp_test_precision = temp_eval['precision']
+            temp_test_recall = temp_eval['recall']
+            temp_test_f1 = temp_eval['F1']
+
+            print(f'Train Accuracy: {temp_train_accuracy}')
+            print('Train Precision: ', temp_train_precision)
+            print(f'Train Recall: {temp_train_recall}')
+            print(f'Train F1: {temp_train_f1}')
+            print(f'Test Accuracy: {temp_test_accuracy}')
+            print(f'Test Precision: {temp_test_precision}')
+            print(f'Test Recall: {temp_test_recall}')
+            print(f'Test F1: {temp_test_f1}')
+            logging.info(f"Epoch {epoch}: training loss {temp_train_loss} / test_loss {temp_test_loss} / Train Accuracy {temp_train_accuracy} / Test Accuracy {temp_test_accuracy} / Train Precision {temp_train_precision} / Test Precision {temp_test_precision} / Train Recall {temp_train_recall} / Test Recall {temp_test_recall} / Train F1 {temp_train_f1} / Test F1 {temp_test_f1}")
+
+            result = {
+                'train_loss' : metrics['loss'],
+                'test_loss' : eval['loss'],
+                'train_acc' : metrics['accuracy'],
+                'test_acc'  : eval['accuracy'],
+                'train_prec'    : metrics['precision'],
+                'test_prec' : eval['precision'],
+                'train_recall'  : metrics['recall'],
+                'test_recall'   : eval['recall'],
+                'train_F1'  : metrics['F1'],
+                'test_F1'   : eval['F1'],
+                'train_node_loss' : metrics['node_loss'],
+                'test_node_loss' : eval['node_loss'],
+                'train_edge_loss' : metrics['edge_loss'],
+                'test_edge_loss' : eval['edge_loss']
+            }
 
 
     else:
@@ -314,27 +392,58 @@ def plotting(metrics_, eval, output, labels, folder, NAME, task):
         ax1.plot(metrics_[key], label='Train' + key)
         ax1.plot(eval[key], label='Test' + key)
         ax1.legend()
-
         fig1.savefig(folder+key+'_'+NAME+'.png', bbox_inches='tight')
-
         plt.close()
-
+    
+    print('Scatter Plot')
     if task == 'GraphReg':
-        print('Scatter Plot, graph reg')
+        print('GraphReg')
         fig, ax = plt.subplots()
         ax.scatter(labels, output, alpha=0.5)
         ax.plot([0,1],[0,1])
         ax.set_xlabel('Labels')
         ax.set_ylabel('Output')
         ax.set_title('Scatter - Graph Level')
-
         fig.savefig( folder + 'scatter_outputVSlabel_graph_Vreal_' + NAME + '.png', bbox_inches='tight')
-
         plt.close()
+    elif task == 'StateReg':
+        print('StateReg')
+        node_labels = labels[0]
+        edge_labels = labels[1]
+        node_output = output[0]
+        edge_output = output[1]
+        for i in range(int(min(20,len(node_labels)/2000))):
+            fig, ax = plt.subplots()
+            ax.scatter(node_labels[2000*i:2000*(i+1), 0], node_output[2000*i:2000*(i+1), 0], alpha=0.5)
+            ax.plot([-1,1],[-1,1])
+            ax.set_xlabel('Node Labels')
+            ax.set_ylabel('Node Output')
+            ax.set_title(f'Scatter Re(V) - Chunk {i}')
+            fig.savefig(folder + f'scatter_outputVSlabel_{i}_Vreal_' + NAME+ '.png', bbox_inches='tight')
+            plt.close()
+
+            # Scatter plot Vimag
+            fig, ax = plt.subplots()
+            ax.scatter(node_labels[2000*i:2000*(i+1), 1], node_output[2000*i:2000*(i+1), 1], alpha=0.5)
+            ax.plot([-1,1],[-1,1])
+            ax.set_xlabel('Node Labels')
+            ax.set_ylabel('Node Output')
+            ax.set_title(f'Scatter Imag(V) - Chunk {i}')
+            fig.savefig(folder + f'scatter_outputVSlabel_{i}_Vimag_' + NAME + '.png', bbox_inches='tight')
+            plt.close()
+
+        for i in range(int(min(20,len(edge_labels)/7064))):
+            fig, ax = plt.subplots()
+            ax.scatter(edge_labels[7064*i:7064*(i+1), 0], edge_output[7064*i:7064*(i+1), 0], alpha=0.5)
+            ax.plot([-1,1],[-1,1])
+            ax.set_xlabel('Edge Labels')
+            ax.set_ylabel('Edge Output')
+            ax.set_title(f'Scatter Edge Status - Chunk {i}')
+            fig.savefig(folder + f'scatter_outputVSlabel_{i}_EdgeStatus_' + NAME+ '.png', bbox_inches='tight')
+            plt.close()
 
     else:
-        print('Scatter Plot, node reg')
-        for i in range(int(len(output)/2000)):
+        for i in range(min(int(len(output)/2000),20)):
             # Scatter plot Vreal
             fig, ax = plt.subplots()
             ax.scatter(labels[2000*i:2000*(i+1), 0], output[2000*i:2000*(i+1), 0], alpha=0.5)

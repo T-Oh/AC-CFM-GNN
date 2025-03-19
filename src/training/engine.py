@@ -5,7 +5,8 @@ import time
 from torch import no_grad, cat
 from torch.cuda.amp import GradScaler, autocast
 from torchmetrics import R2Score
-from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, MulticlassRecall, MulticlassAccuracy
+from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, MulticlassRecall, MulticlassAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall, BinaryAccuracy
+
 
 from datasets.dataset import mask_probs_add_bias
 
@@ -57,15 +58,20 @@ class Engine(object):
         self.mask_probs = mask_probs_add_bias(var, mask_bias)
         self.masks = torch.bernoulli(self.mask_probs)
         self.masking = bool(int(masking))
-        self.criterion = criterion
+        self.criterion = criterion.to(self.device)
         self.return_full_output = return_full_output
         self.scaler = GradScaler()  #necessary for mixed precision learning
-        self.R2Score = R2Score()
-        if 'Class' in self.task or self.task=='typeII':
+        self.R2Score = R2Score().to(self.device)
+        if 'Class' in self.task or self.task == 'typeII':
             self.f1_metric = MulticlassF1Score(num_classes=4, average=None).to(device)
             self.precision_metric = MulticlassPrecision(num_classes=4, average=None).to(device)
             self.recall_metric = MulticlassRecall(num_classes=4, average=None).to(device)
             self.accuracy_metric = MulticlassAccuracy(num_classes=4, average='micro').to(device)
+        elif self.task == 'StateReg':
+            self.f1_metric = BinaryF1Score().to(device)
+            self.precision_metric = BinaryPrecision().to(device)
+            self.recall_metric = BinaryRecall().to(device)
+            self.accuracy_metric = BinaryAccuracy().to(device)
 
         
 
@@ -93,8 +99,9 @@ class Engine(object):
             the complete output of the model
 
         """
-        
         loss = 0.0
+        node_loss = 0
+        edge_loss = 0
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
         
 
@@ -104,10 +111,6 @@ class Engine(object):
 
         count = 0
         for (i, batch) in enumerate(dataloader):
-            """t1 = time.time()
-            print('Training Batch')
-            print('STart Ttime Batch:', t1, flush=True)"""
-
 
             self.optimizer.zero_grad(set_to_none=True)
             count +=1
@@ -117,17 +120,14 @@ class Engine(object):
                 if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
                 elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
                 elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
+                #elif self.task == 'StateReg':   batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
             elif not self.model.__class__.__name__ == 'GAT_LSTM':   
                 batch.to(self.device)
 
             with autocast():
-                #print('BATCH')
-                #print(batch)
-                output = self.model.forward(batch)#.reshape(-1)  #reshape used to make sure that output is 1 dimensional
-                output.to(self.device)
 
-                output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)
- 
+                output = self.model.forward(batch)
+                output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
                 #calc and backpropagate loss
                 if self.masking:
                     for j in range(int(len(output)/2000)):
@@ -136,12 +136,13 @@ class Engine(object):
                         else:
                             self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
                         self.masks= self.masks.to('cuda:0')
-                        #self.masks.to(self.device)
 
                     output = output*self.masks
                     labels = labels*self.masks
                 if self.task == 'typeIIClass':
                     temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
+                elif self.task == 'StateReg':
+                    temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0].to(self.device), output[1].to(self.device), labels[0].to(self.device), labels[1].to(self.device))
                 else:
                     temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 """self.scaler.scale(temp_loss).backward() 
@@ -149,18 +150,18 @@ class Engine(object):
                 self.scaler.update()"""
  
                 #compile outputs and labels for saving                        
-                if first:
-                    if self.task == "NodeReg":
-                        total_output=output.detach().cpu()
-                        total_labels=labels.detach().cpu()
+                if first:                   
+                    if self.task == "StateReg":
+                        total_output=(output[0].detach().cpu(), output[1].detach().cpu())
+                        total_labels=(labels[0].detach().cpu(), labels[1].detach().cpu())
                     else:
                         total_output=output.detach().cpu()
                         total_labels=labels.detach().cpu()
                     first=False
                 else:
-                    if self.task == "NodeReg":
-                        total_output=cat((total_output,output.detach().cpu()),0)   
-                        total_labels=cat((total_labels,labels.detach().cpu()),0)
+                    if self.task == "StateReg":
+                        total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
+                        total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
                     else:
                         total_output=cat((total_output,output.detach().cpu()),0)  
                         total_labels=cat((total_labels,labels.detach().cpu()),0)  
@@ -177,11 +178,16 @@ class Engine(object):
                 self.optimizer.zero_grad(set_to_none=True)
             """
             loss += temp_loss.item()
+            node_loss += temp_node_loss.item()
+            edge_loss += temp_edge_loss.item()
 
-            if 'Class' in self.task:
+            if 'Class' in self.task or self.task == 'StateReg':
                 if self.task == 'typeIIClass':  
                     labels = labels.reshape(-1)
                     preds = torch.argmax(output, dim=1)
+                elif self.task == 'StateReg':
+                    preds = torch.argmax(output[1], dim=1).to(self.device)
+                    labels = labels[1].reshape(-1).to(self.device)
                 else:
                     preds = torch.argmax(output, dim=0)
                 self.f1_metric.update(preds.reshape(-1), labels)
@@ -191,7 +197,7 @@ class Engine(object):
 
 
         
-        metrics = self.compute_metrics(total_output, total_labels, loss, count)
+        metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
 
         del batch
 
@@ -230,7 +236,10 @@ class Engine(object):
         with no_grad():
             with autocast():
                 loss = 0.
-                
+                node_loss = 0.
+                edge_loss = 0.
+                temp_node_loss = 0.
+                temp_edge_loss = 0.
                 first = True
 
                 count = 0
@@ -245,17 +254,20 @@ class Engine(object):
                     elif not self.model.__class__.__name__ == 'GAT_LSTM':   
                         batch.to(self.device)
 
-                    temp_output = self.model.forward(batch).to(self.device)#.reshape(-1)#
-                    #print(f'Temp Output shape {temp_output.shape}')
-                    temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device)                    
+                    temp_output = self.model.forward(batch)#.to(self.device)    #, temp_output_edges
+                    temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device) #, edge_labels
                     if first:
-                        labels = temp_labels.detach().cpu()
-                        output = temp_output.detach().cpu()
+                        labels = temp_labels#.detach().cpu()
+                        output = temp_output#.detach().cpu()
                         first = False
                     else:
-                        output=cat((output,temp_output.detach().cpu()),0)  
-                        labels=cat((labels,temp_labels.detach().cpu()),0)
-                        
+                        if self.task == "StateReg":
+                            output = (cat((output[0],temp_output[0].detach().cpu()),0), cat((output[1],temp_output[1].detach().cpu()),0))
+                            labels = (cat((labels[0],temp_labels[0].detach().cpu()),0), cat((labels[1],temp_labels[1].detach().cpu()),0))
+                        else:
+                            output=cat((output,temp_output.detach().cpu()),0)  
+                            labels=cat((labels,temp_labels.detach().cpu()),0)
+                            
                     if 'Class' in self.task:
                         if self.task == 'typeIIClass':  
                             temp_labels = temp_labels.reshape(-1)
@@ -268,37 +280,63 @@ class Engine(object):
                         self.precision_metric.update(preds, temp_labels.reshape(-1))
                         self.recall_metric.update(preds, temp_labels.reshape(-1)) 
                         self.accuracy_metric.update(preds, temp_labels.reshape(-1))
-                        
+                    elif self.task == 'StateReg':
+                        temp_loss, temp_node_loss, temp_edge_loss = self.criterion(temp_output[0], temp_output[1], temp_labels[0], temp_labels[1])
                     else:
-                        temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
+                        temp_loss = self.criterion(temp_output.reshape(-1).to(self.device), temp_labels.reshape(-1).to(self.device)).tolist()
                 loss += temp_loss
+                node_loss += temp_node_loss
+                edge_loss += temp_edge_loss
 
-            metrics = self.compute_metrics(output, labels, loss, count)
+            metrics = self.compute_metrics(output, labels, loss, node_loss, edge_loss, count)
 
             if not full_output:
-                example_output = np.array(output[0:16000].cpu())
-                example_labels = np.array(labels[0:16000].cpu())
+                if self.task == 'StateReg':
+                    example_output = (output[0][0:16000].cpu(), output[1][0:7064*8].cpu())
+                    example_labels = (labels[0][0:16000].cpu(), labels[1][0:7064*8].cpu())
+                else:
+                    example_output = np.array(output[0:16000].cpu())
+                    example_labels = np.array(labels[0:16000].cpu())
                 return metrics, example_output, example_labels
             else:
                 return metrics, output, labels
 
 
 
-    def compute_metrics(self, total_output, total_labels, loss, count):
+    def compute_metrics(self, total_output, total_labels, loss, node_loss, edge_loss, count):
         if not 'Class' in self.task:  
-            if total_output.dim() == 3:
+            #GTSF with edge_labels
+            if isinstance(total_output, tuple): 
+                R2_1 = self.R2Score(total_output[0][:,0].to(self.device), total_labels[0][:,0].to(self.device)).to(self.device)
+                R2_2 = self.R2Score(total_output[0][:,1].to(self.device), total_labels[0][:,1].to(self.device)).to(self.device)
+                F1 = self.f1_metric.compute()
+                precision = self.precision_metric.compute()
+                recall = self.recall_metric.compute()
+                accuracy = self.accuracy_metric.compute()
+                metrics = {
+                    'loss'  : float(loss/count),
+                    'R2'    : float(R2_1),
+                    'R2_2'  : float(R2_2),
+                    'F1'    : F1.tolist(),
+                    'precision' : precision.tolist(),
+                    'recall'    : recall.tolist(),
+                    'accuracy'  : accuracy.tolist(),
+                    'node_loss' : float(node_loss/count),
+                    'edge_loss' : float(edge_loss/count)
+                }
+            elif total_output.dim() == 3:
                 total_output = total_output.reshape(-1, 2)
                 total_labels = total_labels.reshape(-1, 2)
-                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
-                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])  
+                R2_1 = self.R2Score(total_output[:,0].to(self.device), total_labels[:,0].to(self.device)).to(self.device)
+                R2_2 = self.R2Score(total_output[:,1].to(self.device), total_labels[:,1].to(self.device)).to(self.device)
                 metrics = {
                     'loss'  : float(loss/count),
                     'R2'    : float(R2_1),
                     'R2_2'  : float(R2_2)
                 }
-            if total_output.dim()==2:
-                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
-                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])  
+            elif total_output.dim()==2:
+                R2_1 = self.R2Score(total_output[:,0].to(self.device), total_labels[:,0].to(self.device))
+                R2_2 = self.R2Score(total_output[:,1].to(self.device), total_labels[:,1].to(self.device))  
                 metrics = {
                     'loss'  : float(loss/count),
                     'R2'    : float(R2_1),
@@ -327,6 +365,7 @@ class Engine(object):
 
 
 def shape_and_cast_labels_and_output(output, batch, task, device):
+    edge_labels = None  #edge_labels only used in GTSF StateReg
     #Graph Regressions
     if task == "GraphReg": #set labels according to task (GraphReg or NodeReg)
         #Time Series Forecasting
@@ -338,30 +377,32 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
                 output = output.to(torch.double).reshape(-1)
             #Line Damge Time Series Forecasting (LDTSF)
             else:                              
-                labels = batch[1].to(torch.double)#.reshape(-1)
-            
+                labels = batch[1].to(torch.double)#.reshape(-1)           
         else:                                                  
             labels = batch.y.type(torch.FloatTensor).to(device)
             output = output.reshape(-1)
+
     elif task in ['GraphClass', 'typeIIClass']:
             labels = batch[1].to(torch.long).reshape(-1) 
             output = output.transpose(0,1)
 
- 
-    elif task == "NodeReg":
+    elif task in ["NodeReg", "StateReg"]:
+        #Time Series Forecasting
         if isinstance(batch, tuple):    #tuple for TSF  
             #Graph Time Series Forecasting (GTSF)
             if isinstance(batch[1][0], int):    #for GATLSTM the tuple contains the sequence lenghts at batch[1] which is int
                 labels = [batch[0][i].node_labels[-2000:,:] for i in range(len(batch[0]))]
                 labels = torch.stack(labels)
-                #output = output.to(torch.double).reshape(-1)
+                if task == 'StateReg':
+                    edge_labels = [batch[0][i].edge_labels[-7064:] for i in range(len(batch[0]))]
+                    edge_labels = torch.stack(edge_labels).to(torch.long)
+                    labels = (labels.reshape(-1,2).to(device), edge_labels.to(device))
+                    output = (output[0].reshape(-1,2).to(device), output[1].permute(0, 2, 1).reshape(-1, 2).to(device))  
             else:   assert False, 'Using wrong data with GTSF'
                 
         else:
             labels = batch.node_labels.type(torch.FloatTensor).to(device)
-        #if output.dim() > 1:   output = output.reshape(-1)
 
-
-    return output.to(device), labels.to(device)
+    return output, labels 
 
 
