@@ -1,7 +1,7 @@
 {
     /*General Settings*/
-    "cfg_path": "/home/tohlinger/Documents/hi-accf-ml/",         
-    "dataset::path": "/home/tohlinger/Documents/hi-accf-ml/",    
+    "cfg_path": "/home/tohlinger/HUI/Documents/hi-accf-ml/",         
+    "dataset::path": "/home/tohlinger/HUI/Documents/hi-accf-ml/",    
 
     /*Data Settings*/
     "data":"LSTM",          //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
@@ -11,19 +11,8 @@
     "n_scenarios":10000,
 
     /*General Run Control*/
-    "cfg_path": "/home/tohlinger/AC-CFM-GNN-1/",
-    "dataset": "hurricane_line_priority",
-    "dataset::path": "/home/tohlinger/AC-CFM-GNN-1/",
-    "study_ID": "objective_2024-03-04_14-23-08/",
-
-    "task":"NodeReg",
-    "data":"AC",
-    "ls_threshold" : 0.25,
-    "N_below_threshold" : 4,
-    "n_scenarios":1229,
-
     "crossvalidation" : false,
-    "study::run" : true,
+    "study::run" : false,
     "study::continue": false,
     "study_ID": "Test_StateReg  ",
 
@@ -41,7 +30,7 @@
 
     /*Model Settings*/
     "task":"StateReg",   //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg (possibly more)
-    "model": "GATLSTM", //GAT, TAG, GATLSTM
+    "model": "TAG", //GAT, TAG, GATLSTM
     "num_layers": 2,
     "hidden_size": 182,
     //Regression Head Settings
