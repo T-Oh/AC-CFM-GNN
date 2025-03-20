@@ -265,7 +265,7 @@ class HurricaneDataset(Dataset):
                 node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
                 if i == -1: edge_data_post = edge_data_pre
                 else:       
-                    edge_data_post = file[KEY][0,i][29][0]   #edge data after step i for edge_label_calculation
+                    edge_data_post = file[KEY][0,i][29]   #edge data after step i for edge_label_calculation
                 
 
         else:
@@ -693,7 +693,6 @@ class HurricaneDataset(Dataset):
                 edge_data[decoded_damages[i][1],decoded_damages[i][0]] = 0
         # Threshold value
         threshold = 1e-8
-
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
         if len(edge_data) == 1: 
             edge_data = torch.complex(torch.tensor(edge_data[0]['real']), torch.tensor(edge_data[0]['imag']))
@@ -702,12 +701,10 @@ class HurricaneDataset(Dataset):
             mask = np.abs(edge_data) > threshold
         edge_index = torch.tensor(mask).nonzero().t()
 
-
-
-        # Step 2: Extract the corresponding edge attributes (weights)
-        
+        # Step 2: Extract the corresponding edge attributes (weights)        
         edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1)
         return edge_index, edge_attr
+    
     
     def get_edge_attrY_Zhumat73(self, edge_data, decoded_damages):
         #Deactivate damaged lines
