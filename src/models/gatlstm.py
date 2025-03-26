@@ -4,7 +4,7 @@ from torch_geometric.nn import GATv2Conv
 
 class GAT_LSTM(nn.Module):
     def __init__(self, num_node_features, conv_hidden_size, num_conv_targets, num_conv_layers, lstm_hidden_size, num_lstm_layers, reghead_size, reghead_layers,
-                 dropout, gat_dropout, num_heads, use_skipcon, use_batchnorm, max_seq_length, task):
+                 dropout, gat_dropout, num_heads, use_skipcon, use_batchnorm, max_seq_length, task, reghead_type='single'):
         super(GAT_LSTM, self).__init__()
 
         print(f'num_node_features: {num_node_features}')
@@ -18,6 +18,7 @@ class GAT_LSTM(nn.Module):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.use_skipcon = use_skipcon
         self.use_batchnorm = use_batchnorm
+        self.reghead_config = reghead_type
 
         self.num_node_features  = int(num_node_features)
         self.conv_hidden_size   = int(conv_hidden_size)
@@ -61,86 +62,77 @@ class GAT_LSTM(nn.Module):
             dropout=self.dropout
         )
 
-        # Regression Head
-        self.reghead_layers_list = []
-        input_size = self.lstm_hidden_size * self.max_seq_length if self.task == 'pred_typeII' else self.lstm_hidden_size
-        for i in range(self.reghead_layers - 1):
-            self.reghead_layers_list.append(nn.Linear(input_size, self.reghead_size // (i + 1)))
-            self.reghead_layers_list.append(nn.ReLU())
-            self.reghead_layers_list.append(nn.Dropout(self.dropout))
-            input_size = self.reghead_size // (i + 1)
-        if self.task in ['NodeReg', 'StateReg']:
-            self.final_layer1 = nn.Linear(input_size, 2000)  # Final output layer 
-            self.final_layer2 = nn.Linear(input_size, 2000)  # Final output layer    
-        else:
-            self.reghead_layers_list.append(nn.Linear(input_size, 1))  # Final output layer
-        self.fc = nn.Sequential(*self.reghead_layers_list)
-
-        if self.task == 'StateReg':
-            self.edge_reghead_layers_list = []
-            input_size = self.lstm_hidden_size
+        # Regression Heads
+        def create_reghead(input_size, output_size):
+            layers = []
             for i in range(self.reghead_layers - 1):
-                self.reghead_layers_list.append(nn.Linear(input_size, self.reghead_size // (i + 1)))
-                self.reghead_layers_list.append(nn.ReLU())
-                self.reghead_layers_list.append(nn.Dropout(self.dropout))
+                layers.append(nn.Linear(input_size, self.reghead_size // (i + 1)))
+                layers.append(nn.ReLU())
+                layers.append(nn.Dropout(self.dropout))
                 input_size = self.reghead_size // (i + 1)
-            self.edge_final_layer = nn.Linear(input_size, 2*7064)  # Final output layer
-            self.fc_edge = nn.Sequential(*self.edge_reghead_layers_list)
+            layers.append(nn.Linear(input_size, output_size))
+            return nn.Sequential(*layers)
+
+        if self.reghead_config == 'single':
+            self.reghead = create_reghead(self.lstm_hidden_size, self.reghead_size)
+            self.final_layer1 = nn.Linear(self.reghead_size, 2000)
+            self.final_layer2 = nn.Linear(self.reghead_size, 2000)
+            self.edge_final_layer = nn.Linear(self.reghead_size, 2 * 7064)
+        elif self.reghead_config == 'node_edge':
+            self.node_reghead = create_reghead(self.lstm_hidden_size, self.reghead_size)
+            self.final_layer1 = nn.Linear(self.reghead_size, 2000)
+            self.final_layer2 = nn.Linear(self.reghead_size, 2000)
+            self.edge_reghead = create_reghead(self.lstm_hidden_size, 2 * 7064)
+        elif self.reghead_config == 'node_node_edge':
+            self.node_reghead1 = create_reghead(self.lstm_hidden_size, 2000)
+            self.node_reghead2 = create_reghead(self.lstm_hidden_size, 2000)
+            self.edge_reghead = create_reghead(self.lstm_hidden_size, 2 * 7064)
 
         self.relu = nn.ReLU()
 
     def forward(self, sequences):
-        """
-        sequences: List of batched graph sequences. Each element in the list corresponds
-                   to a sequence (batched graphs at each timestep).
-        """
-        lstm_inputs = []  # To store the GAT embeddings for each timestep
-
+        lstm_inputs = []
         for sequence in sequences[0]:
             timestep_embeddings = []
             batch_size = len(sequence.x) // 2000
-
             for t in range(batch_size):
                 batch_graph = sequence[t]
                 x, edge_index, edge_attr = batch_graph.x.to(self.device), batch_graph.edge_index.to(self.device), batch_graph.edge_attr.to(self.device)
-
-
-                # GAT forward pass through all GAT layers
                 for i, gat_layer in enumerate(self.gat_layers):
                     skip_connection = x if self.use_skipcon else None
                     x = gat_layer(x, edge_index, edge_attr=edge_attr)
                     if self.use_batchnorm:
                         x = self.batch_norms[i](x)
                     x = self.relu(x)
-
-                    # Add skip connection
                     if self.use_skipcon and skip_connection is not None and x.shape == skip_connection.shape:
-                        x = (x + skip_connection)/2
-
+                        x = (x + skip_connection) / 2
                 timestep_embeddings.append(x.reshape(-1))
-                del x, edge_index, edge_attr, batch_graph
-
-            # Stack timestep embeddings into a sequence tensor
             lstm_input = torch.stack(timestep_embeddings, dim=1)
             lstm_inputs.append(lstm_input.transpose(0, 1))
-        del sequences, timestep_embeddings, lstm_input
 
-        # Concatenate all sequence tensors into a batch for the LSTM
         lstm_inputs = torch.stack(lstm_inputs, dim=0)
-
-        # LSTM forward pass
         lstm_output, _ = self.lstm(lstm_inputs)
-        lstm_output = self.relu(lstm_output)
+        lstm_output = self.relu(lstm_output[:, -1, :])
 
-        # Pass the LSTM output through the fully connected layers
-        final_lstm_output = self.fc(lstm_output[:, -1, :])
-        if self.task in ['NodeReg', 'StateReg']:
-            final_output1 = self.final_layer1(final_lstm_output)
-            final_output2 = self.final_layer2(final_lstm_output)
-            final_output = torch.stack((final_output1, final_output2), dim=-1)
-            if self.task == 'StateReg':
-                final_output3 = self.edge_final_layer(final_lstm_output)
-                #final_output3 = torch.softmax(final_output3, dim=-1)
-                final_output = (final_output, final_output3.reshape(-1, 2, 7064))
+        if self.reghead_config == 'single':
+            # Single regression head for both node and edge
+            reghead_output = self.reghead(lstm_output)
+            final_output1 = self.final_layer1(reghead_output)
+            final_output2 = self.final_layer2(reghead_output)
+            edge_output = self.edge_final_layer(reghead_output)
+        elif self.reghead_config == 'node_edge':
+            # Separate regression heads for node and edge
+            reghead_output = self.node_reghead(lstm_output)
+            final_output1 = self.final_layer1(reghead_output)
+            final_output2 = self.final_layer2(reghead_output)
+            edge_output = self.edge_reghead(lstm_output)
+        else:
+            # Separate regression heads for both node labels as well as the edge label
+            final_output1 = self.node_reghead1(lstm_output)
+            final_output2 = self.node_reghead2(lstm_output)
+            edge_output = self.edge_reghead(lstm_output)
+
+        final_output = torch.stack([final_output1, final_output2], dim=1)
+        final_output = (final_output, edge_output.reshape(-1, 2, 7064))
 
         return final_output

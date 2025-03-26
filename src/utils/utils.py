@@ -63,6 +63,8 @@ def setup_searchspace(cfg):
         search_space['reghead_size'] = tune.loguniform(cfg['study::reghead_size_lower'], cfg['study::reghead_size_upper']+1)
     if cfg["study::reghead_layers_lower"] != cfg['study::reghead_layers_upper']:
         search_space['reghead_layers'] = tune.uniform(cfg["study::reghead_layers_lower"], cfg['study::reghead_layers_upper']+1)
+    if cfg["study::reghead_type"]:
+        search_space['reghead_type'] = tune.uniform(0, 3)
 
     #LSTM Layers
     if cfg['study::num_conv_targets_lower'] != cfg['study::num_conv_targets_upper']:
@@ -132,6 +134,13 @@ def setup_params_from_search_space(search_space, params):
     for key in search_space.keys():
         if key in ['LR', 'weight_decay']:
             updated_params[key] = 10**search_space[key]
+        elif key == 'reghead_type':
+            if search_space[key] < 1:
+                updated_params[key] = 'single'
+            elif search_space[key] < 2:
+                updated_params[key] = 'double'  
+            elif search_space[key] < 3:
+                updated_params[key] = 'triple'
         else:
             updated_params[key] = search_space[key]
     return updated_params
@@ -173,6 +182,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, 
 
         "reghead_size"  :   cfg['reghead_size'],
         "reghead_layers":   cfg['reghead_layers'],
+        "reghead_type"  :   cfg['reghead_type'],
 
         "dropout"       :   cfg["dropout"],
 
