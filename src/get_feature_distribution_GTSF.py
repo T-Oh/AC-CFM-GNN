@@ -14,7 +14,7 @@ def load_data_from_scenario_folders(processed_path):
 def get_global_min_max(processed_path):
     """First pass: Determine global min and max for all features."""
     min_max = {
-        "x": None, "node_labels": None, "edge_attr": None, 
+        "x": None, "node_labels": None, "edge_attr": None,
         "y": [float('inf'), float('-inf')], 
         "y_cumulative": [float('inf'), float('-inf')]
     }
@@ -53,7 +53,7 @@ def get_global_min_max(processed_path):
             for i in range(data.edge_attr.shape[1]):
                 min_val, max_val = torch.min(data.edge_attr[:, i]).item(), torch.max(data.edge_attr[:, i]).item()
                 min_max["edge_attr"][i] = (min(min_max["edge_attr"][i][0], min_val), max(min_max["edge_attr"][i][1], max_val))
-
+        
         # Scalar labels
         min_max["y"][0] = min(min_max["y"][0], data.y.item() / 1000)
         min_max["y"][1] = max(min_max["y"][1], data.y.item() / 1000)
@@ -68,34 +68,38 @@ def compute_distributions(processed_path, global_min_max, num_bins=50):
     x_hist = [np.zeros(num_bins) for _ in global_min_max["x"]]
     node_labels_hist = [np.zeros(num_bins) for _ in global_min_max["node_labels"]]
     edge_attr_hist = [np.zeros(num_bins) for _ in global_min_max["edge_attr"]]
+    edge_label_hist = np.zeros(num_bins)
     y_hist = np.zeros(num_bins)
     y_cumulative_hist = np.zeros(num_bins)
 
     # Define bin edges based on min and max values
-    bin_edges_x = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["x"]]
-    bin_edges_node_labels = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["node_labels"]]
-    bin_edges_edge_attr = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["edge_attr"]]
-    bin_edges_y = np.linspace(global_min_max["y"][0], global_min_max["y"][1], num_bins + 1)
-    bin_edges_y_cumulative = np.linspace(global_min_max["y_cumulative"][0], global_min_max["y_cumulative"][1], num_bins + 1)
+    bin_x = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["x"]]
+    bin_node_labels = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["node_labels"]]
+    bin_edge_attr = [np.linspace(mn, mx, num_bins + 1) for mn, mx in global_min_max["edge_attr"]]
+    bin_edge_labels = np.linspace(0, 1, num_bins + 1)
+    bin_y = np.linspace(global_min_max["y"][0], global_min_max["y"][1], num_bins + 1)
+    bin_y_cumulative = np.linspace(global_min_max["y_cumulative"][0], global_min_max["y_cumulative"][1], num_bins + 1)
 
     # Loop through scenario data
     for data in tqdm(load_data_from_scenario_folders(processed_path), desc="Computing Histograms"):
         for i in range(data.x.shape[1]):
-            hist, _ = np.histogram(data.x[:, i].numpy(), bins=bin_edges_x[i])
+            hist, _ = np.histogram(data.x[:, i].numpy(), bins=bin_x[i])
             x_hist[i] += hist
 
         for i in range(data.node_labels.shape[1]):
-            hist, _ = np.histogram(data.node_labels[:, i].numpy(), bins=bin_edges_node_labels[i])
+            hist, _ = np.histogram(data.node_labels[:, i].numpy(), bins=bin_node_labels[i])
             node_labels_hist[i] += hist
 
         for i in range(data.edge_attr.shape[1]):
-            hist, _ = np.histogram(data.edge_attr[:, i].numpy(), bins=bin_edges_edge_attr[i])
+            hist, _ = np.histogram(data.edge_attr[:, i].numpy(), bins=bin_edge_attr[i])
             edge_attr_hist[i] += hist
+        
 
-        y_hist += np.histogram([data.y / 1000], bins=bin_edges_y)[0]
-        y_cumulative_hist += np.histogram([data.y_cummulative / 1000], bins=bin_edges_y_cumulative)[0]
+        edge_label_hist += np.histogram(data.edge_labels.numpy(), bins=bin_edge_labels)[0]
+        y_hist += np.histogram([data.y / 1000], bins=bin_y)[0]
+        y_cumulative_hist += np.histogram([data.y_cummulative / 1000], bins=bin_y_cumulative)[0]
 
-    return x_hist, bin_edges_x, node_labels_hist, bin_edges_node_labels, edge_attr_hist, bin_edges_edge_attr, y_hist, bin_edges_y, y_cumulative_hist, bin_edges_y_cumulative
+    return x_hist, bin_x, node_labels_hist, bin_node_labels, edge_attr_hist, bin_edge_attr, y_hist, bin_y, y_cumulative_hist, bin_y_cumulative, edge_label_hist, bin_edge_labels
 
 def plot_histograms(hist, bin_edges, title, save_path, NAME):
     """Plots histograms and saves them."""
@@ -113,6 +117,9 @@ def plot_histograms(hist, bin_edges, title, save_path, NAME):
         'Node_Label': {
             0: 'V_real',
             1: 'V_imag'
+        },
+        'Edge_Label': {
+            0: 'Status'
         },
         'Edge_Feature': {
             0: 'Edge_Real',
@@ -136,9 +143,9 @@ def plot_histograms(hist, bin_edges, title, save_path, NAME):
 
 # Main Execution
 if __name__ == "__main__":
-    processed_path = "normalized/"
+    processed_path = "processed/"
     save_dir = "feat_dists/"
-    NAME = 'normalized'
+    NAME = 'edge_label_test'
     os.makedirs(save_dir, exist_ok=True)
 
     # First pass: Get global min and max values
@@ -153,6 +160,13 @@ if __name__ == "__main__":
     plot_histograms(results[4], results[5], "Edge_Feature", save_dir, NAME)
 
     # Plot scalar labels
+    plt.bar(results[11][:-1], results[10], width=np.diff(results[11]), align='edge', alpha=0.7)
+    plt.xlabel('Status')
+    plt.ylabel('Frequency')
+    plt.title('Edge Labels')
+    plt.savefig(os.path.join(save_dir, f'{NAME}_edge_labels_distribution.png'))
+    plt.clf()
+
     plt.bar(results[7][:-1], results[6], width=np.diff(results[7]), align='edge', alpha=0.7)
     plt.xlabel('Value')
     plt.ylabel('Frequency')
