@@ -1,15 +1,20 @@
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import confusion_matrix
 
-FOLDER = '/home/tohlinger/LEO/Running/TAG_Zhu_NR/results/'
-NODE_REGRESSION = True  # Set to False for graph regression
+FOLDER = 'results/'
+NODE_REGRESSION = False  # Set to False for graph regression
+STATE_REGRESSION = True
+assert not (NODE_REGRESSION and STATE_REGRESSION), 'Cannot have both node and state regression'
 
-output = np.array(torch.load(FOLDER + 'output.pt'))
-labels = np.array(torch.load(FOLDER + 'labels.pt'))
-XVALUES = np.arange(2000 if NODE_REGRESSION else len(output))
+output = torch.load(FOLDER + 'output.pt')
+labels = torch.load(FOLDER + 'labels.pt')
+XVALUES = np.arange(2000 if NODE_REGRESSION or STATE_REGRESSION else len(output))
 
 if NODE_REGRESSION:
+    output = np.array(output)
+    labels = np.array(labels)
     for i in range(int(len(output)/2000)):
         # Plot Vreal
         fig, ax = plt.subplots()
@@ -46,6 +51,65 @@ if NODE_REGRESSION:
         ax.set_title(f'Scatter Imag(V) - Chunk {i}')
         fig.savefig(FOLDER + f'scatter_outputVSlabel{i}Vimag.png', bbox_inches='tight')
         plt.close()
+elif STATE_REGRESSION:
+    for i in range(int(len(output[0])/2000)):
+        print(FOLDER)
+        # Scatter plot Vreal
+        fig, ax = plt.subplots()
+        ax.scatter(labels[0][2000*i:2000*(i+1), 0], output[0][2000*i:2000*(i+1), 0], alpha=0.5)
+        ax.set_xlabel('Labels')
+        ax.set_ylabel('Output')
+        ax.set_title(f'Scatter Re(V) - Chunk {i}')
+        fig.savefig(FOLDER + f'scatter_outputVSlabel{i}Vreal.png', bbox_inches='tight')
+        plt.close()
+
+        # Scatter plot Vimag
+        fig, ax = plt.subplots()
+        ax.scatter(labels[0][2000*i:2000*(i+1), 1], output[0][2000*i:2000*(i+1), 1], alpha=0.5)
+        ax.set_xlabel('Labels')
+        ax.set_ylabel('Output')
+        ax.set_title(f'Scatter Re(V) - Chunk {i}')
+        fig.savefig(FOLDER + f'scatter_outputVSlabel{i}Vimag.png', bbox_inches='tight')
+        plt.close()
+        
+
+    # Plot confusion matrix for edge status
+    # Convert logits to predicted class
+    predictions = np.argmax(output[1], axis=1)
+    true_labels = labels[1].reshape(-1)
+
+    # Compute confusion matrix
+    cm = confusion_matrix(true_labels, predictions)
+    cm = cm.astype('float') / cm.sum(axis=1, keepdims=True)
+    classes = np.unique(true_labels)
+
+    # Plot confusion matrix
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+
+    # Add colorbar
+    plt.colorbar(im, ax=ax)
+
+    # Labeling
+    ax.set_xticks(np.arange(len(classes)))
+    ax.set_yticks(np.arange(len(classes)))
+    ax.set_xticklabels(classes)
+    ax.set_yticklabels(classes)
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('Actual')
+    ax.set_title('Confusion Matrix')
+
+    # Annotate cells with values
+    for i in range(len(classes)):
+        for j in range(len(classes)):
+            ax.text(j, i, str(cm[i, j]), ha='center', va='center', color='black')
+
+    # Save the figure
+    plt.savefig(FOLDER+'confusion_matrix_edge_status.png', bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+
 
 else:
     # Graph regression: Single plot for entire dataset

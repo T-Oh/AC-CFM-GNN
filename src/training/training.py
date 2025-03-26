@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib
 matplotlib.use('Agg')  # Use a non-GUI backend for Matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 from training.engine import Engine
@@ -17,6 +18,7 @@ from utils.get_optimizers import get_optimizer
 from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
+from sklearn.metrics import confusion_matrix
 
 
 
@@ -313,6 +315,10 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
             temp_test_recall = temp_eval['recall']
             temp_test_f1 = temp_eval['F1']
 
+            print(f'Train Node Loss: {temp_metrics["node_loss"]}')
+            print(f'Test Node Loss: {temp_eval["node_loss"]}')
+            print(f'Train Edge Loss: {temp_metrics["edge_loss"]}')
+            print(f'Test Edge Loss: {temp_eval["edge_loss"]}')
             print(f'Train Accuracy: {temp_train_accuracy}')
             print('Train Precision: ', temp_train_precision)
             print(f'Train Recall: {temp_train_recall}')
@@ -432,15 +438,39 @@ def plotting(metrics_, eval, output, labels, folder, NAME, task):
             fig.savefig(folder + f'scatter_outputVSlabel_{i}_Vimag_' + NAME + '.png', bbox_inches='tight')
             plt.close()
 
-        for i in range(int(min(20,len(edge_labels)/7064))):
-            fig, ax = plt.subplots()
-            ax.scatter(edge_labels[7064*i:7064*(i+1), 0], edge_output[7064*i:7064*(i+1), 0], alpha=0.5)
-            ax.plot([-1,1],[-1,1])
-            ax.set_xlabel('Edge Labels')
-            ax.set_ylabel('Edge Output')
-            ax.set_title(f'Scatter Edge Status - Chunk {i}')
-            fig.savefig(folder + f'scatter_outputVSlabel_{i}_EdgeStatus_' + NAME+ '.png', bbox_inches='tight')
-            plt.close()
+        # Plot confusion matrix for edge status
+        # Convert logits to predicted class
+        predictions = np.argmax(output[1], axis=1)
+        true_labels = labels[1].reshape(-1)
+        # Compute confusion matrix
+        cm = confusion_matrix(true_labels, predictions)
+        cm = cm.astype('float') / cm.sum(axis=1, keepdims=True)
+        classes = np.unique(true_labels)
+
+        # Plot confusion matrix
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+
+        # Add colorbar
+        plt.colorbar(im, ax=ax)
+
+        # Labeling
+        ax.set_xticks(np.arange(len(classes)))
+        ax.set_yticks(np.arange(len(classes)))
+        ax.set_xticklabels(classes)
+        ax.set_yticklabels(classes)
+        ax.set_xlabel('Predicted')
+        ax.set_ylabel('Actual')
+        ax.set_title('Confusion Matrix')
+
+        # Annotate cells with values
+        for i in range(len(classes)):
+            for j in range(len(classes)):
+                ax.text(j, i, str(cm[i, j]), ha='center', va='center', color='black')
+
+        # Save the figure
+        plt.savefig(folder+'confusion_matrix_edge_status.png', bbox_inches='tight', dpi=300)
+        plt.close()
 
     else:
         for i in range(min(int(len(output)/2000),20)):
