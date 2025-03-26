@@ -262,8 +262,8 @@ class Engine(object):
                         first = False
                     else:
                         if self.task == "StateReg":
-                            output = (cat((output[0],temp_output[0].detach().cpu()),0), cat((output[1],temp_output[1].detach().cpu()),0))
-                            labels = (cat((labels[0],temp_labels[0].detach().cpu()),0), cat((labels[1],temp_labels[1].detach().cpu()),0))
+                            output = (cat((output[0].detach().cpu(),temp_output[0].detach().cpu()),0), cat((output[1].detach().cpu(),temp_output[1].detach().cpu()),0))
+                            labels = (cat((labels[0].detach().cpu(),temp_labels[0].detach().cpu()),0), cat((labels[1].detach().cpu(),temp_labels[1].detach().cpu()),0))
                         else:
                             output=cat((output,temp_output.detach().cpu()),0)  
                             labels=cat((labels,temp_labels.detach().cpu()),0)
