@@ -4,7 +4,7 @@ import shutil
 import numpy as np
 from tqdm import tqdm
 
-
+EDGE_LABELS = True
 # Thresholds for checks (customize these values)
 thresholds = {
     "x": {"min": [-300, -220, -550, -550], "max": [1500, 550, 550, 550]},  # First 4 node features
@@ -83,6 +83,10 @@ def check_for_invalid_values(file_path):
     # Check cumulative labels (y_cumulative)
     if torch.isnan(data.y_cummulative).any() or torch.isinf(data.y_cummulative).any():
         invalid_details.append("y_cummulative contains invalid values")
+
+    if EDGE_LABELS:
+        if torch.isnan(data.edge_labels).any() or torch.isinf(data.edge_labels).any():
+            invalid_details.append("edge_labels contains invalid values")
 
     return invalid_details
 
