@@ -4,7 +4,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torch_geometric.data import Batch
 
 class dataset_graphlstm(Dataset):
-    def __init__(self, root_dir, sequence_indices=None):
+    def __init__(self, root_dir, sequence_indices=None, max_seq_len=100):
         """
         root_dir: Path to the directory containing sequences and timesteps.
         sequence_indices: Indices of sequences to include in this dataset.
@@ -19,6 +19,7 @@ class dataset_graphlstm(Dataset):
             [entry for entry in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, entry))]
         )
         self.static_data = torch.load(os.path.join(self.root_dir, 'data_static.pt'))
+        self.max_seq_len = max_seq_len
 
         # Filter sequences by indices
         if sequence_indices is not None:
@@ -35,19 +36,32 @@ class dataset_graphlstm(Dataset):
         """
         sequence_name = self.sequence_paths[idx]
         seq_dir = os.path.join(self.root_dir, sequence_name)
-        timestep_files = sorted(os.listdir(seq_dir))  # Ensure timesteps are ordered
+        timestep_files = sorted(os.listdir(seq_dir), key=lambda x: int(x.split('_')[2].split('.')[0]))
+        seq_len = len(timestep_files)
+        #If the sequence is short than max_seq_len, pad with one of the static data. The rest of the padding (if necessary) will be done in collate_fn
+        if seq_len < self.max_seq_len:
+            timesteps = [self.static_data.clone()]  # Add static data as the first timestep
+            timesteps[0].x = timesteps[0].x[:, :4]  # Keep only the first 4 node features
+        timesteps = []
 
-        # Load timesteps lazily
-        timesteps = [self.static_data.clone()]  # Add static data as the first timestep
-        timesteps[0].x = timesteps[0].x[:, :4]  # Keep only the first 4 node features
+        for i in range(min(seq_len, self.max_seq_len)):
+            if seq_len >= self.max_seq_len:
+                timestep_path = os.path.join(seq_dir, timestep_files[-self.max_seq_len+i])
+            else:
+                timestep_path = os.path.join(seq_dir, timestep_files[i])
 
-        for file in timestep_files:
-            timestep_path = os.path.join(seq_dir, file)
             graph_data = torch.load(timestep_path)  # Load graph data for this timestep
             graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
             timesteps.append(graph_data)
+        """for file in timestep_files:
+            timestep_path = os.path.join(seq_dir, file)
+            print(timestep_path)
+            graph_data = torch.load(timestep_path)  # Load graph data for this timestep
+            graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
+            timesteps.append(graph_data)"""
 
         return timesteps
+    
 
 
 def collate_fn(batch):
@@ -104,11 +118,11 @@ def create_train_test_split(dataset, train_ratio=0.8, random_seed=42, stormsplit
 
     return train_indices, test_indices
 
-def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit):
-    dataset = dataset_graphlstm(root_dir=root_dir)
+def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit, max_seq_len):
+    dataset = dataset_graphlstm(root_dir=root_dir, max_seq_len=max_seq_len)
     train_indices, test_indices =create_train_test_split(dataset, train_ratio, random_seed, stormsplit)
-    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices)
-    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices)
+    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices, max_seq_len=max_seq_len)
+    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices, max_seq_len=max_seq_len)
 
     return trainset, testset
 
@@ -119,4 +133,3 @@ def create_lstm_dataloader(dataset, batch_size, shuffle):   #indices,
     #subset = dataset_graphlstm(dataset.root_dir, sequence_indices=indices)
     loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle)
     return loader
-

@@ -42,7 +42,8 @@ def run_single(cfg, device, N_CPUS):
              trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         elif cfg['model'] == 'GATLSTM':
             # Split dataset into train and test indices
-            trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], stormsplit=cfg['stormsplit'])
+            trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], 
+                                                     stormsplit=cfg['stormsplit'], max_seq_len=cfg['max_seq_length'])
             # Create DataLoaders for train and test sets
             trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
             testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
