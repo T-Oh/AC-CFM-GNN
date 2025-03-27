@@ -14,7 +14,7 @@ from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloa
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import weighted_loss_label, setup_params, state_loss
+from utils.utils import weighted_loss_label, setup_params, state_loss, save_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
@@ -45,8 +45,8 @@ def run_single(cfg, device, N_CPUS):
             trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], 
                                                      stormsplit=cfg['stormsplit'], max_seq_len=cfg['max_seq_length'])
             # Create DataLoaders for train and test sets
-            trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
-            testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
+            trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, pin_memory=pin_memory, num_workers=N_CPUS)
+            testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, pin_memory=pin_memory, num_workers=N_CPUS)
         else:
              trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
              trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
@@ -59,7 +59,8 @@ def run_single(cfg, device, N_CPUS):
         num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
 
         #Setup Parameter dictionary for Node2Vec (mask_probs, num_features and num_edge_features should be irrelevant)
-        params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length)
+        params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length, save=True)
+        save_params(cfg['cfg_path'], params, 'single')
 
         #Node2Vec
         if cfg['model'] == 'Node2Vec':  trainloader, testloader, params = setup_node2vec(cfg, device, trainloader, mask_probs, params)
