@@ -1,10 +1,8 @@
 from typing import List, Optional, Union
 
 import torch
-from torch import Tensor
+import json
 
-from torch_geometric.data import Data, Dataset, InMemoryDataset
-from torch_geometric.utils import to_undirected
 import torch.nn
 import numpy as np
 import matplotlib.pyplot as plt
@@ -114,7 +112,7 @@ def setup_searchspace(cfg):
 
     return search_space
 
-def setup_params_from_search_space(search_space, params):
+def setup_params_from_search_space(search_space, params, save=False, path=None, ID=None):
     """
     params must already initiated by setup_params which will put the regular values from the cfg file
     setup_params_from_config then overrides the studied values with values from the search_space
@@ -143,9 +141,11 @@ def setup_params_from_search_space(search_space, params):
                 updated_params[key] = 'triple'
         else:
             updated_params[key] = search_space[key]
+
+        
     return updated_params
 
-def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_length):
+def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_length, save=False):
     """
     Sets up the parameters dictionary for building and training a model
 
@@ -217,7 +217,18 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, 
         'q'     :   cfg['q'],
 
     }
+
     return params
+
+def tensor_to_serializable(obj):
+    if isinstance(obj, torch.Tensor):
+        return obj.tolist() if obj.ndim > 0 else float(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+def save_params(path, params, ID=None):
+    del params['mask_probs']
+    with open(os.path.join(path,'results/', ID+'_params.json'), 'w') as f:
+        json.dump(params, f, default=tensor_to_serializable, indent=4)
 
 def multiclass_classification(output, labels, N_bins):
 
@@ -230,7 +241,6 @@ def multiclass_classification(output, labels, N_bins):
     for node in range(N_nodes):
         for i in range(N_bins+1):
             if output[node] <= (1/N_bins)*i:
-
                 outputclasses[i] += 1
                 break;
         for j in range(N_bins+1):
@@ -246,11 +256,12 @@ class state_loss(torch.nn.Module):
         self.edge_factor = edge_factor
         self.node_loss = torch.nn.MSELoss(reduction='mean')
         self.edge_loss = torch.nn.CrossEntropyLoss(reduction='mean')
+        print(f'Using State Loss with edge factor {self.edge_factor}')
 
     def forward(self, node_output, edge_output, node_labels, edge_labels):
         node_loss = self.node_loss(node_output, node_labels)
-        edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))
-        loss = node_loss + self.edge_factor*edge_loss
+        edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))*self.edge_factor
+        loss = node_loss + edge_loss
         return loss, node_loss, edge_loss
 
 

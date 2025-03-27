@@ -15,7 +15,7 @@ import numpy as np
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss
+from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sklearn.metrics import confusion_matrix
@@ -108,7 +108,9 @@ def objective(search_space, cfg, device,
     num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
 
     params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length)
-    params = setup_params_from_search_space(search_space, params)
+    params = setup_params_from_search_space(search_space, params, save=True, path=cfg['cfg_path'], ID=NAME)
+    save_params(cfg['cfg_path'], params, ID=NAME)
+
  
     print('\nSEARCH_SPACE:\n')
     print(search_space)
