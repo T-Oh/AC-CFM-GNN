@@ -126,10 +126,10 @@ def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit, max_seq
 
     return trainset, testset
 
-def create_lstm_dataloader(dataset, batch_size, shuffle):   #indices,
+def create_lstm_dataloader(dataset, batch_size, shuffle, pin_memory, num_workers):   #indices,
     """
     Creates a DataLoader for the given dataset and indices.
     """
     #subset = dataset_graphlstm(dataset.root_dir, sequence_indices=indices)
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle)
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers)
     return loader

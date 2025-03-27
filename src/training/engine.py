@@ -61,17 +61,17 @@ class Engine(object):
         self.criterion = criterion.to(self.device)
         self.return_full_output = return_full_output
         self.scaler = GradScaler()  #necessary for mixed precision learning
-        self.R2Score = R2Score().to(self.device)
+        self.R2Score = R2Score()
         if 'Class' in self.task or self.task == 'typeII':
-            self.f1_metric = MulticlassF1Score(num_classes=4, average=None).to(device)
-            self.precision_metric = MulticlassPrecision(num_classes=4, average=None).to(device)
-            self.recall_metric = MulticlassRecall(num_classes=4, average=None).to(device)
-            self.accuracy_metric = MulticlassAccuracy(num_classes=4, average='micro').to(device)
+            self.f1_metric = MulticlassF1Score(num_classes=4, average=None)
+            self.precision_metric = MulticlassPrecision(num_classes=4, average=None)
+            self.recall_metric = MulticlassRecall(num_classes=4, average=None)
+            self.accuracy_metric = MulticlassAccuracy(num_classes=4, average='micro')
         elif self.task == 'StateReg':
-            self.f1_metric = BinaryF1Score().to(device)
-            self.precision_metric = BinaryPrecision().to(device)
-            self.recall_metric = BinaryRecall().to(device)
-            self.accuracy_metric = BinaryAccuracy().to(device)
+            self.f1_metric = BinaryF1Score()
+            self.precision_metric = BinaryPrecision()
+            self.recall_metric = BinaryRecall()
+            self.accuracy_metric = BinaryAccuracy()
 
         
 
@@ -102,75 +102,45 @@ class Engine(object):
         loss = 0.0
         node_loss = 0
         edge_loss = 0
+        first=True
+        count = 0
+        total_output = None
+        total_labels = None
+
+        data_loading_time = 0.
+        gpu_processing_time = 0.
+
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
         
-
-        first=True
         for param in self.model.parameters():
             assert param.requires_grad, "Parameter does not require grad"
 
-        count = 0
         for (i, batch) in enumerate(dataloader):
-
+            data_start = time.time()
             self.optimizer.zero_grad(set_to_none=True)
-            count +=1
-            
+            count +=1           
             #compile batch depending on task - ifinstance implies that the data is LDTSF
-            if isinstance(batch, tuple) and not self.model.__class__.__name__ == 'GAT_LSTM':
-                if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
-                elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
-                elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
-                #elif self.task == 'StateReg':   batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
-            elif not self.model.__class__.__name__ == 'GAT_LSTM':   
-                batch.to(self.device)
-
+            batch = self.compile_batch(batch)
+            data_loading_time += data_start-time.time()
+            print(f"Total Loading Time so far: {data_loading_time:.2f} s", flush=True)
+            gpu_start = time.time()
             with autocast():
-
                 output = self.model.forward(batch)
                 output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
                 #calc and backpropagate loss
-                if self.masking:
-                    for j in range(int(len(output)/2000)):
-                        if j==0:
-                            self.masks=torch.bernoulli(self.mask_probs)
-                        else:
-                            self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
-                        self.masks= self.masks.to('cuda:0')
-
-                    output = output*self.masks
-                    labels = labels*self.masks
-                if self.task == 'typeIIClass':
-                    temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
-                elif self.task == 'StateReg':
-                    temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0].to(self.device), output[1].to(self.device), labels[0].to(self.device), labels[1].to(self.device))
-                else:
-                    temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
-                """self.scaler.scale(temp_loss).backward() 
-                self.scaler.step(self.optimizer)
-                self.scaler.update()"""
- 
+                if self.masking:    output, labels = self.apply_masking(output, labels)
+                if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
+                elif self.task == 'StateReg':   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 #compile outputs and labels for saving                        
-                if first:                   
-                    if self.task == "StateReg":
-                        total_output=(output[0].detach().cpu(), output[1].detach().cpu())
-                        total_labels=(labels[0].detach().cpu(), labels[1].detach().cpu())
-                    else:
-                        total_output=output.detach().cpu()
-                        total_labels=labels.detach().cpu()
-                    first=False
-                else:
-                    if self.task == "StateReg":
-                        total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
-                        total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
-                    else:
-                        total_output=cat((total_output,output.detach().cpu()),0)  
-                        total_labels=cat((total_labels,labels.detach().cpu()),0)  
+                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
 
             temp_loss.backward()
-            if gradclip >= 0.02:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)
+            if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
             self.optimizer.step()
 
+            gpu_processing_time += time.time()-gpu_start
+            print(f'Total GPU processing time so far {gpu_processing_time:.2f}s', flush=True)
             #Gradient accumulation
             """
             if (i+1)%8 == 0:
@@ -183,36 +153,27 @@ class Engine(object):
 
             if 'Class' in self.task or self.task == 'StateReg':
                 if self.task == 'typeIIClass':  
-                    labels = labels.reshape(-1)
+                    labels = labels.reshape(-1).detach().cpu()
                     preds = torch.argmax(output, dim=1)
                 elif self.task == 'StateReg':
-                    preds = torch.argmax(output[1], dim=1).to(self.device)
-                    labels = labels[1].reshape(-1).to(self.device)
+                    preds = torch.argmax(output[1], dim=1).detach().cpu()
+                    labels = labels[1].reshape(-1).detach().cpu()
                 else:
                     preds = torch.argmax(output, dim=0)
                 self.f1_metric.update(preds.reshape(-1), labels)
                 self.precision_metric.update(preds.reshape(-1), labels.reshape(-1))
                 self.recall_metric.update(preds.reshape(-1), labels.reshape(-1)) 
                 self.accuracy_metric.update(preds, labels)
+            first = False
 
-
-        
         metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
-
-        del batch
-
-        if not self.return_full_output:
-            example_output = total_output[0:16000]
-            example_labels = total_labels[0:16000]
-            del total_output
-            del total_labels
-            return metrics, example_output, example_labels
-        
+        print(f'Total Loading time during epoch: {data_loading_time:.2f} s', flush=True)
+        print(f'Total processing time during epoch: {gpu_processing_time:.2f} s', flush=True)
+        del batch, output, labels  
         t2 = time.time()
 
-
-
         return metrics, total_output, total_labels
+
 
 
     def eval(self, dataloader, full_output=False):
@@ -232,6 +193,7 @@ class Engine(object):
         labels : list of labels
 
         """
+        start = time.time()
         self.model.eval()
         with no_grad():
             with autocast():
@@ -241,65 +203,113 @@ class Engine(object):
                 temp_node_loss = 0.
                 temp_edge_loss = 0.
                 first = True
-
                 count = 0
+                data_loading_time = 0.
+                gpu_processing_time = 0.
+
                 for batch in dataloader:
                     count += 1
                     #compile batch depending on task - ifinstance implies that the data is LDTSF
-
-                    if isinstance(batch, tuple) and not self.model.__class__.__name__ == 'GAT_LSTM':
-                        if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
-                        elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
-                        elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
-                    elif not self.model.__class__.__name__ == 'GAT_LSTM':   
-                        batch.to(self.device)
-
-                    temp_output = self.model.forward(batch)#.to(self.device)    #, temp_output_edges
-                    temp_output, temp_labels = shape_and_cast_labels_and_output(temp_output, batch, self.task, self.device) #, edge_labels
+                    data_start = time.time()
+                    batch = self.compile_batch(batch)
+                    data_loading_time += data_start-time.time()
+                    print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
+                    gpu_start = time.time()
+                    output = self.model.forward(batch)
+                    gpu_processing_time += time.time()-gpu_start
+                    print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
+                    output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device) #, edge_labels
                     if first:
-                        labels = temp_labels#.detach().cpu()
-                        output = temp_output#.detach().cpu()
+                        total_labels = labels#.detach().cpu()
+                        total_output = output#.detach().cpu()
                         first = False
                     else:
                         if self.task == "StateReg":
-                            output = (cat((output[0].detach().cpu(),temp_output[0].detach().cpu()),0), cat((output[1].detach().cpu(),temp_output[1].detach().cpu()),0))
-                            labels = (cat((labels[0].detach().cpu(),temp_labels[0].detach().cpu()),0), cat((labels[1].detach().cpu(),temp_labels[1].detach().cpu()),0))
+                            total_output = (cat((total_output[0].detach().cpu(),output[0].detach().cpu()),0), cat((total_output[1].detach().cpu(),output[1].detach().cpu()),0))
+                            total_labels = (cat((total_labels[0].detach().cpu(),labels[0].detach().cpu()),0), cat((total_labels[1].detach().cpu(),labels[1].detach().cpu()),0))
                         else:
-                            output=cat((output,temp_output.detach().cpu()),0)  
-                            labels=cat((labels,temp_labels.detach().cpu()),0)
+                            total_output=cat((total_output,output.detach().cpu()),0)  
+                            total_labels=cat((total_labels,labels.detach().cpu()),0)               
                             
-                    if 'Class' in self.task:
-                        if self.task == 'typeIIClass':  
-                            temp_labels = temp_labels.reshape(-1)
-                            preds = torch.argmax(temp_output, dim=1)
-                            temp_loss = self.criterion(temp_output, temp_labels).tolist()
+                    if 'Class' in self.task or self.task == 'StateReg':
+                        if self.task == 'typeIIClass': 
+                            temp_loss = self.criterion(output, labels).tolist() 
+                            labels = labels.reshape(-1).detach().cpu()
+                            preds = torch.argmax(output, dim=1).detach().cpu()
+                        elif self.task == 'StateReg':
+                            temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                            preds = torch.argmax(output[1], dim=1).detach().cpu()
+                            labels = labels[1].reshape(-1).detach().cpu()
                         else:
-                            preds = torch.argmax(temp_output, dim=1)
-                            temp_loss = self.criterion(temp_output.reshape(-1), temp_labels.reshape(-1)).tolist()
-                        self.f1_metric.update(preds, temp_labels.reshape(-1))
-                        self.precision_metric.update(preds, temp_labels.reshape(-1))
-                        self.recall_metric.update(preds, temp_labels.reshape(-1)) 
-                        self.accuracy_metric.update(preds, temp_labels.reshape(-1))
-                    elif self.task == 'StateReg':
-                        temp_loss, temp_node_loss, temp_edge_loss = self.criterion(temp_output[0], temp_output[1], temp_labels[0], temp_labels[1])
+                            temp_loss = self.criterion(output.reshape(-1), labels.reshape(-1)).tolist()
+                            preds = torch.argmax(output, dim=1).detach().cpu()
+
+                        self.f1_metric.update(preds, labels.reshape(-1))
+                        self.precision_metric.update(preds, labels.reshape(-1))
+                        self.recall_metric.update(preds, labels.reshape(-1)) 
+                        self.accuracy_metric.update(preds, labels.reshape(-1))
+
                     else:
-                        temp_loss = self.criterion(temp_output.reshape(-1).to(self.device), temp_labels.reshape(-1).to(self.device)).tolist()
+                        temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
+
+
                 loss += temp_loss
                 node_loss += temp_node_loss
                 edge_loss += temp_edge_loss
 
-            metrics = self.compute_metrics(output, labels, loss, node_loss, edge_loss, count)
-
+            metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
+            print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
+            print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
+            print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
             if not full_output:
                 if self.task == 'StateReg':
-                    example_output = (output[0][0:16000].cpu(), output[1][0:7064*8].cpu())
-                    example_labels = (labels[0][0:16000].cpu(), labels[1][0:7064*8].cpu())
+                    example_output = (total_output[0][0:16000].cpu(), total_output[1][0:7064*8].cpu())
+                    example_labels = (total_labels[0][0:16000].cpu(), total_labels[1][0:7064*8].cpu())
                 else:
-                    example_output = np.array(output[0:16000].cpu())
-                    example_labels = np.array(labels[0:16000].cpu())
+                    example_output = np.array(total_output[0:16000].cpu())
+                    example_labels = np.array(total_labels[0:16000].cpu())
                 return metrics, example_output, example_labels
             else:
-                return metrics, output, labels
+                return metrics, total_output, total_labels
+            
+
+
+    def compile_batch(self, batch):
+        if isinstance(batch, tuple) and not self.model.__class__.__name__ == 'GAT_LSTM':
+            if self.task == 'GraphReg':     batch = (batch[0].to(self.device), batch[1].to(self.device), batch[2])  #batch[1] contains the regression label
+            elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
+            elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
+        elif not self.model.__class__.__name__ == 'GAT_LSTM':   
+            batch.to(self.device)
+        return batch
+
+
+    def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels):
+        if first:                   
+            if self.task == "StateReg":
+                total_output=(output[0].detach().cpu(), output[1].detach().cpu())
+                total_labels=(labels[0].detach().cpu(), labels[1].detach().cpu())
+            else:
+                total_output=output.detach().cpu()
+                total_labels=labels.detach().cpu()
+        else:
+            if self.task == "StateReg":
+                if len(total_output[0]) < 16000:
+                    total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
+                    total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
+            elif len(total_output) < 16000:
+                total_output=cat((total_output,output.detach().cpu()),0)  
+                total_labels=cat((total_labels,labels.detach().cpu()),0)
+        return total_output, total_labels
+
+    def apply_masking(self, output, labels):
+        for j in range(int(len(output)/2000)):
+            if j==0:    self.masks=torch.bernoulli(self.mask_probs)
+            else:       self.masks=torch.cat((self.masks,torch.bernoulli(self.mask_probs).to('cuda:0')))
+            self.masks= self.masks.to('cuda:0')
+        output = output*self.masks
+        labels = labels*self.masks
+        return output,labels
 
 
 
@@ -307,8 +317,8 @@ class Engine(object):
         if not 'Class' in self.task:  
             #GTSF with edge_labels
             if isinstance(total_output, tuple): 
-                R2_1 = self.R2Score(total_output[0][:,0].to(self.device), total_labels[0][:,0].to(self.device)).to(self.device)
-                R2_2 = self.R2Score(total_output[0][:,1].to(self.device), total_labels[0][:,1].to(self.device)).to(self.device)
+                R2_1 = self.R2Score(total_output[0][:,0], total_labels[0][:,0])
+                R2_2 = self.R2Score(total_output[0][:,1], total_labels[0][:,1])
                 F1 = self.f1_metric.compute()
                 precision = self.precision_metric.compute()
                 recall = self.recall_metric.compute()
@@ -327,16 +337,16 @@ class Engine(object):
             elif total_output.dim() == 3:
                 total_output = total_output.reshape(-1, 2)
                 total_labels = total_labels.reshape(-1, 2)
-                R2_1 = self.R2Score(total_output[:,0].to(self.device), total_labels[:,0].to(self.device)).to(self.device)
-                R2_2 = self.R2Score(total_output[:,1].to(self.device), total_labels[:,1].to(self.device)).to(self.device)
+                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
+                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])
                 metrics = {
                     'loss'  : float(loss/count),
                     'R2'    : float(R2_1),
                     'R2_2'  : float(R2_2)
                 }
             elif total_output.dim()==2:
-                R2_1 = self.R2Score(total_output[:,0].to(self.device), total_labels[:,0].to(self.device))
-                R2_2 = self.R2Score(total_output[:,1].to(self.device), total_labels[:,1].to(self.device))  
+                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
+                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])
                 metrics = {
                     'loss'  : float(loss/count),
                     'R2'    : float(R2_1),
@@ -378,7 +388,7 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
             #Line Damge Time Series Forecasting (LDTSF)
             else:                              
                 labels = batch[1].to(torch.double)#.reshape(-1)           
-        else:                                                  
+        else:   #Regular GraphReg (no TSF)                                                  
             labels = batch.y.type(torch.FloatTensor).to(device)
             output = output.reshape(-1)
 
