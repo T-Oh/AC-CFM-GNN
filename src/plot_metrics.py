@@ -5,10 +5,10 @@ import glob
 import numpy as np
 
 # Ensure the directory exists for saving plots
-os.makedirs('results/plots', exist_ok=True)
+os.makedirs('/home/tohlinger/PIK/Running/GTSF/plots', exist_ok=True)
 
 # Get all result files matching the pattern 'results_*.pkl'
-result_files = glob.glob('/home/tohlinger/LEO/Results/LDTSF/GC/subset_crossval/results/results_*.pkl')
+result_files = glob.glob('/home/tohlinger/PIK/Running/GTSF/results/results_*.pkl')
 
 # Dictionary to store optimal values for each metric across all files
 optimal_metrics = {}
@@ -78,7 +78,7 @@ for result_file in result_files:
                 plt.savefig(plot_filename)
                 plt.close()
             else:
-                # Plot the metric for a single list of values (non-multiclass metric)
+                # Plot the metric for a single list of values (non-multiclass metric) (zoomed)
                 plt.figure()
                 plt.plot(train_values, label='Train')
                 plt.plot(test_values, label='Test')
@@ -87,10 +87,23 @@ for result_file in result_files:
                 plt.ylim((0,1))
                 plt.title(f'{metric_name}')
                 plt.legend()
-
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
                 plot_filename = f'results/plots/{result_filename}_{metric_name}_zoom.png'
+                plt.savefig(plot_filename)
+                plt.close()
+
+                # Plot the metric for a single list of values (non-multiclass metric)
+                plt.figure()
+                plt.plot(train_values, label='Train')
+                plt.plot(test_values, label='Test')
+                plt.xlabel('Epoch')
+                plt.ylabel(metric_name)
+                plt.title(f'{metric_name}')
+                plt.legend()
+                # Save the plot with the filename indicating the result file
+                result_filename = os.path.splitext(os.path.basename(result_file))[0]
+                plot_filename = f'results/plots/{result_filename}_{metric_name}.png'
                 plt.savefig(plot_filename)
                 plt.close()
 
