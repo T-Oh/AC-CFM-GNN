@@ -21,6 +21,7 @@
     "checkpointing":    false,
     "epochs":           2,
     "output_freq" :     1,
+    "full_output":      true,
     
     /*Data split settings*/
     "train_size":           1,

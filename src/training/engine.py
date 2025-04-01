@@ -76,7 +76,7 @@ class Engine(object):
         
 
 
-    def train_epoch(self, dataloader, gradclip):
+    def train_epoch(self, dataloader, gradclip, full_output):
         """
         Executes the training of a single epoch
 
@@ -133,7 +133,7 @@ class Engine(object):
                 elif self.task == 'StateReg':   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 #compile outputs and labels for saving                        
-                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
+                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels, full_output)  
 
             temp_loss.backward()
             if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
@@ -294,10 +294,10 @@ class Engine(object):
                 total_labels=labels.detach().cpu()
         else:
             if self.task == "StateReg":
-                if len(total_output[0]) < 16000:
+                if len(total_output[0]) < 16000 or full_output:
                     total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
                     total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
-            elif len(total_output) < 16000:
+            elif len(total_output) < 16000 or full_output:
                 total_output=cat((total_output,output.detach().cpu()),0)  
                 total_labels=cat((total_labels,labels.detach().cpu()),0)
         return total_output, total_labels
