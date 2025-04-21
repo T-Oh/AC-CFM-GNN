@@ -1,4 +1,4 @@
-name: GNN_conda_forge
+name: conda-forge-migration
 channels:
   - pyg
   - pytorch
