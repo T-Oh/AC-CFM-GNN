@@ -147,7 +147,6 @@ dependencies:
   - pexpect=4.8.0
   - pickleshare=0.7.5
   - pillow=9.2.0
-  - pip=22.2.2
   - pixman=>0.40.0
   - platformdirs=2.5.2
   - pluggy=1.0.0
@@ -264,4 +263,7 @@ dependencies:
   - zipp=3.8.0
 #  - zlib=>1.2.12
 #  - zstd=>1.5.2
+  - pip:
+      - json5
+      - h5py
 prefix: D:\Programme86\Anaconda\envs\GNN
