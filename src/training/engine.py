@@ -49,6 +49,7 @@ class Engine(object):
         None.
 
         """
+        self.VERBOSE = False
         self.model = model.to(device).to(torch.float32)
         self.optimizer = optimizer
         self.device = device
@@ -111,7 +112,12 @@ class Engine(object):
         gpu_processing_time = 0.
 
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
-        
+        if self.VERBOSE:
+            print('Pre empty cache')
+            self.log_gpu_usage()
+            torch.cuda.empty_cache()
+            print('Post empty cache')
+            self.log_gpu_usage()
         for param in self.model.parameters():
             assert param.requires_grad, "Parameter does not require grad"
 
@@ -122,11 +128,23 @@ class Engine(object):
             #compile batch depending on task - ifinstance implies that the data is LDTSF
             batch = self.compile_batch(batch)
             data_loading_time += data_start-time.time()
-            print(f"Total Loading Time so far: {data_loading_time:.2f} s", flush=True)
-            gpu_start = time.time()
+            if self.VERBOSE: print(f"Total Loading Time so far: {data_loading_time:.2f} s", flush=True)
+            if self.VERBOSE:
+                gpu_start = time.time()
+                print('Pre forward pass: ')
+                self.log_gpu_usage()
             with autocast():
                 output = self.model.forward(batch)
                 output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
+                if self.VERBOSE: 
+                    if any(torch.isnan(output[0].reshape(-1))) or any(torch.isinf(output[0].reshape(-1))):
+                        print("Node Output contains NaN or Inf values. Skipping this batch.")
+                    if any(torch.isnan(output[1].reshape(-1))) or any(torch.isinf(output[1].reshape(-1))):
+                        print("Edge Output contains NaN or Inf values. Skipping this batch.")
+                    if any(torch.isnan(labels[0].reshape(-1))) or any(torch.isinf(labels[0].reshape(-1))):
+                        print("Node Labels contain NaN or Inf values. Skipping this batch.")
+                    if any(torch.isnan(labels[1].reshape(-1))) or any(torch.isinf(labels[1].reshape(-1))):
+                            print("Edge Labels contain NaN or Inf values. Skipping this batch.")
                 #calc and backpropagate loss
                 if self.masking:    output, labels = self.apply_masking(output, labels)
                 if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
@@ -134,13 +152,17 @@ class Engine(object):
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 #compile outputs and labels for saving                        
                 total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels, full_output)  
-
+            if self.VERBOSE:
+                print('Pre backward pass: ')
+                self.log_gpu_usage()
             temp_loss.backward()
             if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
             self.optimizer.step()
 
-            gpu_processing_time += time.time()-gpu_start
-            print(f'Total GPU processing time so far {gpu_processing_time:.2f}s', flush=True)
+           
+            if self.VERBOSE: 
+                 gpu_processing_time += time.time()-gpu_start
+                 print(f'Total GPU processing time so far {gpu_processing_time:.2f}s', flush=True)
             #Gradient accumulation
             """
             if (i+1)%8 == 0:
@@ -148,16 +170,17 @@ class Engine(object):
                 self.optimizer.zero_grad(set_to_none=True)
             """
             loss += temp_loss.item()
-            node_loss += temp_node_loss.item()
-            edge_loss += temp_edge_loss.item()
+            if self.task == 'StateReg':
+                node_loss += temp_node_loss.item()
+                edge_loss += temp_edge_loss.item()
 
             if 'Class' in self.task or self.task == 'StateReg':
                 if self.task == 'typeIIClass':  
                     labels = labels.reshape(-1).detach().cpu()
                     preds = torch.argmax(output, dim=1)
                 elif self.task == 'StateReg':
-                    preds = torch.argmax(output[1], dim=1).detach().cpu()
-                    labels = labels[1].reshape(-1).detach().cpu()
+                    preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
+                    labels = 1-labels[1].reshape(-1).detach().cpu()
                 else:
                     preds = torch.argmax(output, dim=0)
                 self.f1_metric.update(preds.reshape(-1), labels)
@@ -167,8 +190,9 @@ class Engine(object):
             first = False
 
         metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
-        print(f'Total Loading time during epoch: {data_loading_time:.2f} s', flush=True)
-        print(f'Total processing time during epoch: {gpu_processing_time:.2f} s', flush=True)
+        if self.VERBOSE: 
+            print(f'Total Loading time during epoch: {data_loading_time:.2f} s', flush=True)
+            print(f'Total processing time during epoch: {gpu_processing_time:.2f} s', flush=True)
         del batch, output, labels  
         t2 = time.time()
 
@@ -176,7 +200,7 @@ class Engine(object):
 
 
 
-    def eval(self, dataloader, full_output=False):
+    def eval(self, dataloader, full_output=True):
         """
         
 
@@ -193,6 +217,12 @@ class Engine(object):
         labels : list of labels
 
         """
+        if self.VERBOSE:
+            print('Eval: Pre empty cache: ')
+            self.log_gpu_usage()
+            torch.cuda.empty_cache()
+            print('Eval: Post empty cache: ')
+            self.log_gpu_usage()
         start = time.time()
         self.model.eval()
         with no_grad():
@@ -206,6 +236,8 @@ class Engine(object):
                 count = 0
                 data_loading_time = 0.
                 gpu_processing_time = 0.
+                total_output = None
+                total_labels = None
 
                 for batch in dataloader:
                     count += 1
@@ -213,13 +245,22 @@ class Engine(object):
                     data_start = time.time()
                     batch = self.compile_batch(batch)
                     data_loading_time += data_start-time.time()
-                    print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
+                    if self.VERBOSE: 
+                        print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
+                        print('Eval: Pre forward pass: ')
+                        self.log_gpu_usage()
                     gpu_start = time.time()
+                   
                     output = self.model.forward(batch)
                     gpu_processing_time += time.time()-gpu_start
-                    print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
+                    if self.VERBOSE: print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
                     output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device) #, edge_labels
-                    if first:
+                    print(f'Output: {output}')
+                    print(f'Labels: {labels}')
+                   
+                    #compile labels and output fo saving
+                    total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels, full_output)
+                    """if first:
                         total_labels = labels#.detach().cpu()
                         total_output = output#.detach().cpu()
                         first = False
@@ -229,8 +270,8 @@ class Engine(object):
                             total_labels = (cat((total_labels[0].detach().cpu(),labels[0].detach().cpu()),0), cat((total_labels[1].detach().cpu(),labels[1].detach().cpu()),0))
                         else:
                             total_output=cat((total_output,output.detach().cpu()),0)  
-                            total_labels=cat((total_labels,labels.detach().cpu()),0)               
-                            
+                            total_labels=cat((total_labels,labels.detach().cpu()),0)   """            
+
                     if 'Class' in self.task or self.task == 'StateReg':
                         if self.task == 'typeIIClass': 
                             temp_loss = self.criterion(output, labels).tolist() 
@@ -238,8 +279,15 @@ class Engine(object):
                             preds = torch.argmax(output, dim=1).detach().cpu()
                         elif self.task == 'StateReg':
                             temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
-                            preds = torch.argmax(output[1], dim=1).detach().cpu()
-                            labels = labels[1].reshape(-1).detach().cpu()
+                            if self.VERBOSE:
+                                if torch.isnan(temp_loss) or torch.isinf(temp_loss):
+                                    print("Loss contains NaN or Inf values. Skipping this batch.")
+                                if torch.isnan(temp_node_loss) or torch.isinf(temp_node_loss):
+                                    print("Node Loss contains NaN or Inf values. Skipping this batch.")
+                                if torch.isnan(temp_edge_loss) or torch.isinf(temp_edge_loss):
+                                    print("Edge Loss contains NaN or Inf values. Skipping this batch.")
+                            preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
+                            labels = 1-labels[1].reshape(-1).detach().cpu()
                         else:
                             temp_loss = self.criterion(output.reshape(-1), labels.reshape(-1)).tolist()
                             preds = torch.argmax(output, dim=1).detach().cpu()
@@ -258,20 +306,20 @@ class Engine(object):
                 edge_loss += temp_edge_loss
 
             metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
-            print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
-            print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
-            print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
-            if not full_output:
-                if self.task == 'StateReg':
-                    example_output = (total_output[0][0:16000].cpu(), total_output[1][0:7064*8].cpu())
-                    example_labels = (total_labels[0][0:16000].cpu(), total_labels[1][0:7064*8].cpu())
-                else:
-                    example_output = np.array(total_output[0:16000].cpu())
-                    example_labels = np.array(total_labels[0:16000].cpu())
-                return metrics, example_output, example_labels
-            else:
-                return metrics, total_output, total_labels
+            if self.VERBOSE:
+                print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
+                print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
+                print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
+            return metrics, total_output, total_labels
             
+
+
+    def log_gpu_usage(self):
+        allocated = torch.cuda.memory_allocated() / 1024**2  # Convert to MB
+        reserved = torch.cuda.memory_reserved() / 1024**2  # Convert to MB
+        print(f"GPU Memory Allocated: {allocated:.2f} MB")
+        print(f"GPU Memory Reserved: {reserved:.2f} MB")
+
 
 
     def compile_batch(self, batch):
@@ -284,7 +332,7 @@ class Engine(object):
         return batch
 
 
-    def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels):
+    def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels, full_output):
         if first:                   
             if self.task == "StateReg":
                 total_output=(output[0].detach().cpu(), output[1].detach().cpu())
@@ -345,13 +393,20 @@ class Engine(object):
                     'R2_2'  : float(R2_2)
                 }
             elif total_output.dim()==2:
-                R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
-                R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])
-                metrics = {
-                    'loss'  : float(loss/count),
-                    'R2'    : float(R2_1),
-                    'R2_2'  : float(R2_2)
-                }
+                if self.model.__class__.__name__ =='LSTM_LDTSF':
+                    R2 = self.R2Score(total_output.reshape(-1), total_labels.reshape(-1))
+                    metrics = {
+                        'loss'  : float(loss/count),
+                        'R2'    : float(R2)
+                    }
+                else:
+                    R2_1 = self.R2Score(total_output[:,0], total_labels[:,0])
+                    R2_2 = self.R2Score(total_output[:,1], total_labels[:,1])
+                    metrics = {
+                        'loss'  : float(loss/count),
+                        'R2'    : float(R2_1),
+                        'R2_2'  : float(R2_2)
+                    }
             else:
                 R2 = self.R2Score(total_output.reshape(-1), total_labels.reshape(-1))
                 metrics = {
@@ -386,8 +441,8 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
                 labels = torch.stack(labels).to(torch.double)
                 output = output.to(torch.double).reshape(-1)
             #Line Damge Time Series Forecasting (LDTSF)
-            else:                              
-                labels = batch[1].to(torch.double)#.reshape(-1)           
+            else:                            
+                labels = batch[1].to(torch.double)#.reshape(-1)    
         else:   #Regular GraphReg (no TSF)                                                  
             labels = batch.y.type(torch.FloatTensor).to(device)
             output = output.reshape(-1)
@@ -412,7 +467,6 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
                 
         else:
             labels = batch.node_labels.type(torch.FloatTensor).to(device)
-
     return output, labels 
 
 
