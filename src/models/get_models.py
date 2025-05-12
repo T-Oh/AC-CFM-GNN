@@ -6,6 +6,8 @@ from models.gtrans import GraphTransformer
 from models.lstm import GCNLSTM
 from models.lstm_LDTSF import LSTM_LDTSF
 from models.gatlstm import GAT_LSTM
+from models.mlplstm import LSTM_Baseline
+from models.taglstm import TAG_LSTM
 
 
 
@@ -28,7 +30,7 @@ def get_model(cfg, params):
                 reghead_size        = params['reghead_size'],
                 reghead_layers      = params['reghead_layers'],
                 gat_dropout         = params['gat_dropout'],
-                max_seq_length      = params['max_seq_length'],
+                max_seq_length      = params['max_seq_len_LDTSF'],
                 task                = params['task']   
             )
         else:
@@ -151,13 +153,41 @@ def get_model(cfg, params):
             num_lstm_layers     = params['num_lstm_layers'],
             reghead_size    = params['reghead_size'],
             reghead_layers  = params['reghead_layers'],
-            #num_targets     = params['num_targets'],
             dropout         = params['dropout'],
             gat_dropout     = params['gat_dropout'],
             num_heads       = params["heads"],  
             use_skipcon     = params['use_skipcon'],
             use_batchnorm   = params['use_batchnorm'],
-            max_seq_length      = params['max_seq_length'],
+            task                = params['task']   
+        )
+
+    elif cfg['model'] == 'TAGLSTM':
+        print('Using TAG LSTM')
+        model = TAG_LSTM(
+            num_node_features   = params["num_features"],
+            conv_hidden_size    = params['hidden_size'], 
+            num_conv_targets    = params["num_conv_targets"],  
+            num_conv_layers     = params['num_layers'],
+            lstm_hidden_size    = params['lstm_hidden_size'],
+            num_lstm_layers     = params['num_lstm_layers'],
+            reghead_size    = params['reghead_size'],
+            reghead_layers  = params['reghead_layers'],
+            dropout         = params['dropout'],
+            K               = params['K'],
+            use_skipcon     = params['use_skipcon'],
+            use_batchnorm   = params['use_batchnorm'],
+            task                = params['task']   
+        )
+
+    elif cfg['model'] == 'MLPLSTM':
+        print('Using Linear LSTM')
+        model = LSTM_Baseline(
+            num_node_features   = params["num_features"],
+            lstm_hidden_size    = params['lstm_hidden_size'],
+            num_lstm_layers     = params['num_lstm_layers'],
+            reghead_size    = params['reghead_size'],
+            reghead_layers  = params['reghead_layers'],
+            dropout         = params['dropout'],
             task                = params['task']   
         )
 
@@ -166,7 +196,9 @@ def get_model(cfg, params):
     else: 
         raise NameError("Unknown model selected. Change model in gnn/configuration.json")
 
-
+    pytorch_total_params = sum(p.numel() for p in model.parameters())
+    print('NUMBER OF PARAMETERS:')
+    print(pytorch_total_params)
 
 
 
