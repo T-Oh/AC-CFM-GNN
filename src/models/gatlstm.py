@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import GATv2Conv
+from torch_geometric.data import Batch
 
 class GAT_LSTM(nn.Module):
     def __init__(self, num_node_features, conv_hidden_size, num_conv_targets, num_conv_layers, lstm_hidden_size, num_lstm_layers, reghead_size, reghead_layers,
-                 dropout, gat_dropout, num_heads, use_skipcon, use_batchnorm, max_seq_length, task, reghead_type='single'):
+                 dropout, gat_dropout, num_heads, use_skipcon, use_batchnorm, task, reghead_type='single'):
         super(GAT_LSTM, self).__init__()
 
         print(f'num_node_features: {num_node_features}')
@@ -31,27 +32,33 @@ class GAT_LSTM(nn.Module):
         self.dropout            = float(dropout)
         self.gat_dropout        = float(gat_dropout)
         self.num_heads          = int(num_heads)
-        self.max_seq_length     = int(max_seq_length)
+
 
         # GAT Layers
         self.gat_layers = nn.ModuleList()
         self.batch_norms = nn.ModuleList() if use_batchnorm else None
 
         # Input layer
-        self.gat_layers.append(GATv2Conv(self.num_node_features, self.conv_hidden_size, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
-        if self.use_batchnorm:
-            self.batch_norms.append(nn.BatchNorm1d(self.conv_hidden_size * self.num_heads))
-
-        # Hidden layers
-        for _ in range(1, self.num_conv_layers - 1):
-            self.gat_layers.append(GATv2Conv(self.conv_hidden_size * self.num_heads, self.conv_hidden_size, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
+        if self.num_conv_layers >= 2:
+            self.gat_layers.append(GATv2Conv(self.num_node_features, self.conv_hidden_size, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
             if self.use_batchnorm:
                 self.batch_norms.append(nn.BatchNorm1d(self.conv_hidden_size * self.num_heads))
 
-        # Output layer
-        self.gat_layers.append(GATv2Conv(self.conv_hidden_size * self.num_heads, self.num_conv_targets, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
-        if self.use_batchnorm:
-            self.batch_norms.append(nn.BatchNorm1d(self.num_conv_targets * self.num_heads))
+            # Hidden layers
+            for _ in range(1, self.num_conv_layers - 1):
+                self.gat_layers.append(GATv2Conv(self.conv_hidden_size * self.num_heads, self.conv_hidden_size, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
+                if self.use_batchnorm:
+                    self.batch_norms.append(nn.BatchNorm1d(self.conv_hidden_size * self.num_heads))
+
+            # Output layer
+            self.gat_layers.append(GATv2Conv(self.conv_hidden_size * self.num_heads, self.num_conv_targets, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
+            if self.use_batchnorm:
+                self.batch_norms.append(nn.BatchNorm1d(self.num_conv_targets * self.num_heads))
+        else:
+            self.gat_layers.append(GATv2Conv(self.num_node_features, self.num_conv_targets, heads=self.num_heads, edge_dim=2, dropout=self.gat_dropout))
+            if self.use_batchnorm:
+                self.batch_norms.append(nn.BatchNorm1d(self.num_conv_targets * self.num_heads))
+
 
         # LSTM
         self.lstm = nn.LSTM(
@@ -92,25 +99,44 @@ class GAT_LSTM(nn.Module):
 
     def forward(self, sequences):
         lstm_inputs = []
+        batch_size = len(sequences[1])
         for sequence in sequences[0]:
-            timestep_embeddings = []
-            batch_size = len(sequence.x) // 2000
-            for t in range(batch_size):
-                batch_graph = sequence[t]
-                x, edge_index, edge_attr = batch_graph.x.to(self.device), batch_graph.edge_index.to(self.device), batch_graph.edge_attr.to(self.device)
-                for i, gat_layer in enumerate(self.gat_layers):
-                    skip_connection = x if self.use_skipcon else None
-                    x = gat_layer(x, edge_index, edge_attr=edge_attr)
-                    if self.use_batchnorm:
-                        x = self.batch_norms[i](x)
-                    x = self.relu(x)
-                    if self.use_skipcon and skip_connection is not None and x.shape == skip_connection.shape:
-                        x = (x + skip_connection) / 2
-                timestep_embeddings.append(x.reshape(-1))
-            lstm_input = torch.stack(timestep_embeddings, dim=1)
-            lstm_inputs.append(lstm_input.transpose(0, 1))
+            #print(sequence)
+            #batched_graph = Batch.from_data_list(sequence).to(self.device)
+            batched_graph = sequence.to(self.device)
+            #print(batched_graph.device)
+            #timestep_embeddings = []
+            num_timesteps = len(sequence.x) // 2000           
+            #for t in range(batch_size):
+            #batch_graph = sequence[t]
+            x, edge_index, edge_attr = batched_graph.x, batched_graph.edge_index, batched_graph.edge_attr
+            print('Before GAT')
+            print(f'X SHAPE {x.shape}')
+            for i, gat_layer in enumerate(self.gat_layers):
+                skip_connection = x if self.use_skipcon else None
+                x = gat_layer(x, edge_index, edge_attr=edge_attr)
+                if self.use_batchnorm:
+                    print(i)
+                    print(f'X SHAPE {x.shape}')
+                    if i+1 == self.num_conv_layers: x = x.view(-1,self.num_conv_targets*self.num_heads)
+                    else:   x = x.view(-1,self.conv_hidden_size*self.num_heads)
+                    print(f'X SHAPE {x.shape}')
+                    x = self.batch_norms[i](x)
+                x = self.relu(x)
+                if self.use_skipcon and skip_connection is not None and x.shape == skip_connection.shape:
+                    x = (x + skip_connection) / 2
+
+            x = x.view(num_timesteps, -1)
+            #print('X SHAPE')
+            #print(x.shape)
+            lstm_inputs.append(x)
+            #timestep_embeddings.append(x.reshape(-1))
+            #lstm_input = torch.stack(lstm_inputs, dim=1)
+            #lstm_inputs.append(lstm_input.transpose(0, 1))
 
         lstm_inputs = torch.stack(lstm_inputs, dim=0)
+        #print('lstm_inputs shape')
+        #print(lstm_inputs.shape)
         lstm_output, _ = self.lstm(lstm_inputs)
         lstm_output = self.relu(lstm_output[:, -1, :])
 
