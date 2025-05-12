@@ -56,6 +56,8 @@ class HurricaneDataset(Dataset):
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list = self.processed_file_names
+        if self.data_type == 'LDTSF':
+            self.data_list = self.get_data_list(N_Scenarios)  #list containing all instances in order
         #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
 
         
@@ -1029,11 +1031,13 @@ class HurricaneDataset(Dataset):
     
     
     def __getitem__(self,idx):
-        #scenario=int(self.data_list[idx,0])
-        #step=int(self.data_list[idx,1])
-        #data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
-        data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
-        data.x = data.x[:, :4]
+        if self.data_type == 'LDTSF':
+            scenario=int(self.data_list[idx,0])
+            step=int(self.data_list[idx,1])
+            data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
+        else:
+            data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
+            data.x = data.x[:, :4]
 
         #if self.embedding != None:
             #embedding = torch.cat([self.embedding]*int(len(data.x)/2000))
@@ -1167,11 +1171,13 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
     print(f'Len Dataset: {len_dataset}')
     #Get last train sample if stormsplit
     if stormsplit != 0:
-        print('NO STORMSPLIT AT THE MOMENT')
-    #    for i in range(len(data_list)):
-    #        if str(data_list[i,0]).startswith(str(stormsplit)):
-    #            last_train_sample=i
-    #            break
+        print(len(dataset.data_list))
+        for i in range(len(dataset.data_list)):
+            if str(dataset.data_list[i][0]).startswith(str(stormsplit)):
+                last_train_sample=i-1
+                break
+        trainset = Subset(dataset, range(0, last_train_sample))
+        testset = Subset(dataset, range(last_train_sample, len_dataset))
 
     #Get last train sample if no stormsplit
     else:   
@@ -1183,10 +1189,9 @@ def create_datasets(root ,cfg, pre_transform=None, num_samples=None, stormsplit=
             #testset = Subset(dataset, range(last_train_sample, len_dataset))
         #else: testset= Subset(dataset,range(len_dataset,len_dataset))"""
     
-    #trainset = Subset(dataset, range(0, last_train_sample))
-    #testset = Subset(dataset, range(last_train_sample, len_dataset))
 
-    trainset, testset = random_split(dataset, [last_train_sample, len_dataset-last_train_sample])
+
+        trainset, testset = random_split(dataset, [last_train_sample, len_dataset-last_train_sample])
     
     t2 = time.time()
     print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
@@ -1241,9 +1246,10 @@ def create_loaders(cfg, trainset, testset, pre_compute_mean=False, Node2Vec=Fals
             trainloader = DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate_lstm)
             testloader = DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate_lstm)"""
     elif 'LDTSF' in data_type:
-        if 'typeII' in task:
-            max_length = lstm_get_max_seq_length(trainset, testset)
-            print(max_length)
+        max_length = lstm_get_max_seq_length(trainset, testset)
+        print(max_length)
+        if 'typeII' in task:         
+
             collate = partial(collate_fn_fixed_length, max_length=max_length)
             trainloader = torch.utils.data.DataLoader(trainset, batch_size=cfg["train_set::batchsize"], shuffle=cfg["train_set::shuffle"], collate_fn=collate, num_workers=num_workers, pin_memory=pin_memory)
             testloader = torch.utils.data.DataLoader(testset, batch_size=cfg["test_set::batchsize"], collate_fn=collate, num_workers=num_workers, pin_memory=pin_memory)
