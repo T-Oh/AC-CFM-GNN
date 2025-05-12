@@ -4,11 +4,12 @@ import os
 import glob
 import numpy as np
 
+PATH = '/home/tohlinger/LEO/Results/GTSF_edge_labels/LTSF_50/'
 # Ensure the directory exists for saving plots
-os.makedirs('/home/tohlinger/PIK/Running/GTSF/plots', exist_ok=True)
+os.makedirs(PATH + 'replots/', exist_ok=True)
 
 # Get all result files matching the pattern 'results_*.pkl'
-result_files = glob.glob('/home/tohlinger/PIK/Running/GTSF/results/results_*.pkl')
+result_files = glob.glob(PATH + '/results/results_*.pkl')
 
 # Dictionary to store optimal values for each metric across all files
 optimal_metrics = {}
@@ -18,6 +19,25 @@ for result_file in result_files:
     # Load the result dictionary from the pickle file
     with open(result_file, 'rb') as f:
         result = pickle.load(f)
+
+        # Find epoch with minimum validation total loss
+    if 'test_loss' not in result:
+        raise ValueError(f"'test_loss' not found in {result_file}")
+
+    best_epoch = int(np.argmin(result['test_loss']))
+    print(f"\n File: {os.path.basename(result_file)}")
+    print(f"Best epoch (min total loss): {best_epoch}")
+
+    # Collect and print all metrics at that epoch
+    for k, v in result.items():
+        if isinstance(v, list) and len(v) > best_epoch:
+            value_at_best = v[best_epoch]
+            if isinstance(value_at_best, list):
+                formatted = ", ".join(f"{x:.9f}" for x in value_at_best)
+                print(f"{k} @ epoch {best_epoch}: [{formatted}]")
+            else:
+                print(f"{k} @ epoch {best_epoch}: {value_at_best:.9f}")
+
 
     # Filter the result dictionary for metric names that start with 'train_'
     train_metrics = {k: v for k, v in result.items() if k.startswith('train_')}
@@ -74,7 +94,7 @@ for result_file in result_files:
 
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
-                plot_filename = f'results/plots/{result_filename}_{metric_name}_all_classes.png'
+                plot_filename = PATH+f'results/plots/{result_filename}_{metric_name}_all_classes.png'
                 plt.savefig(plot_filename)
                 plt.close()
             else:
@@ -84,12 +104,13 @@ for result_file in result_files:
                 plt.plot(test_values, label='Test')
                 plt.xlabel('Epoch')
                 plt.ylabel(metric_name)
-                plt.ylim((0,1))
+                if train_metric_name == 'train_node_loss': plt.ylim((0,0.005))
+                else:   plt.ylim((0,1))
                 plt.title(f'{metric_name}')
                 plt.legend()
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
-                plot_filename = f'results/plots/{result_filename}_{metric_name}_zoom.png'
+                plot_filename = PATH + f'results/plots/{result_filename}_{metric_name}_zoom.png'
                 plt.savefig(plot_filename)
                 plt.close()
 
@@ -103,7 +124,7 @@ for result_file in result_files:
                 plt.legend()
                 # Save the plot with the filename indicating the result file
                 result_filename = os.path.splitext(os.path.basename(result_file))[0]
-                plot_filename = f'results/plots/{result_filename}_{metric_name}.png'
+                plot_filename = PATH + f'results/plots/{result_filename}_{metric_name}.png'
                 plt.savefig(plot_filename)
                 plt.close()
 
@@ -123,5 +144,7 @@ for metric_name, optimal_values in optimal_metrics.items():
         optimal_values = np.array(optimal_values)
 
     # Print the mean optimal value per class
+    print('OPTIMAL VALUES')
+    print(optimal_values)
     mean_optimal_value = np.mean(optimal_values, axis=0)
     print(f'Mean optimal {metric_name}: {mean_optimal_value}')
