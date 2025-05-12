@@ -15,7 +15,7 @@ import numpy as np
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params
+from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params, save_output
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sklearn.metrics import confusion_matrix
@@ -25,8 +25,6 @@ from sklearn.metrics import confusion_matrix
 
 def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     """
-    
-
     Parameters
     ----------
     trainloader : Dataloader
@@ -46,6 +44,7 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     output=[]
     labels=[]
     TASK = cfg['task']
+    overfit = False
     if fold == -1:  SAVENAME = ''   #name to add to the saved metrics file -> used during crossval to save the results of the different folds
     else:           SAVENAME = str(fold)
 
@@ -55,32 +54,35 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
 
 
     for i in range(1, cfg['epochs'] + 1):
-        #print('EVAL: ', eval)
 
         print(f'Epoch: {i}', flush=True)
         #torch.cuda.synchronize()
         t1 = time.time()
-
-        temp_metrics, temp_output, temp_labels = engine.train_epoch(trainloader, cfg['gradclip'])
+        temp_metrics, train_output, train_labels = engine.train_epoch(trainloader, cfg['gradclip'], cfg['full_output'])
 
         if cfg['train_size'] == 1:
-            temp_eval, test_output, test_labels = engine.eval(trainloader)    #TO change back to testloader if train_size <1
+            temp_eval, test_output, test_labels = engine.eval(trainloader, cfg['full_output'])    #TO change back to testloader if train_size <1
         else:
-            temp_eval, test_output, test_labels = engine.eval(testloader)
+            temp_eval, test_output, test_labels = engine.eval(testloader, cfg['full_output'])
         LRScheduler.step(temp_eval['loss'])
 
         _, metrics_, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['cfg_path'], SAVENAME)
         t2 = time.time()
         print(f'Training Epoch took {(t2-t1)/60} mins', flush=True)
 
+        #Check for overfit and save the outputs of relevatn epochs in that case
+        if abs(max(eval['R2'])-temp_eval['R2']) > 0.15 or overfit or (TASK != 'GraphReg' and abs(max(eval['R2_2'])-temp_eval['R2_2']) > 0.15):
+            #the logic used here is to ensure that outputs from non-overfitting epochs are saved as well
+            if overfit and not (max(eval['R2'])-temp_eval['R2'] > 0.15 or (TASK!='GraphReg' and max(eval['R2_2'])-temp_eval['R2_2'] > 0.15)):  overfit = False
+            else:   overfit = True
+            save_output(train_output, train_labels, test_output, test_labels, str(i))
 
-    output = temp_output  
-    labels = temp_labels
+    save_output(train_output, train_labels, test_output, test_labels, '_final')
+
     #Plotting
-    plotting(metrics_, eval, output, labels, 'results/plots/', '', TASK)
-
-    
-    return metrics, eval, output, labels, test_output, test_labels
+    plotting(metrics_, eval, train_output, train_labels, 'results/plots/', '', TASK)
+  
+    return metrics, eval, train_output, train_labels, test_output, test_labels
 
 
 
@@ -95,12 +97,12 @@ def objective(search_space, cfg, device,
     if cfg['model'] == 'Node2Vec':
             trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
             trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
-    elif cfg['model'] == 'GATLSTM':
+    elif cfg['model'] in ['GATLSTM', 'TAGLSTM', 'MLPLSTM']:
         # Split dataset into train and test indices
         trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], cfg['stormsplit'], cfg['max_seq_length'])
         # Create DataLoaders for train and test sets
-        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
-        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
+        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=N_CPUS, pin_memory=pin_memory)
+        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=N_CPUS, pin_memory=pin_memory)
     else:
         trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
         trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
@@ -157,7 +159,7 @@ def objective(search_space, cfg, device,
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}', flush=True)
-        temp_metrics, output, labels = engine.train_epoch(trainloader, params['gradclip'])
+        temp_metrics, output, labels = engine.train_epoch(trainloader, params['gradclip'], cfg['full_output'])
 
         #report
         if i % cfg['output_freq'] == 0:
@@ -190,13 +192,20 @@ def objective(search_space, cfg, device,
                                 'train_edge_loss' : temp_metrics['edge_loss'],
                                 'test_edge_loss' : temp_eval['edge_loss']
                                 }
-            else:
+            elif TASK == 'NodeReg':
                 temp_report = { 'train_loss' : temp_metrics['loss'],
                                 'test_loss' : temp_eval['loss'],
                                 'train_R2' : temp_metrics['R2'],
                                 'test_R2' : temp_eval['R2'],
                                 'train_R2_2' : temp_metrics['R2_2'],
                                 'test_R2_2' : temp_eval['R2_2']}
+            else:
+                temp_report = { 'train_loss' : temp_metrics['loss'],
+                                'test_loss' : temp_eval['loss'],
+                                'train_R2' : temp_metrics['R2'],
+                                'test_R2' : temp_eval['R2']
+                }
+                               
             session.report(temp_report)   
 
             torch.save(list(output), cfg['cfg_path'] + "results/" + 'output.pt') #saving train losses
@@ -334,6 +343,10 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
             result = {
                 'train_loss' : metrics['loss'],
                 'test_loss' : eval['loss'],
+                'train_R2' : metrics['R2'],
+                'test_R2' : eval['R2'],
+                'train_R2_2' : metrics['R2_2'],
+                'test_R2_2' : eval['R2_2'],
                 'train_acc' : metrics['accuracy'],
                 'test_acc'  : eval['accuracy'],
                 'train_prec'    : metrics['precision'],
@@ -346,6 +359,7 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
                 'test_node_loss' : eval['node_loss'],
                 'train_edge_loss' : metrics['edge_loss'],
                 'test_edge_loss' : eval['edge_loss']
+
             }
 
 
@@ -442,8 +456,8 @@ def plotting(metrics_, eval, output, labels, folder, NAME, task):
 
         # Plot confusion matrix for edge status
         # Convert logits to predicted class
-        predictions = np.argmax(output[1], axis=1)
-        true_labels = labels[1].reshape(-1)
+        predictions = 1-np.argmax(output[1], axis=1)
+        true_labels = 1-labels[1].reshape(-1)
         # Compute confusion matrix
         cm = confusion_matrix(true_labels, predictions)
         cm = cm.astype('float') / cm.sum(axis=1, keepdims=True)
