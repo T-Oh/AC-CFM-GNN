@@ -42,7 +42,8 @@ class dataset_graphlstm(Dataset):
         if seq_len < self.max_seq_len:
             timesteps = [self.static_data.clone()]  # Add static data as the first timestep
             timesteps[0].x = timesteps[0].x[:, :4]  # Keep only the first 4 node features
-        timesteps = []
+        else:
+            timesteps = []
 
         for i in range(min(seq_len, self.max_seq_len)):
             if seq_len >= self.max_seq_len:
@@ -59,7 +60,6 @@ class dataset_graphlstm(Dataset):
             graph_data = torch.load(timestep_path)  # Load graph data for this timestep
             graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
             timesteps.append(graph_data)"""
-
         return timesteps
     
 
@@ -131,5 +131,5 @@ def create_lstm_dataloader(dataset, batch_size, shuffle, pin_memory, num_workers
     Creates a DataLoader for the given dataset and indices.
     """
     #subset = dataset_graphlstm(dataset.root_dir, sequence_indices=indices)
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers)
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=True)
     return loader
