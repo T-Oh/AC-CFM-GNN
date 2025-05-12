@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import os
 from ray import tune
 import warnings
+from datasets.dataset import create_datasets, create_loaders
+from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 
 
 def check_config_conflicts(cfg):
@@ -18,7 +20,7 @@ def check_config_conflicts(cfg):
     assert not (cfg['data'] == 'LDTSF' and cfg['task'] == 'NodeReg'),   'LDTSF Only works with GraphReg and GraphClass'
     assert not (cfg['data'] == 'LDTSF' and cfg['model'] != 'lstm'),     'LDTSF Only works with lstm as model'
     assert not (cfg['data'] == 'AC' and cfg['task'] == 'GraphClass'),   'None of the models working with AC data has GraphClass implemented' 
-    if not (cfg['data'] == 'LSTM' and cfg['model'] == 'GATLSTM'): 
+    if cfg['data'] == 'LSTM' and not cfg['model'] == 'GATLSTM': 
         warnings.warn("Using LSTM data with a model that is not GATLSTM, this should only be done for processing of LSTM data", UserWarning)
     
 
@@ -145,7 +147,7 @@ def setup_params_from_search_space(search_space, params, save=False, path=None, 
         
     return updated_params
 
-def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_length, save=False):
+def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_len_LDTSF):
     """
     Sets up the parameters dictionary for building and training a model
 
@@ -205,7 +207,7 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, 
         "num_conv_targets"  :   cfg['num_conv_targets'],
         'lstm_hidden_size'  :   cfg['lstm_hidden_size'],
         'num_lstm_layers'   :   cfg['num_lstm_layers'],
-        'max_seq_length'      :   max_length,
+        'max_seq_len_LDTSF'      :   max_seq_len_LDTSF,
 
         #Params for Node2vec
         'embedding_dim'   :   cfg['embedding_dim'],
@@ -219,6 +221,48 @@ def setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, 
     }
 
     return params
+
+def save_output(output, labels, test_output, test_labels, name=""):
+    with open("results/" + "output"+name+".pt", "wb") as f:
+        torch.save(output, f)
+    with open("results/" + "labels"+name+".pt", "wb") as f:
+        torch.save(labels, f)
+    with open("results/" + "test_output"+name+".pt", "wb") as f:
+        torch.save(test_output, f)
+    with open("results/" + "test_labels"+name+".pt", "wb") as f:
+        torch.save(test_labels, f)
+
+
+def choose_criterion(task, weighted_loss_label, weighted_loss_factor):
+            # Init Criterion
+        if task in ['GraphClass', 'typeIIClass']:
+            criterion = torch.nn.CrossEntropyLoss()
+        elif weighted_loss_label:
+            criterion = weighted_loss_label(
+            factor=torch.tensor(weighted_loss_factor))
+        elif task == 'StateReg':
+            criterion = state_loss(weighted_loss_factor)
+        else:
+            criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
+        return criterion
+
+def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
+    max_seq_len_LDTSF = -1
+    if cfg['model'] == 'Node2Vec':
+         trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+         trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
+    elif 'LSTM' in cfg['model']:
+            # Split dataset into train and test indices
+        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], 
+                                                     stormsplit=cfg['stormsplit'], max_seq_len=cfg['max_seq_length'])
+            # Create DataLoaders for train and test sets
+        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, pin_memory=pin_memory, num_workers=N_CPUS)
+        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, pin_memory=pin_memory, num_workers=N_CPUS)
+    else:
+         trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+         trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
+    return max_seq_len_LDTSF, trainset, trainloader, testloader
+
 
 def tensor_to_serializable(obj):
     if isinstance(obj, torch.Tensor):
