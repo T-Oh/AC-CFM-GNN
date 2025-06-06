@@ -1,7 +1,7 @@
 {
     /*General Settings*/
-    "cfg_path":         "/home/tohlinger/HUI/Documents/hi-accf-ml/",         
-    "dataset::path":    "/home/tohlinger/HUI/Documents/hi-accf-ml/",    
+    "cfg_path":         "",
+    "dataset::path":    "",
 
     /*Data Settings*/
     "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
@@ -31,7 +31,7 @@
 
     /*Model Settings*/
     "task":         "StateReg", //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg (possibly more)
-    "model":        "GATLSTM",      //GAT, TAG, GATLSTM
+    "model":        "GAT",      //GAT, TAG, GATLSTM
     "num_layers":   2,
     "hidden_size":  182,
 
@@ -163,5 +163,17 @@
     /*Others*/
     "manual_seed" : 7,
     "accuracy_tolerance":0.15,
-    "supernode" : false
+    "supernode" : false,
+    "normalize_injection" : false,
+    "multiply_base_voltage": true,
+    "zhu_check_buses" :  false,
+    "check_s_y" : false,
+
+    /*Zhu*/
+    "pl_w1": 1,
+    "pl_w2": 1,
+    "pl_w3": 1,
+    "pl_simply_train": false,
+    "physics_loss": true,
+    "pl_stage": "pretrain"
 }
