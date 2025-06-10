@@ -124,7 +124,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
         search_alg=baysopt,
         scheduler=scheduler)
     
-    run_config = air.RunConfig(local_dir=cfg['dataset::path']+'results/', name=cfg['study_ID'])#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
+    run_config = air.RunConfig(local_dir=cfg['cfg_path']+'results/', name=cfg['study_ID'])#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
     trainable = tune.with_parameters(objective,
                                      cfg=cfg,  
@@ -140,7 +140,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
             tune_config=tune_config,
             run_config=run_config)
     else:
-        tuner = tune.Tuner.restore(cfg['dataset::path']+'results/'+cfg['study_ID'], trainable=tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS)}))
+        tuner = tune.Tuner.restore(cfg['cfg_path']+'results/'+cfg['study_ID'], trainable=tune.with_resources(trainable, resources={"cpu": N_CPUS, "gpu": N_GPUS/(N_TASKS)}))
 
     results = tuner.fit()
     print(results)
