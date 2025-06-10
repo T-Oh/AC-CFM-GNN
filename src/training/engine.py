@@ -105,8 +105,8 @@ class Engine(object):
         edge_loss = 0
         first=True
         count = 0
-        total_output = None
-        total_labels = None
+        total_output = None #shape: tuple ([2,2000*N_instances], [7064*N_instances, 2]) where the first element is the node output and the second element is the edge output
+        total_labels = None #shape: tuple ([2,2000*N_instances], [1, 7064*N_instances]) where the first element is the node labels and the second element is the edge labels
 
         data_loading_time = 0.
         gpu_processing_time = 0.
@@ -127,12 +127,16 @@ class Engine(object):
             count +=1           
             #compile batch depending on task - ifinstance implies that the data is LDTSF
             batch = self.compile_batch(batch)
+
+
             data_loading_time += data_start-time.time()
-            if self.VERBOSE: print(f"Total Loading Time so far: {data_loading_time:.2f} s", flush=True)
+
             if self.VERBOSE:
+                print(f"Total Loading Time so far: {data_loading_time:.2f} s", flush=True)
                 gpu_start = time.time()
                 print('Pre forward pass: ')
                 self.log_gpu_usage()
+                
             with autocast():
                 output = self.model.forward(batch)
                 output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
@@ -151,7 +155,7 @@ class Engine(object):
                 elif self.task == 'StateReg':   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 #compile outputs and labels for saving                        
-                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels, full_output)  
+                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
             if self.VERBOSE:
                 print('Pre backward pass: ')
                 self.log_gpu_usage()
@@ -195,8 +199,10 @@ class Engine(object):
             print(f'Total processing time during epoch: {gpu_processing_time:.2f} s', flush=True)
         del batch, output, labels  
         t2 = time.time()
-
-        return metrics, total_output, total_labels
+        if full_output:
+            return metrics, total_output, total_labels
+        else:
+            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10])  #return only the first 2000 instances for saving memory
 
 
 
@@ -259,18 +265,7 @@ class Engine(object):
                     print(f'Labels: {labels}')
                    
                     #compile labels and output fo saving
-                    total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels, full_output)
-                    """if first:
-                        total_labels = labels#.detach().cpu()
-                        total_output = output#.detach().cpu()
-                        first = False
-                    else:
-                        if self.task == "StateReg":
-                            total_output = (cat((total_output[0].detach().cpu(),output[0].detach().cpu()),0), cat((total_output[1].detach().cpu(),output[1].detach().cpu()),0))
-                            total_labels = (cat((total_labels[0].detach().cpu(),labels[0].detach().cpu()),0), cat((total_labels[1].detach().cpu(),labels[1].detach().cpu()),0))
-                        else:
-                            total_output=cat((total_output,output.detach().cpu()),0)  
-                            total_labels=cat((total_labels,labels.detach().cpu()),0)   """            
+                    total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)         
 
                     if 'Class' in self.task or self.task == 'StateReg':
                         if self.task == 'typeIIClass': 
@@ -300,18 +295,21 @@ class Engine(object):
                     else:
                         temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
 
-
-                loss += temp_loss
-                node_loss += temp_node_loss
-                edge_loss += temp_edge_loss
+                    
+                    loss += temp_loss
+                    node_loss += temp_node_loss
+                    edge_loss += temp_edge_loss
 
             metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
             if self.VERBOSE:
                 print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
                 print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
                 print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
-            return metrics, total_output, total_labels
-            
+            if full_output:
+                return metrics, total_output, total_labels
+            else:
+                return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10])  #return only the first 2000 instances for saving memory
+                
 
 
     def log_gpu_usage(self):
@@ -332,7 +330,8 @@ class Engine(object):
         return batch
 
 
-    def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels, full_output):
+    def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels):
+        #first is flagged for the first batch the 2nd batch and onwards will be concatenated to the first batch
         if first:                   
             if self.task == "StateReg":
                 total_output=(output[0].detach().cpu(), output[1].detach().cpu())
@@ -342,10 +341,9 @@ class Engine(object):
                 total_labels=labels.detach().cpu()
         else:
             if self.task == "StateReg":
-                if len(total_output[0]) < 16000 or full_output:
-                    total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
-                    total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
-            elif len(total_output) < 16000 or full_output:
+                total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
+                total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
+            else:
                 total_output=cat((total_output,output.detach().cpu()),0)  
                 total_labels=cat((total_labels,labels.detach().cpu()),0)
         return total_output, total_labels
