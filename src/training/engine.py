@@ -68,7 +68,7 @@ class Engine(object):
             self.precision_metric = MulticlassPrecision(num_classes=4, average=None)
             self.recall_metric = MulticlassRecall(num_classes=4, average=None)
             self.accuracy_metric = MulticlassAccuracy(num_classes=4, average='micro')
-        elif self.task == 'StateReg':
+        elif self.task in ['StateReg', 'StateRegPI']:
             self.f1_metric = BinaryF1Score()
             self.precision_metric = BinaryPrecision()
             self.recall_metric = BinaryRecall()
@@ -101,8 +101,17 @@ class Engine(object):
 
         """
         loss = 0.0
-        node_loss = 0
-        edge_loss = 0
+        node_loss = 0.
+        edge_loss = 0.
+        PI_loss = 0.
+        self.R2Score.reset()
+        self.f1_metric.reset()
+        self.precision_metric.reset()
+        self.recall_metric.reset()
+        self.accuracy_metric.reset()
+        temp_node_loss = 0.
+        temp_edge_loss = 0.
+        temp_PI_loss = 0.
         first=True
         count = 0
         total_output = None #shape: tuple ([2,2000*N_instances], [7064*N_instances, 2]) where the first element is the node output and the second element is the edge output
@@ -152,7 +161,8 @@ class Engine(object):
                 #calc and backpropagate loss
                 if self.masking:    output, labels = self.apply_masking(output, labels)
                 if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
-                elif self.task == 'StateReg':   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                elif self.task in ['StateReg']:   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                elif self.task == 'StateRegPI': temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 #compile outputs and labels for saving                        
                 total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
@@ -174,15 +184,18 @@ class Engine(object):
                 self.optimizer.zero_grad(set_to_none=True)
             """
             loss += temp_loss.item()
-            if self.task == 'StateReg':
+            if self.task in ['StateReg', 'StateRegPI']:
                 node_loss += temp_node_loss.item()
                 edge_loss += temp_edge_loss.item()
+                if self.task == 'StateRegPI':
+                    PI_loss += temp_PI_loss.item()
 
-            if 'Class' in self.task or self.task == 'StateReg':
+            if 'Class' in self.task or self.task in ['StateReg', 'StateRegPI']:
                 if self.task == 'typeIIClass':  
                     labels = labels.reshape(-1).detach().cpu()
                     preds = torch.argmax(output, dim=1)
-                elif self.task == 'StateReg':
+                elif self.task in ['StateReg','StateRegPI']:
+                    print('Output[1] shape: ', output[1].shape)
                     preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
                     labels = 1-labels[1].reshape(-1).detach().cpu()
                 else:
@@ -193,7 +206,7 @@ class Engine(object):
                 self.accuracy_metric.update(preds, labels)
             first = False
 
-        metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
+        metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count)
         if self.VERBOSE: 
             print(f'Total Loading time during epoch: {data_loading_time:.2f} s', flush=True)
             print(f'Total processing time during epoch: {gpu_processing_time:.2f} s', flush=True)
@@ -236,8 +249,16 @@ class Engine(object):
                 loss = 0.
                 node_loss = 0.
                 edge_loss = 0.
+                PI_loss = 0.
                 temp_node_loss = 0.
                 temp_edge_loss = 0.
+                temp_PI_loss = 0.
+                self.R2Score.reset()
+                self.f1_metric.reset()
+                self.precision_metric.reset()
+                self.recall_metric.reset()
+                self.accuracy_metric.reset()
+
                 first = True
                 count = 0
                 data_loading_time = 0.
@@ -266,14 +287,17 @@ class Engine(object):
                    
                     #compile labels and output fo saving
                     total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)         
-
-                    if 'Class' in self.task or self.task == 'StateReg':
+                    first = False
+                    if 'Class' in self.task or self.task in ['StateReg', 'StateRegPI']:
                         if self.task == 'typeIIClass': 
                             temp_loss = self.criterion(output, labels).tolist() 
                             labels = labels.reshape(-1).detach().cpu()
                             preds = torch.argmax(output, dim=1).detach().cpu()
-                        elif self.task == 'StateReg':
-                            temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                        elif self.task in ['StateReg', 'StateRegPI']:
+                            if self.task == 'StateReg':
+                                temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                            else:
+                                temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                             if self.VERBOSE:
                                 if torch.isnan(temp_loss) or torch.isinf(temp_loss):
                                     print("Loss contains NaN or Inf values. Skipping this batch.")
@@ -281,6 +305,9 @@ class Engine(object):
                                     print("Node Loss contains NaN or Inf values. Skipping this batch.")
                                 if torch.isnan(temp_edge_loss) or torch.isinf(temp_edge_loss):
                                     print("Edge Loss contains NaN or Inf values. Skipping this batch.")
+                            if self.task == 'StateRegPI':
+                                if torch.isnan(temp_PI_loss) or torch.isinf(temp_PI_loss):
+                                    print("Power Injection Loss contains NaN or Inf values. Skipping this batch.")
                             preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
                             labels = 1-labels[1].reshape(-1).detach().cpu()
                         else:
@@ -299,8 +326,9 @@ class Engine(object):
                     loss += temp_loss
                     node_loss += temp_node_loss
                     edge_loss += temp_edge_loss
+                    PI_loss += temp_PI_loss if self.task == 'StateRegPI' else 0
 
-            metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, count)
+            metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count)
             if self.VERBOSE:
                 print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
                 print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
@@ -333,14 +361,14 @@ class Engine(object):
     def compile_labels_output_for_saving(self, first, output, labels, total_output, total_labels):
         #first is flagged for the first batch the 2nd batch and onwards will be concatenated to the first batch
         if first:                   
-            if self.task == "StateReg":
+            if self.task in ['StateReg', 'StateRegPI']:
                 total_output=(output[0].detach().cpu(), output[1].detach().cpu())
                 total_labels=(labels[0].detach().cpu(), labels[1].detach().cpu())
             else:
                 total_output=output.detach().cpu()
                 total_labels=labels.detach().cpu()
         else:
-            if self.task == "StateReg":
+            if self.task in ['StateReg', 'StateRegPI']:
                 total_output = (cat((total_output[0],output[0].detach().cpu()),0), cat((total_output[1],output[1].detach().cpu()),0))
                 total_labels = (cat((total_labels[0],labels[0].detach().cpu()),0), cat((total_labels[1],labels[1].detach().cpu()),0))
             else:
@@ -359,7 +387,7 @@ class Engine(object):
 
 
 
-    def compute_metrics(self, total_output, total_labels, loss, node_loss, edge_loss, count):
+    def compute_metrics(self, total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count):
         if not 'Class' in self.task:  
             #GTSF with edge_labels
             if isinstance(total_output, tuple): 
@@ -380,6 +408,8 @@ class Engine(object):
                     'node_loss' : float(node_loss/count),
                     'edge_loss' : float(edge_loss/count)
                 }
+                if self.task == 'StateRegPI':
+                    metrics['PI_loss'] = float(PI_loss/count)
             elif total_output.dim() == 3:
                 total_output = total_output.reshape(-1, 2)
                 total_labels = total_labels.reshape(-1, 2)
@@ -449,14 +479,14 @@ def shape_and_cast_labels_and_output(output, batch, task, device):
             labels = batch[1].to(torch.long).reshape(-1) 
             output = output.transpose(0,1)
 
-    elif task in ["NodeReg", "StateReg"]:
+    elif task in ["NodeReg", "StateReg", "StateRegPI"]:
         #Time Series Forecasting
         if isinstance(batch, tuple):    #tuple for TSF  
             #Graph Time Series Forecasting (GTSF)
             if isinstance(batch[1][0], int):    #for GATLSTM the tuple contains the sequence lenghts at batch[1] which is int
                 labels = [batch[0][i].node_labels[-2000:,:] for i in range(len(batch[0]))]
                 labels = torch.stack(labels)
-                if task == 'StateReg':
+                if task in ['StateReg', 'StateRegPI']:
                     edge_labels = [batch[0][i].edge_labels[-7064:] for i in range(len(batch[0]))]
                     edge_labels = torch.stack(edge_labels).to(torch.long)
                     labels = (labels.reshape(-1,2).to(device), edge_labels.to(device))
