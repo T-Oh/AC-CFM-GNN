@@ -7,6 +7,7 @@ Created on Thu May 25 16:29:21 2023
 
 import torch
 
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
@@ -50,8 +51,7 @@ def run_single(cfg, device, N_CPUS):
         #Node2Vec
         if cfg['model'] == 'Node2Vec':  trainloader, testloader, params = setup_node2vec(cfg, device, trainloader, mask_probs, params)
 
-        # Init Criterion
-        criterion = choose_criterion(cfg['task'], cfg['weighted_loss_label'], cfg['weighted_loss_factor'])
+        criterion = choose_criterion(cfg['task'], cfg['weighted_loss_label'], cfg['weighted_loss_factor'], cfg, device)
 
         # Loading GNN model
         model = get_model(cfg, params)

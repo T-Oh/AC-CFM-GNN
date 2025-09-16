@@ -266,6 +266,31 @@ def init_metrics_vars(TASK):
             'node_loss' : [],
             'edge_loss' : []
         }
+    elif TASK == 'StateRegPI':
+        metrics = { 
+            'loss'  : [],
+            'R2'    : [],
+            'R2_2'  : [],
+            'accuracy'  : [],
+            'precision' : [],
+            'recall'    : [],
+            'F1'        : [],
+            'node_loss' : [],
+            'edge_loss' : [],
+            'PI_loss' : []
+        }
+        eval = {
+            'loss'  : [],
+            'R2'    : [],
+            'R2_2'  : [],
+            'accuracy'  : [],
+            'precision' : [],
+            'recall'    : [],
+            'F1'        : [],
+            'node_loss' : [],
+            'edge_loss' : [],
+            'PI_loss' : []
+        }
     else:
         metrics = {
             'loss'  : [],
@@ -316,7 +341,7 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
             result['train_R2_2'] = metrics['R2_2']
             result['test_R2_2'] = eval['R2_2']
 
-        if TASK == 'StateReg':
+        if 'StateReg' in TASK :
             temp_train_accuracy = temp_metrics['accuracy']
             temp_train_precision = temp_metrics['precision']
             temp_train_recall = temp_metrics['recall']
@@ -361,6 +386,13 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
                 'test_edge_loss' : eval['edge_loss']
 
             }
+            if 'PI_loss' in temp_eval.keys():
+                print(f'Train PI Loss: {temp_metrics["PI_loss"]}')
+                print(f'Test PI Loss: {temp_eval["PI_loss"]}')
+                result['train_PI_loss'] = metrics['PI_loss']
+                result['test_PI_loss'] = eval['PI_loss']
+                logging.info(f"Epoch {epoch}: training loss {temp_train_loss} / test_loss {temp_test_loss} / Train Accuracy {temp_train_accuracy} / Test Accuracy {temp_test_accuracy} / Train Precision {temp_train_precision} / Test Precision {temp_test_precision} / Train Recall {temp_train_recall} / Test Recall {temp_test_recall} / Train F1 {temp_train_f1} / Test F1 {temp_test_f1} / Train PI Loss {temp_metrics['PI_loss']} / Test PI Loss {temp_eval['PI_loss']}")
+
 
 
     else:
@@ -409,13 +441,22 @@ def log_metrics(temp_metrics, temp_eval, metrics, eval, epoch, TASK, path, saven
 def plotting(metrics_, eval, output, labels, folder, NAME, task):
     print('Plotting...')
     for key in metrics_:
-        print('metrics')
+        print(key)
         fig1, ax1 = plt.subplots()
         ax1.plot(metrics_[key], label='Train' + key)
         ax1.plot(eval[key], label='Test' + key)
         ax1.legend()
         fig1.savefig(folder+key+'_'+NAME+'.png', bbox_inches='tight')
         plt.close()
+
+        if 'R2' in key:
+            fig1, ax1 = plt.subplots()
+            ax1.plot(metrics_[key], label='Train' + key)
+            ax1.plot(eval[key], label='Test' + key)
+            ax1.set_ylim(0,1)
+            ax1.legend()
+            fig1.savefig(folder+key+'_zoom_'+NAME+'.png', bbox_inches='tight')
+            plt.close()
     
     print('Scatter Plot')
     if task == 'GraphReg':
