@@ -9,7 +9,12 @@ def load_data_from_scenario_folders(processed_path):
     for root, dirs, files in os.walk(processed_path):
         for file in files:
             if file.endswith(".pt") and "pre" not in file:
-                yield torch.load(os.path.join(root, file))
+                file_path = os.path.join(root, file)
+                try:
+                    yield torch.load(file_path)
+                except Exception as e:
+                    print(f"[CORRUPTED] Could not load {file_path}: {e}")
+                    continue
 
 def get_global_min_max(processed_path):
     """First pass: Determine global min and max for all features."""
@@ -143,9 +148,9 @@ def plot_histograms(hist, bin_edges, title, save_path, NAME):
 
 # Main Execution
 if __name__ == "__main__":
-    processed_path = "processed/"
+    processed_path = "normalized/"
     save_dir = "feat_dists/"
-    NAME = 'edge_label_test'
+    NAME = 'PU_test_normalized' 
     os.makedirs(save_dir, exist_ok=True)
 
     # First pass: Get global min and max values

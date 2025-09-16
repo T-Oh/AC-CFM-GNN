@@ -7,9 +7,9 @@ from tqdm import tqdm
 EDGE_LABELS = True
 # Thresholds for checks (customize these values)
 thresholds = {
-    "x": {"min": [-300, -220, -550, -550], "max": [1500, 550, 550, 550]},  # First 4 node features
-    "node_labels": {"min": -550, "max": 550},  # Node labels
-    "edge_attr": {"min": [-200, -3500], "max": [350, 2200]},  # Edge attributes
+    "x": {"min": [-2.9, -3.85, -1.11, -1.11], "max": [20.167, 10.265, 1.11, 1.11]},  # First 4 node features
+    "node_labels": {"min": -1.11, "max": 1.11},  # Node labels
+    "edge_attr": {"min": [-200, -3200], "max": [300, 1850]},  # Edge attributes
 }
 
 
@@ -18,8 +18,13 @@ def check_for_invalid_values(file_path):
     Checks a .pt file for NaNs, positive/negative infinities, and threshold violations.
     Returns details about where invalid values were found.
     """
-    data = torch.load(file_path)
+
     invalid_details = []
+    try:
+        data = torch.load(file_path)
+    except Exception as e:
+        invalid_details.append(f"File corrupted or unreadable: {str(e)}")
+        return invalid_details  # No need to continue checks
 
     # Check node features (x)
     if torch.isnan(data.x).any() or torch.isinf(data.x).any():
