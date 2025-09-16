@@ -10,6 +10,8 @@ from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, 
 
 from datasets.dataset import mask_probs_add_bias
 
+from utils.utils import state_loss
+
 
 class Engine(object):
     """
@@ -63,6 +65,7 @@ class Engine(object):
         self.return_full_output = return_full_output
         self.scaler = GradScaler()  #necessary for mixed precision learning
         self.R2Score = R2Score()
+        #self.track_loss = state_loss(0.2).to(self.device)  #TO BE REMOVED. ONLY USED FOR TRACKING PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS
         if 'Class' in self.task or self.task == 'typeII':
             self.f1_metric = MulticlassF1Score(num_classes=4, average=None)
             self.precision_metric = MulticlassPrecision(num_classes=4, average=None)
@@ -159,17 +162,24 @@ class Engine(object):
                     if any(torch.isnan(labels[1].reshape(-1))) or any(torch.isinf(labels[1].reshape(-1))):
                             print("Edge Labels contain NaN or Inf values. Skipping this batch.")
                 #calc and backpropagate loss
+                loss_start = time.time()
                 if self.masking:    output, labels = self.apply_masking(output, labels)
                 if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
                 elif self.task in ['StateReg']:   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 elif self.task == 'StateRegPI': temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
+                print('Time to calculate loss of one batch: ', time.time()-loss_start)
                 #compile outputs and labels for saving                        
                 total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
-            if self.VERBOSE:
-                print('Pre backward pass: ')
-                self.log_gpu_usage()
+                if self.VERBOSE:
+                    print('Pre backward pass: ')
+                    self.log_gpu_usage()
+                backward_pass_start = time.time()
+                #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
+                #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
+
             temp_loss.backward()
+            print('Time for backward pass of one batch: ', time.time()-backward_pass_start)
             if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
             self.optimizer.step()
 
@@ -195,7 +205,6 @@ class Engine(object):
                     labels = labels.reshape(-1).detach().cpu()
                     preds = torch.argmax(output, dim=1)
                 elif self.task in ['StateReg','StateRegPI']:
-                    print('Output[1] shape: ', output[1].shape)
                     preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
                     labels = 1-labels[1].reshape(-1).detach().cpu()
                 else:
@@ -322,7 +331,8 @@ class Engine(object):
                     else:
                         temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
 
-                    
+                    #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
+                    #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
                     loss += temp_loss
                     node_loss += temp_node_loss
                     edge_loss += temp_edge_loss

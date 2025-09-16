@@ -99,7 +99,7 @@ def objective(search_space, cfg, device,
             trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     elif cfg['model'] in ['GATLSTM', 'TAGLSTM', 'MLPLSTM']:
         # Split dataset into train and test indices
-        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], cfg['stormsplit'], cfg['max_seq_length'])
+        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], cfg['stormsplit'], cfg['max_seq_length'], autoregressive=cfg['autoregressive'])
         # Create DataLoaders for train and test sets
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=N_CPUS, pin_memory=pin_memory)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=N_CPUS, pin_memory=pin_memory)

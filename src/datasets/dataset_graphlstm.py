@@ -4,20 +4,28 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torch_geometric.data import Batch
 
 class dataset_graphlstm(Dataset):
-    def __init__(self, root_dir, sequence_indices=None, max_seq_len=100):
+    def __init__(self, root_dir, sequence_indices=None, max_seq_len=100, autoregressive = True):
         """
         root_dir: Path to the directory containing sequences and timesteps.
         sequence_indices: Indices of sequences to include in this dataset.
         """
         # Ensure the root directory ends with 'processed/' without duplication
+        self.AUTOREGRESSIVE = autoregressive
+        self.WINDOWSIZE = max_seq_len
         if not root_dir.endswith('processed/'):
             self.root_dir = os.path.join(root_dir, 'processed/')
         else:
             self.root_dir = root_dir
-
-        self.sequence_paths = sorted(
-            [entry for entry in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, entry))]
-        )
+        
+        if not self.AUTOREGRESSIVE:
+            self.sequence_paths = sorted(
+                [entry for entry in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, entry))]
+            )
+        else:
+            print('Autoregressive data loading')
+            self.sequence_paths = sorted(
+                [entry for entry in os.listdir(self.root_dir)[:self.WINDOWSIZE] if os.path.isdir(os.path.join(self.root_dir, entry))]
+            )
         self.static_data = torch.load(os.path.join(self.root_dir, 'data_static.pt'))
         self.max_seq_len = max_seq_len
 
@@ -34,10 +42,13 @@ class dataset_graphlstm(Dataset):
         """
         Returns all timesteps for a single sequence as a list of Data objects.
         """
+        #print('THIS')
         sequence_name = self.sequence_paths[idx]
         seq_dir = os.path.join(self.root_dir, sequence_name)
         timestep_files = sorted(os.listdir(seq_dir), key=lambda x: int(x.split('_')[2].split('.')[0]))
         seq_len = len(timestep_files)
+        #print('seq_len:', seq_len)
+        #print('max_seq_len:', self.max_seq_len)
         #If the sequence is short than max_seq_len, pad with one of the static data. The rest of the padding (if necessary) will be done in collate_fn
         if seq_len < self.max_seq_len:
             timesteps = [self.static_data.clone()]  # Add static data as the first timestep
@@ -45,21 +56,22 @@ class dataset_graphlstm(Dataset):
         else:
             timesteps = []
 
-        for i in range(min(seq_len, self.max_seq_len)):
-            if seq_len >= self.max_seq_len:
-                timestep_path = os.path.join(seq_dir, timestep_files[-self.max_seq_len+i])
-            else:
+        if not self.AUTOREGRESSIVE:
+            for i in range(min(seq_len, self.max_seq_len)):
+                if seq_len >= self.max_seq_len:
+                    timestep_path = os.path.join(seq_dir, timestep_files[-self.max_seq_len+i])
+                else:
+                    timestep_path = os.path.join(seq_dir, timestep_files[i])
+                graph_data = torch.load(timestep_path)  # Load graph data for this timestep
+                graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
+                timesteps.append(graph_data)
+        else:
+            for i in range(min(seq_len, self.max_seq_len)):
                 timestep_path = os.path.join(seq_dir, timestep_files[i])
-
-            graph_data = torch.load(timestep_path)  # Load graph data for this timestep
-            graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
-            timesteps.append(graph_data)
-        """for file in timestep_files:
-            timestep_path = os.path.join(seq_dir, file)
-            print(timestep_path)
-            graph_data = torch.load(timestep_path)  # Load graph data for this timestep
-            graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
-            timesteps.append(graph_data)"""
+                graph_data = torch.load(timestep_path)  # Load graph data for this timestep
+                graph_data.x = graph_data.x[:, :4]  # Slice node features to keep only the first 4
+                timesteps.append(graph_data)
+        #print(timesteps)
         return timesteps
     
 
@@ -118,11 +130,11 @@ def create_train_test_split(dataset, train_ratio=0.8, random_seed=42, stormsplit
 
     return train_indices, test_indices
 
-def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit, max_seq_len):
-    dataset = dataset_graphlstm(root_dir=root_dir, max_seq_len=max_seq_len)
+def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit, max_seq_len, autoregressive):
+    dataset = dataset_graphlstm(root_dir=root_dir, max_seq_len=max_seq_len, autoregressive=autoregressive)
     train_indices, test_indices =create_train_test_split(dataset, train_ratio, random_seed, stormsplit)
-    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices, max_seq_len=max_seq_len)
-    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices, max_seq_len=max_seq_len)
+    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices, max_seq_len=max_seq_len, autoregressive=autoregressive)
+    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices, max_seq_len=max_seq_len, autoregressive=autoregressive)
 
     return trainset, testset
 
@@ -131,5 +143,5 @@ def create_lstm_dataloader(dataset, batch_size, shuffle, pin_memory, num_workers
     Creates a DataLoader for the given dataset and indices.
     """
     #subset = dataset_graphlstm(dataset.root_dir, sequence_indices=indices)
-    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=True)
+    loader = DataLoader(dataset, batch_size=batch_size, collate_fn=collate_fn, shuffle=shuffle, pin_memory=pin_memory, num_workers=num_workers, persistent_workers=False)
     return loader

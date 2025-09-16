@@ -1,14 +1,18 @@
-from typing import List, Optional, Union
-
 import torch
 import json
-
-import torch.nn
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+
+import scipy.io
+import torch.nn
+
+import numpy as np
+import pickle as pkl
+import matplotlib.pyplot as plt
+
 from ray import tune
 import warnings
+from torch_geometric.data import Data
+from torch_scatter import scatter_add
 from datasets.dataset import create_datasets, create_loaders
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 
@@ -138,9 +142,11 @@ def setup_params_from_search_space(search_space, params, save=False, path=None, 
             if search_space[key] < 1:
                 updated_params[key] = 'single'
             elif search_space[key] < 2:
-                updated_params[key] = 'double'  
+                updated_params[key] = 'node_edge'  
             elif search_space[key] < 3:
-                updated_params[key] = 'triple'
+                updated_params[key] = 'node_node_edge'
+        elif key in ['num_layers', 'hidden_size', 'reghead_size', 'reghead_layers', 'num_conv_targets', 'lstm_hidden_size', 'num_lstm_layers', 'K', 'heads']:
+            updated_params[key] = int(search_space[key])
         else:
             updated_params[key] = search_space[key]
 
@@ -233,7 +239,7 @@ def save_output(output, labels, test_output, test_labels, name=""):
         torch.save(test_labels, f)
 
 
-def choose_criterion(task, weighted_loss_label, weighted_loss_factor):
+def choose_criterion(task, weighted_loss_label, weighted_loss_factor, cfg, device):
             # Init Criterion
         if task in ['GraphClass', 'typeIIClass']:
             criterion = torch.nn.CrossEntropyLoss()
@@ -242,8 +248,10 @@ def choose_criterion(task, weighted_loss_label, weighted_loss_factor):
             factor=torch.tensor(weighted_loss_factor))
         elif task == 'StateReg':
             criterion = state_loss(weighted_loss_factor)
-        else:
-            criterion = torch.nn.MSELoss(reduction='mean')  # TO defines the loss
+        elif task == 'StateRegPI':
+            criterion = state_loss_power_injection(cfg, weighted_loss_factor, cfg['PI_factor'], device)
+        elif task == 'NodeReg':
+            criterion = torch.nn.MSELoss(reduction='mean')
         return criterion
 
 def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
@@ -254,7 +262,7 @@ def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
     elif 'LSTM' in cfg['model']:
             # Split dataset into train and test indices
         trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'], 
-                                                     stormsplit=cfg['stormsplit'], max_seq_len=cfg['max_seq_length'])
+                                                     stormsplit=cfg['stormsplit'], max_seq_len=cfg['max_seq_length'], autoregressive=cfg['autoregressive'])
             # Create DataLoaders for train and test sets
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, pin_memory=pin_memory, num_workers=N_CPUS)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, pin_memory=pin_memory, num_workers=N_CPUS)
@@ -304,9 +312,147 @@ class state_loss(torch.nn.Module):
 
     def forward(self, node_output, edge_output, node_labels, edge_labels):
         node_loss = self.node_loss(node_output, node_labels)
-        edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))*self.edge_factor
-        loss = node_loss + edge_loss
+        edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))
+        loss = node_loss + edge_loss*self.edge_factor
         return loss, node_loss, edge_loss
+    
+class state_loss_power_injection(torch.nn.Module):
+    def __init__(self, cfg, edge_factor, PI_factor, device):
+        """
+        Initializes the state loss with an edge factor and provides the necessary static information for the power injection loss.
+        Parameters
+        ----------
+        edge_factor : float
+            Factor to scale the edge loss.
+        b_edge_attr : torch.Tensor, optional
+            Edge attributes representing the shunt admittance (jb/2) for each edge.
+        Y_raw : torch.Tensor
+            Raw admittance matrix of the grid, used to build the Y matrix based on the edge predictions. Used to calculate the power injections.
+        basekV : torch.Tensor
+            Base voltage of the grid, used to calculate the power injections.
+        min_max : dict
+            Dictionary containing the min and max values for denormalization of the predictions.
+        """
+
+        super(state_loss_power_injection, self).__init__()
+        self.edge_factor = edge_factor
+        self.PI_factor = PI_factor
+        self.node_loss = torch.nn.MSELoss(reduction='mean')
+        self.edge_loss = torch.nn.CrossEntropyLoss(reduction='mean')
+        self.PI_loss = torch.nn.MSELoss(reduction='mean')
+
+        self.device=device
+        #Things needed for the power injection loss
+        static_data = torch.load(os.path.join(cfg['dataset::path'], 'processed/data_static.pt'))    #Used for pytorch branch IDs of fully functioning grid
+        pwsdata = scipy.io.loadmat(os.path.join(cfg['dataset::path'], 'raw/pwsdata.mat'))    #  
+        self.edge_index = static_data.edge_index
+        self.Y_raw = torch.tensor(pwsdata['clusterresult_'][0,0][10] )
+        self.Y_raw = torch.complex(torch.tensor(self.Y_raw.real), torch.tensor(self.Y_raw.imag)).type(torch.complex64).to(self.device)
+
+     
+        bus_IDs = torch.tensor(pwsdata['clusterresult_'][0,0][2][:,0] )
+        branch_data = pwsdata['clusterresult_'][0,0][4]
+        b = torch.tensor(branch_data[:,4] )
+        self.b_edge_attr = self.create_b_edge_attr(bus_IDs, branch_data, self.edge_index, b).to(self.device)
+
+        print(f'Using State Loss with edge factor {self.edge_factor} and PI factor {self.PI_factor}')
+
+    def forward(self, node_output, edge_output, node_labels, edge_labels):
+        #denormalized_output, denormalized_labels = self.denormalize((node_output, edge_output), (node_labels, edge_labels))
+        node_loss = self.node_loss(node_output, node_labels)
+
+        edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))
+
+        S = self.calculate_S((node_output, edge_output), (node_labels, edge_labels), use_edge_labels=True)
+        S_true = self.calculate_S((node_labels, edge_labels), (node_labels, edge_labels), use_edge_labels=True)
+        PI_loss = self.PI_loss(torch.view_as_real(S), torch.view_as_real(S_true))
+
+        loss = node_loss + self.edge_factor*edge_loss + self.PI_factor*PI_loss
+        return loss, node_loss, edge_loss, PI_loss
+    
+    
+    def build_Y_matrix_from_predictions(self, edge_predictions):
+        Y = self.Y_raw.clone()
+        Y = Y.to(torch.complex64)
+        inactive_edges = torch.where(edge_predictions.flatten() == 0)[0]
+
+        for idx in inactive_edges:
+            #print('inactive_edges: ', len(inactive_edges))
+            #print(idx)
+            i, j = self.edge_index[:,idx]
+            y_ij = Y[i, j]
+    
+            if i!=j:
+                Y[i, i] += y_ij - self.b_edge_attr[idx]
+                Y[i, j] = 0
+            """if i < 10:
+                print('iterative')
+                print(i,j)
+                print(Y[i,j])
+
+        Y = self.Y_raw.clone()
+        Y = Y.to(torch.complex64)
+        
+        mask = (edge_predictions == 0)  # inactive edges
+        i_idx, j_idx = self.edge_index[:, mask]
+
+        # zero out Y[i, j] for inactive edges
+        Y[i_idx, j_idx] = 0
+
+        # fix diagonal in a vectorized way
+        diag_add = Y[i_idx, j_idx] - self.b_edge_attr[mask]
+        Y[i_idx, i_idx] += diag_add
+        print('vectorized')
+        print(Y[:10, :10])"""
+
+
+        Y[abs(Y.real)<0.001] = 0j
+        return Y #torch.complex(torch.tensor(Y.real), torch.tensor(Y.imag)).type(torch.complex64).to(self.device) 
+    
+    def calculate_S(self, output, labels, use_edge_labels):
+
+
+        S_all = []
+
+
+        for i in range(int(len(output[0])/2000)):
+            if use_edge_labels:
+                Y_instance = self.build_Y_matrix_from_predictions(labels[1][i])
+            else:
+                instance_output = (output[0], torch.nn.functional.gumbel_softmax(output[1][i*7064:(i+1)*7064], tau=1.0, hard=True, dim=1))  # shape: [batch_size]
+                Y_instance = self.build_Y_matrix_from_predictions(instance_output[1][:,0])
+
+            V = output[0][i*2000:(i+1)*2000,:].float()
+            V = torch.complex(V[:, 0], V[:, 1])
+
+            YV= Y_instance.to(dtype=torch.complex64) @ V.to(dtype=torch.complex64)
+            S = V * YV.conj()
+
+            S_all.append(S)
+
+        return torch.stack(S_all)
+    
+    def create_b_edge_attr(self, bus_IDs, branch_data, edge_index, b):
+        bus_id_map = {int(bus_id): idx for idx, bus_id in enumerate(bus_IDs)}
+        from_buses_raw = branch_data[:, 0].astype(int)
+        to_buses_raw   = branch_data[:, 1].astype(int)
+
+        line_to_shunt = {}
+        for fb_raw, tb_raw, b in zip(from_buses_raw, to_buses_raw, b):
+            fb = bus_id_map[fb_raw]
+            tb = bus_id_map[tb_raw]
+            i, j = sorted((fb, tb))
+            line_to_shunt[(i, j)] = 1j * b / 2  # jb/2
+
+    # Step 4: Assign jb/2 to each edge in edge_index
+        shunt_attr = torch.zeros(edge_index.shape[1], dtype=torch.cfloat)
+        for k in range(edge_index.shape[1]):
+            i = edge_index[0, k].item()
+            j = edge_index[1, k].item()
+            key = tuple(sorted((i, j)))
+            if key in line_to_shunt:
+                shunt_attr[k] = torch.tensor(line_to_shunt[key], dtype=torch.cfloat)
+        return shunt_attr
 
 
 class weighted_loss_label(torch.nn.Module):
@@ -341,6 +487,56 @@ class weighted_loss_var(torch.nn.Module):
         output_ = output.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         labels_ = labels.reshape(int(len(output)/len(self.weights)),len(self.weights))*self.weights
         return self.baseloss(output_.reshape(-1), labels_.reshape(-1))
+    
+
+def create_data_from_prediction(predicted_node_features, predicted_edge_status, reference, node_labels, edge_labels):
+    """
+    Create a new Data object from predicted node features and edge status.
+    This function assumes that the reference Data object is the static data (i.e. 7064 edges)
+    and that the edge status is a binary tensor indicating the presence of edges.
+    """
+
+    # Mask for active lines
+    active_mask = (predicted_edge_status == 0)  # [E], boolean
+
+    # Apply mask to get filtered topology and admittances
+    updated_edge_index = reference.edge_index[:, active_mask]       # [2, E']
+    updated_edge_attr  = reference.edge_attr[active_mask]           # [E']
+
+
+    # Get source and target nodes of each edge
+    src, dst = updated_edge_index  # [E], [E]
+
+    V = predicted_node_features[:,0] + 1j * predicted_node_features[:,1]  # [E], complex tensor
+    # Get edge admittances Y_ij
+    #Y_ij = updated_edge_attr       # [E], complex tensor
+    Y_ij = updated_edge_attr[:, 0] + 1j * updated_edge_attr[:, 1]  # shape [E], dtype=torch.complex64 or complex128
+
+
+    # V_j values at source nodes (i.e., neighbor voltages)
+    V_j = V[src]           # [E]
+    print('V_j:', V_j.shape)
+    print('Y_ij:', Y_ij.shape)
+    # Compute message: Y_ij * V_j
+    messages = Y_ij * V_j  # [E]
+
+
+    # Aggregate incoming messages at target node (i.e., YV at each node)
+    YV = scatter_add(messages, dst, dim=0, dim_size=V.shape[0])  # [N]
+    S = V * YV.conj()  # [N]
+    new_node_features = torch.stack((predicted_node_features[:,0], predicted_node_features[:,1], S.real, S.imag), dim=1)  # [N, 2]
+
+
+    new_data = Data(
+        x=new_node_features,  # shape [num_nodes, num_node_features]
+        edge_index = updated_edge_index,
+        edge_attr = updated_edge_attr,
+        node_labels = node_labels,  # shape [num_nodes, num_node_features]
+        edge_labels = edge_labels,  # shape [num_edges, num_edge_features]
+        # optionally include dummy y or node_labels if needed
+    )
+    return new_data
+
 
 
 
