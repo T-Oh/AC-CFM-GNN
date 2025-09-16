@@ -9,15 +9,18 @@ import torch
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import weighted_loss_label, setup_params, state_loss, save_params
+from utils.utils import weighted_loss_label, setup_params, state_loss, save_params, physics_loss
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
+
+
 
 
 def run_single(cfg, device, N_CPUS):
@@ -38,7 +41,21 @@ def run_single(cfg, device, N_CPUS):
         # Create Datasets and Dataloaders
         max_seq_length = -1
         if cfg['model'] == 'Node2Vec':
-             trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+             trainset, testset = create_datasets(
+                 cfg["dataset::path"],
+                 cfg=cfg,
+                 pre_transform=None,
+                 stormsplit=cfg['stormsplit'],
+                 data_type=cfg['data'],
+                 edge_attr=cfg['edge_attr'],
+                 # ||||  move to cfg???  ||||
+                 # vvvv                  vvvv
+                 normalize_injection = cfg['normalize_injection'],
+                 multiply_base_voltage = cfg['multiply_base_voltage'],
+                 zhu_check_buses = cfg['zhu_check_buses'],
+                 check_s_y = cfg['check_s_y']
+             )
+
              trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
         elif cfg['model'] == 'GATLSTM':
             # Split dataset into train and test indices
@@ -68,7 +85,9 @@ def run_single(cfg, device, N_CPUS):
 
         #Regular Models (GINE, GAT, TAG, MLP, GraphTransformer)
         # Init Criterion
-        if cfg['task'] in ['GraphClass', 'typeIIClass']:
+        if cfg['physics_loss'] and False:
+            criterion = physics_loss(cfg['pl_w1'], cfg['pl_w2'], cfg['pl_w3'], device)
+        elif cfg['task'] in ['GraphClass', 'typeIIClass']:
             criterion = torch.nn.CrossEntropyLoss()
         elif cfg['weighted_loss_label']:
             criterion = weighted_loss_label(
@@ -92,7 +111,7 @@ def run_single(cfg, device, N_CPUS):
         optimizer = get_optimizer(cfg, model, params)
 
         #Init LR Scheduler
-        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001, verbose=True)
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001)
 
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,

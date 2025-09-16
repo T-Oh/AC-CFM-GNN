@@ -1,3 +1,5 @@
+import copy
+
 import torch
 import pickle
 import logging
@@ -7,6 +9,9 @@ from ray.air import session
 from ray import train
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib
+
+from dataset import create_datasets_zhu
+
 matplotlib.use('Agg')  # Use a non-GUI backend for Matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,18 +20,91 @@ import numpy as np
 from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
-from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params
+from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params, physics_loss
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sklearn.metrics import confusion_matrix
 
+def run_epoch_loop(
+    trainloader,
+    testloader,
+    engine,
+    LRScheduler,
+    cfg,
+    TASK,
+    metrics,
+    evaluation,
+    name_or_fold="",
+    save_outputs=False,
+    plotting_dir=None,
+    report_to_session=False,
+    output_freq=None
+):
+    output, labels = [], []
+
+    for i in range(1, cfg['epochs'] + 1):
+        print(f'Epoch: {i}', flush=True)
+        t1 = time.time()
+
+        temp_metrics, output, labels = engine.train_epoch(trainloader, cfg.get('gradclip', None))
+
+        # Evaluation
+        if cfg.get('train_size', 1) == 1 and not report_to_session:
+            temp_eval, _, _ = engine.eval(trainloader)
+        else:
+            temp_eval, _, _ = engine.eval(testloader)
+
+        # Log and update learning rate
+        result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['cfg_path'], name_or_fold)
+        LRScheduler.step(temp_eval['loss'])
+
+        if report_to_session and (i % output_freq == 0):
+            temp_report = {
+                'train_loss': temp_metrics['loss'],
+                'test_loss': temp_eval['loss'],
+                'train_R2': temp_metrics['R2'],
+                'test_R2': temp_eval['R2'],
+                'train_R2_2': temp_metrics['R2_2'],
+                'test_R2_2': temp_eval['R2_2'],
+            }
+
+            if TASK == 'StateReg':
+                temp_report.update({
+                    'train_accuracy': temp_metrics['accuracy'],
+                    'test_accuracy': temp_eval['accuracy'],
+                    'train_precision': temp_metrics['precision'],
+                    'test_precision': temp_eval['precision'],
+                    'train_recall': temp_metrics['recall'],
+                    'test_recall': temp_eval['recall'],
+                    'train_F1': temp_metrics['F1'],
+                    'test_F1': temp_eval['F1'],
+                    'train_node_loss': temp_metrics['node_loss'],
+                    'test_node_loss': temp_eval['node_loss'],
+                    'train_edge_loss': temp_metrics['edge_loss'],
+                    'test_edge_loss': temp_eval['edge_loss'],
+                })
+
+
+
+            session.report(temp_report)
+
+            if save_outputs:
+                torch.save(list(output), cfg['cfg_path'] + "results/output.pt")
+                torch.save(list(labels), cfg['cfg_path'] + "results/labels.pt")
+
+        t2 = time.time()
+        print(f'Training Epoch took {(t2 - t1) / 60} mins', flush=True)
+
+    # Final plotting
+    if plotting_dir:
+        plotting(metrics, evaluation, output, labels, plotting_dir, name_or_fold, TASK)
+
+    return result, metrics, evaluation, output, labels
 
 
 
 def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     """
-    
-
     Parameters
     ----------
     trainloader : Dataloader
@@ -83,8 +161,145 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
     return metrics, eval, output, labels, test_output, test_labels
 
 
+def _objective(search_space, cfg, device,
+              mask_probs, pin_memory, N_CPUS, engine=None):
+    TASK = cfg['task']
+    PL = cfg['physics_loss']
 
-def objective(search_space, cfg, device,
+    if PL:
+        PL_STAGE = cfg['pl_stage']
+
+    max_seq_length = -1
+    NAME = session.get_trial_id() if session else "unknown_trial"
+
+    # Create Datasets and Loaders
+    if PL:
+        pretrain_set, finetune_set, testset, data_list = create_datasets_zhu(cfg["dataset::path"], cfg=cfg,
+                                                                         pre_transform=None,
+                                                                         stormsplit=cfg['stormsplit'],
+                                                                         data_type=cfg['data'])
+        trainloader, finetune_loader, testloader = create_loaders(cfg, pretrain_set, finetune_set, testset,)
+
+        if PL_STAGE == 'finetune':
+            trainloader = finetune_loader
+
+    elif cfg['model'] == 'Node2Vec':
+        trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None,
+                                            stormsplit=cfg['stormsplit'], data_type=cfg['data'],
+                                            edge_attr=cfg['edge_attr'])
+        trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset,
+                                                                 Node2Vec=True)  # If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
+    elif cfg['model'] == 'GATLSTM':
+        # Split dataset into train and test indices
+        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'],
+                                                 cfg['stormsplit'], cfg['max_seq_length'])
+        # Create DataLoaders for train and test sets
+        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
+        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
+    else:
+        trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None,
+                                            stormsplit=cfg['stormsplit'], data_type=cfg['data'],
+                                            edge_attr=cfg['edge_attr'])
+        trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS,
+                                                                 pin_memory=pin_memory, data_type=cfg['data'],
+                                                                 task=cfg['task'])
+
+    num_features, num_edge_features, num_targets = get_attribute_sizes(cfg, trainset)
+
+    params = setup_params(cfg, mask_probs, num_features, num_edge_features, num_targets, max_seq_length)
+    params = setup_params_from_search_space(search_space, params, save=True, path=cfg['cfg_path'], ID=NAME)
+    save_params(cfg['cfg_path'], params, ID=NAME)
+
+    print('\nSEARCH_SPACE:\n')
+    print(search_space)
+    print('PARAMS')
+    print(params, flush=True)
+    # if device=='cuda':
+    # print('CUDA')
+    # tune.utils.wait_for_gpu(target_util=0.66)
+
+    model = get_model(cfg, params)
+
+    if PL and PL_STAGE == 'finetune':
+        model.load_state_dict(torch.load("results/pretrained_" + cfg["model"] + ".pt"))
+
+    # model = torch.compile(model_)
+    model.to(device)
+
+    # Choose Criterion
+    if PL and PL_STAGE == 'pretrain':
+        criterion = physics_loss(cfg['pl_w1'], cfg['pl_w2'], cfg['pl_w3'], device)
+    elif TASK == 'GraphClass':
+        criterion = torch.nn.CrossEntropyLoss().to(device)
+    elif TASK == 'StateReg':
+        criterion = state_loss(params['loss_weight'])
+    elif cfg['weighted_loss_label']:
+        criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
+    else:
+        criterion = torch.nn.MSELoss(reduction='mean')
+
+    # criterion.to(device)
+    optimizer = get_optimizer(cfg, model, params)
+    # Init LR Scheduler
+    LRScheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, threshold=0.0001)
+    # used_lr = LRScheduler.get_last_lr()
+
+    engine = Engine(model, optimizer, device, criterion, tol=cfg["accuracy_tolerance"], task=TASK, var=mask_probs,
+                    masking=params['use_masking'], mask_bias=params['mask_bias'], )
+
+    used_lr = engine.optimizer.param_groups[0]['lr']
+    used_weight_decay = engine.optimizer.param_groups[0]['weight_decay']
+    print(f'LR: {used_lr}')
+    print(f'Weight Decay: {used_weight_decay}', flush=True)
+    logging.info('New parameters suggested:')
+    for key in search_space.keys():
+        logging.info(f"{key}: {search_space[key]}")
+
+    metrics, evaluation = init_metrics_vars(TASK)
+    start = time.time()
+
+    result, metrics, evaluation, output, labels = run_epoch_loop(
+        trainloader=trainloader,
+        testloader=testloader,
+        engine=engine,
+        LRScheduler=LRScheduler,
+        cfg=cfg,
+        TASK=TASK,
+        metrics=metrics,
+        evaluation=evaluation,
+        report_to_session=True
+    )
+
+
+
+    end = time.time()
+    logging.info(f'Runtime: {(end - start) / 60} min')
+    # Plotting
+    # session = train.get_session()
+
+    if PL and PL_STAGE == 'pretrain':
+        torch.save(model.state_dict(), f"results/pretrained_{cfg['model']}.pt")
+
+    plotting(metrics, evaluation, output, labels, cfg['cfg_path'] + 'results/plots/', NAME, TASK)
+
+    return result
+
+def objective(search_space, cfg, device, mask_probs, pin_memory, N_CPUS):
+    if cfg['physics_loss']:
+        cfg_local = copy.copy(cfg)
+
+        if 'pretrain' in cfg['pl_stage']:
+            cfg_local['pl_stage'] = 'pretrain'
+
+            _objective(search_space, cfg_local, device, mask_probs, pin_memory, N_CPUS)
+
+        if 'finetune' in cfg['pl_stage']:
+            cfg_local['pl_stage'] = 'finetine'
+            return _objective(search_space, cfg_local, device, mask_probs, pin_memory, N_CPUS)
+    else:
+        return _objective(search_space, cfg, device, mask_probs, pin_memory, N_CPUS)
+
+def objective_old(search_space, cfg, device,
               mask_probs, pin_memory, N_CPUS):
 
     TASK = cfg['task']
