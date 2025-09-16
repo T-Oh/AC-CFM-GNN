@@ -115,8 +115,6 @@ class HurricaneDataset(Dataset):
             self.process_ldtsf_dc()
         elif self.data_type == 'n-k':
             self.process_n_minus_k()
-        elif self.data_type == 'DC':
-            self.process_dc()
         else:
             assert False, 'Datatype must be AC or DC!'
 
@@ -151,63 +149,69 @@ class HurricaneDataset(Dataset):
 
             #load file
             file, filetype = self.load_mat_file(raw_path)  #loads a full scenario 
+            if not filetype == 'LOAD_FAILED':
+                #get total loadshed of each step
+                len_scenario, ls_tot = self.get_ls_tot(KEY, filetype, file)
 
-            #get total loadshed of each step
-            len_scenario, ls_tot = self.get_ls_tot(KEY, filetype, file)
+                #initialize variable for cummulative loadshed
+                if self.data_type == 'LSTM':    cummulative_ls = 0
 
-            #initialize variable for cummulative loadshed
-            if self.data_type == 'LSTM':    cummulative_ls = 0
+                #Loop through all steps of the scenario
+                for i in range(len_scenario):
+                    #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
+                    if self.data_type == 'LSTM' or ls_tot[i]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
+                        #adjust below_threshold_count
+                        if below_threshold_count<self.N_below_threshold and ls_tot[i]<self.ls_threshold:    below_threshold_count += 1
 
-            #Loop through all steps of the scenario
-            for i in range(len_scenario):
-                #skip if total loadshed of timestep is below threshold and the amount of low loadshed instances is reached
-                if self.data_type == 'LSTM' or ls_tot[i]>self.ls_threshold or below_threshold_count<self.N_below_threshold:
-                    #adjust below_threshold_count
-                    if below_threshold_count<self.N_below_threshold and ls_tot[i]<self.ls_threshold:    below_threshold_count += 1
+                        #skip step if ls_tot is NaN
+                        if np.isnan(ls_tot[i]):                #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
+                            print('Skipping', file, i, 'because ls_tot==NaN')
+                            if self.data_type == 'LSTM':    break
+                            else:                           continue
 
-                    #skip step if ls_tot is NaN
-                    if np.isnan(ls_tot[i]):                #This refers to matlab column ls_total -> if this is NaN the grid has failed completely in a previous iteration -> thus the data is invaluable and can be skipped
-                        print('Skipping', file, i, 'because ls_tot==NaN')
-                        if self.data_type == 'LSTM':    break
-                        else:                           continue
+                        #extract necessary data
+                        if i == 0:  node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, edge_IDs = self.get_data(init_data, file, KEY, i, filetype)                    
+                        else:       node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, _ = self.get_data(init_data, file, KEY, i, filetype)                    
 
-                    #extract necessary data
-                    if i == 0:  node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, edge_IDs = self.get_data(init_data, file, KEY, i, filetype)                    
-                    else:       node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, _ = self.get_data(init_data, file, KEY, i, filetype)                    
+                        #extract node features and labels from data
+                        node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
 
-                    #extract node features and labels from data
-                    node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
+                        #extract edge features from data
+                        if self.edge_attr == 'Y':
+                            decoded_damages = self.decode_damage(damages[scenario], i, node_data_pre[:,0], edge_IDs)
+                            print(filetype)
 
-                    #extract edge features from data
-                    if self.edge_attr == 'Y':
-                        decoded_damages = self.decode_damage(damages[scenario], i, node_data_pre[:,0], edge_IDs)
-                        if i!=0 and filetype == 'Zhu_mat73':  
-                            adj, edge_attr = self.get_edge_attrY_Zhumat73(edge_data_pre, decoded_damages)
-                            if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY_Zhumat73(edge_data_post, [])
-                        else:    
-                            adj, edge_attr = self.get_edge_attrY(edge_data_pre, decoded_damages)
-                            if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY(edge_data_post, [])
-                    else: 
-                        adj, edge_attr = self.get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False)
+                            
+                            if i!=0 and filetype == 'Zhu_mat73':  
+                                
+                                adj, edge_attr = self.get_edge_attrY_Zhumat73(edge_data_pre, decoded_damages)
+                                if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY_Zhumat73(edge_data_post, [])
+                            else:    
+                                adj, edge_attr = self.get_edge_attrY(edge_data_pre, decoded_damages)
+                                if self.data_type == 'LSTM':    adj_post, edge_attr_post = self.get_edge_attrY(edge_data_post, [])
+
+
+                        else: 
+                            adj, edge_attr = self.get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
-                    #save unscaled data (non LSTM)
-                    if self.data_type in ['AC', 'ANGF_Vcf']:
-                        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
-                        torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-                    elif self.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
-                        data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label) 
-                        torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-                        
+                        #save unscaled data (non LSTM)
+                        if self.data_type in ['AC', 'ANGF_Vcf']:
+                            data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
+                            torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+                        elif self.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
+                            data = Data(x=node_feature, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label) 
+                            torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+                            
                     
-                if self.data_type == 'LSTM':
-                    cummulative_ls += graph_label
-                    edge_labels = self.get_edge_labels(adj_init, adj_post, edge_attr_post)
-                    data = Data(x=node_feature.to(torch.float32), edge_index=adj, edge_attr=edge_attr.to(torch.float32), node_labels=node_labels.to(torch.float32), 
-                                y=graph_label.to(torch.float32), y_cummulative=torch.tensor(cummulative_ls).to(torch.float32), 
-                                edge_labels=torch.tensor(edge_labels).to(torch.float32)) 
-                    scenario_dir = os.path.join(self.root, f'processed/scenario_{scenario}')
-                    os.makedirs(scenario_dir, exist_ok=True)
-                    torch.save(data, os.path.join(scenario_dir, f'data_{scenario}_{i}.pt'))
+                    if self.data_type == 'LSTM':
+                        cummulative_ls += graph_label
+                        edge_labels = self.get_edge_labels(adj_init, adj_post, edge_attr_post)
+                        data = Data(x=node_feature.to(torch.float32), edge_index=adj, edge_attr=edge_attr.to(torch.float32), node_labels=node_labels.to(torch.float32), 
+                                    y=graph_label.to(torch.float32), y_cummulative=torch.tensor(cummulative_ls).to(torch.float32), 
+                                    edge_labels=torch.tensor(edge_labels).to(torch.float32)) 
+                        scenario_dir = os.path.join(self.root, f'processed/scenario_{scenario}')
+                        os.makedirs(scenario_dir, exist_ok=True)
+                        torch.save(data, os.path.join(scenario_dir, f'data_{scenario}_{i}.pt'))
 
     def get_ls_tot(self, KEY, filetype, file):
         if filetype == 'Zhu_mat73':
@@ -349,9 +353,7 @@ class HurricaneDataset(Dataset):
                     edge_data_post = file[KEY][0,i][29]       #loading the added Admittance matrix instead of the edge data
                 else:
                     edge_data_pre = file[KEY][0,i-1][4]         #edge data of initial condition of step i
-                node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation
-            
-            
+                node_data_post = file[KEY][0,i][2]   #node_data after step i for node_label_calculation  
         return node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, edge_IDs
 
            
@@ -494,7 +496,7 @@ class HurricaneDataset(Dataset):
         - threshold: float - Threshold for determining edge labels
         
         Returns:
-        - edge_labels: torch.Tensor (E_init,) - Binary labels for edges in adj_init
+        - edge_labels: torch.Tensor (E_init,) - Binary labels for edges in adj_init, 1 means edge exists
         '''
         
         threshold = 1e-8
@@ -544,8 +546,8 @@ class HurricaneDataset(Dataset):
         S1 = np.sqrt(P1**2+Q1**2).clone().detach()
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
-        baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
-        Vm = Vm*baseKV
+        #baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
+        #Vm = Vm*baseKV
         P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
         Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
         S2 = np.sqrt(P2**2+Q2**2).clone().detach()
@@ -577,26 +579,27 @@ class HurricaneDataset(Dataset):
             node_labels = torch.tensor(S1-S2)
         #Node features for Zhu data
         elif self.data_type in ['Zhu', 'Zhu_mat73', 'LSTM', 'Zhu_nobustype']:
-            P_injection = (gen_features[:,0]-P1)
-            Q_injection = (gen_features[:,1]-Q1)
-            Vreal = Vm*torch.cos(np.deg2rad(Va))
-            Vimag = Vm*torch.sin(np.deg2rad(Va))
+            P_injection = (gen_features[:,0]-P1)/100  #in p.u.
+            Q_injection = (gen_features[:,1]-Q1)/100  #in p.u.
+            Vreal = Vm*torch.cos(np.deg2rad(Va))    #in p.u.
+            Vimag = Vm*torch.sin(np.deg2rad(Va))    #in p.u.
             #ajust values to bus types according to Zhu paper
+            """
             if self.data_type in ['Zhu', 'zhu_mat73']:
                 P_injection = P_injection*(bus_type[:,0]+bus_type[:,1])  #P only given for PQ and PV buses
                 Q_injection = Q_injection*(bus_type[:,0])  #Q only given for PQ
                 Vreal = Vreal*(bus_type[:,1]+bus_type[:,2])  #V only given for PV and slack bus
                 Vimag = Vimag*(bus_type[:,1]+bus_type[:,2])
+            """
 
-
-            Vm2 = torch.tensor(node_data_post[:,7]*node_data_post[:,9]) #P of all buses after step - used for calculation of Node labels
+            Vm2 = torch.tensor(node_data_post[:,7]) #*node_data_post[:,9]
             Va2 = torch.tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
             Vm2[bus_type2[:,3]==1] = 0
             Va2[bus_type2[:,3]==1] = 0
             V2real = Vm2*torch.cos(np.deg2rad(Va2))
             V2imag = Vm2*torch.sin(np.deg2rad(Va2))
 
-            node_features = torch.cat([P_injection.unsqueeze(1), Q_injection.unsqueeze(1), Vreal.unsqueeze(1), Vimag.unsqueeze(1), bus_type], dim=1)
+            node_features = torch.cat([P_injection.unsqueeze(1), Q_injection.unsqueeze(1), Vreal.unsqueeze(1), Vimag.unsqueeze(1)], dim=1)
             node_labels = torch.cat([V2real.unsqueeze(1), V2imag.unsqueeze(1)], dim=1)     #S1-S2 is passed not to be used as node feature but for the graph labels
 
         #Node features for ANGF_Vcf data
@@ -689,6 +692,7 @@ class HurricaneDataset(Dataset):
     def get_edge_attrY(self, edge_data, decoded_damages):
         "decoded_damages is encoded as [[bus_from, bus_to]], with python indices (0-1999)"
         #Deactivate damaged lines
+
         if decoded_damages != []:
             for i in range(len(decoded_damages)):
                 edge_data[decoded_damages[i][0],decoded_damages[i][1]] = 0
@@ -697,7 +701,9 @@ class HurricaneDataset(Dataset):
         threshold = 1e-8
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
         if len(edge_data) == 1: 
-            edge_data = torch.complex(torch.tensor(edge_data[0]['real']), torch.tensor(edge_data[0]['imag']))
+            for edge in edge_data: print(edge)
+            if np.all(edge_data == 0):    edge_data = torch.complex(torch.tensor(np.zeros((2000,2000))), torch.tensor(np.zeros((2000,2000))))
+            else:                       edge_data = torch.complex(torch.tensor(edge_data[0]['real']), torch.tensor(edge_data[0]['imag']))
             mask = np.abs(edge_data) > threshold
         else:                   
             mask = np.abs(edge_data) > threshold
@@ -705,6 +711,7 @@ class HurricaneDataset(Dataset):
 
         # Step 2: Extract the corresponding edge attributes (weights)        
         edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1)
+
         return edge_index, edge_attr
     
     
@@ -1053,12 +1060,14 @@ class HurricaneDataset(Dataset):
             #filetype = 'Zhu'
             return scipy.io.loadmat(file_path), 'Zhu'   #data, filetype
 
-        except NotImplementedError:
-            f = h5py.File(file_path, 'r')
-            data = f
-            filetype = 'Zhu_mat73'
-
-            return data, filetype
+        except Exception as e1:
+            try:    #h5py for v7.3 .mat files
+                f = h5py.File(file_path, 'r')
+                data = f
+                return data, 'Zhu_mat73'
+            except Exception as e2:
+                print(f"Error loading {file_path} with h5py: {e2}")
+                return None, 'LOAD_FAILED'
         
     def process_n_minus_k(self):
         """
