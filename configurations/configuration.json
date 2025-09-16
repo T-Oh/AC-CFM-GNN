@@ -31,7 +31,6 @@
     "train_set::shuffle":   false,
 
     /*Model Settings*/
-<<<<<<< HEAD
     "task":         "StateRegPI",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI (possibly more)
     "model":        "GATLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
     "autoregressive": false,         //If true the model will be autoregressive, only works for LSTM type models (LSTM, GATLSTM, TAGLSTM)
@@ -39,12 +38,6 @@
     //Convolutional Settings
     "num_layers":   1,              //Number of convolutional layers
     "hidden_size":  25,             //Embedding size of convolutional layers
-=======
-    "task":         "StateReg", //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg (possibly more)
-    "model":        "GAT",      //GAT, TAG, GATLSTM
-    "num_layers":   2,
-    "hidden_size":  182,
->>>>>>> newbrach_transition
 
     //Regression Head Settings
     "reghead_size":     25,         //Embedding size of regression and classification heads

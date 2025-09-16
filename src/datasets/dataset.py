@@ -713,14 +713,13 @@ class HurricaneDataset(Dataset):
         Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
         Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
         baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
-        #Vm = Vm*baseKV
         P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
         Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
         S2 = np.sqrt(P2**2+Q2**2).clone().detach()
 
         if multiply_base_voltage:
             Vm = Vm*baseKV
-            Vm2 = Vm2*baseKV2
+            Vm2 = Vm2*baseKV
 
         if self.data_type in ['AC', 'n-k']:
             Bs = torch.tensor(node_data_pre[:,5]) #Shunt susceptance
@@ -750,8 +749,8 @@ class HurricaneDataset(Dataset):
             node_labels = torch.tensor(S1-S2)
         #Node features for Zhu data
         elif self.data_type in ['Zhu', 'Zhu_mat73', 'LSTM', 'Zhu_nobustype']:
-            P_injection = (gen_features[:,0]-P1)/100  #in p.u.
-            Q_injection = (gen_features[:,1]-Q1)/100  #in p.u.
+            P_injection = (gen_features[:,0]-P1) #in p.u.
+            Q_injection = (gen_features[:,1]-Q1) #in p.u.
             Vreal = Vm*torch.cos(np.deg2rad(Va))    #in p.u.
             Vimag = Vm*torch.sin(np.deg2rad(Va))    #in p.u.
             #ajust values to bus types according to Zhu paper
