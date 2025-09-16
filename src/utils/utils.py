@@ -539,5 +539,220 @@ def create_data_from_prediction(predicted_node_features, predicted_edge_status, 
 
 
 
+class physics_loss(torch.nn.Module):
+    """
+    Physics-Informed Loss function from:
+    https://ieeexplore.ieee.org/document/9881910
+    """
+
+    def __init__(self, w1, w2, w3, device):
+        super(physics_loss, self).__init__()
+        self.w1 = w1
+        self.w2 = w2
+        self.w3 = w3
+        self.device = device
+
+    def forward(self, batch, outputs):
+        N_BUSES = 2000
+        Vpred = torch.view_as_complex(outputs.type(torch.float32)).to(self.device).reshape(-1, N_BUSES, 1).to(
+            torch.complex64)
+        # print(f'{Vpred=}')
+        node_features = batch.x.view(-1, N_BUSES, 6)
+        Y_matrix_reshaped = batch.admittance_matrix.reshape(-1, N_BUSES, N_BUSES).to(torch.complex64)
+        # print(f'{Y_matrix_reshaped=}')
+        S = torch.view_as_complex(node_features[:, :, 0:2].contiguous())  # (2000, 2)
+        # S = S/100
+        # print(f'{S=}')
+        Vm = node_features[:, :, 2]
+        bus_type = node_features[:, :, 3:6]
+
+        '''using magnitude-angle representation for complex labels instead of real-imag'''
+        # Vreal = outputs[:, 0] * torch.cos(outputs[:, 1])
+        # Vimag = outputs[:, 0] * torch.sin(outputs[:, 1])
+        # Vpred = torch.view_as_complex(torch.cat((Vreal.unsqueeze(1), Vimag.unsqueeze(1)), dim=1)).reshape(-1, N_BUSES, 1).to(torch.complex64)
+        # print(f'{Vpred.dtype=}')
+        '''end of alternative magn-angle representation'''
+        # print(f'{Y_matrix_reshaped.dtype=}')
+        # print(f'{torch.bmm(Y_matrix_reshaped, Vpred).dtype=}')
+        # print(f'{torch.bmm(Y_matrix_reshaped, Vpred)=}')
+
+        Spred = torch.mul(Vpred, torch.conj(torch.bmm(Y_matrix_reshaped, Vpred)))
+        # print(f'{Spred.size()=}')
+        # print(f'{Spred=}')
+        # print(f'{torch.mul(S, bus_type[:,:, 0])=}')
+
+        S_mean = S.mean(dim=1, keepdim=True)
+        S_inverse = torch.where(S != 0, 1.0 / S, 1.0 / S_mean)
+        S_inverse_norm = torch.abs(S_inverse)
+        # print(f'{S_inverse_norm=}')
+        Spred = torch.squeeze(Spred, 2)
+
+        result1 = torch.mul(torch.abs(Spred - S), bus_type[:, :, 0])
+        # print(f'{result1=}')
+        result2 = torch.mul(torch.abs(Spred.real - S.real), bus_type[:, :, 1])
+        # print(f'{result2=}')
+        Vm_mean = Vm.mean(dim=1, keepdim=True)
+        Vm_inverse = torch.where(Vm != 0, 1.0 / Vm, 1.0 / Vm_mean)
+
+        D1 = torch.mul(S_inverse_norm, result1 + result2)
+        D2 = torch.abs(torch.mul(torch.abs(Vpred.squeeze(2)), bus_type[:, :, 1] + bus_type[:, :, 2]) - Vm) * Vm_inverse
+        D3 = torch.abs(Vpred.imag.squeeze(2) * bus_type[:, :, 2]) * Vm_inverse
+        print(f'{D1.mean()=}')
+        print(f'{D2.mean()=}')
+        print(f'{D3.mean()=}')
+        physics_loss = self.w1 * D1.mean() + self.w2 * D2.mean() + self.w3 * D3.mean()
+        print(f'{physics_loss=}')
+        return physics_loss, D1.mean(), D2.mean(), D3.mean()
+
+
+class MSE_plus_physics_loss(torch.nn.Module):
+    """
+    MSE plus lmbda*physics_loss
+    """
+
+    def __init__(self, w1, w2, w3, lmbda, device):
+        super(MSE_plus_physics_loss, self).__init__()
+        # self.w1 = torch.nn.Parameter(torch.tensor(w1))
+        # self.w2 = torch.nn.Parameter(torch.tensor(w2))
+        # self.w3 = torch.nn.Parameter(torch.tensor(w3))
+        # self.w1 = torch.cuda.FloatTensor([w1])
+        # self.w2 = torch.cuda.FloatTensor([w2])
+        # self.w3 = torch.cuda.FloatTensor([w3])
+        self.w1 = w1
+        self.w2 = w2
+        self.w3 = w3
+        self.lmbda = lmbda
+        self.device = device
+
+    def forward(self, batch, outputs, labels):
+        '''
+        model inputs:
+        S = P + iQ given by P, Q
+        Vm voltage magnitudes
+        one-hot encoding of bus type (ignore fourth column corr. to isolated buses)
+                   PQ bus          = 0
+                   PV bus          = 1
+                   reference bus   = 2
+                   isolated bus    = 3
+        model outputs:
+        Vpred given by Vpred_real and Vpred_imag
+        '''
+        print('HELLO MSE PLUS PHYSICS LOSS')
+        Vpred = torch.view_as_complex(outputs.type(torch.float32))
+        Vpred = Vpred.to(torch.complex64)
+        Vpred = Vpred.to(self.device)
+        Vpred = Vpred.reshape(-1, 2000, 1)
+
+        node_features = batch.x
+        edge_features = batch.edge_attr
+        edge_index = batch.edge_index
+        # print('dirichlet energy', dirichlet_energy(edge_index, node_features))
+        print(f'{node_features.size()=}')
+        print(f'{edge_features.size()=}')
+        print(f'{edge_index.size()=}')
+        print(f'{edge_index=}')
+
+        node_features = node_features.view(-1, 2000, 6)
+        print(f'{node_features.size()=}')
+        batchsize = node_features.size(0)
+        print(f'{batchsize=}')
+
+        edge_features = edge_features.view(batchsize, -1, 2)
+        print(f'{edge_features.size()=}')
+        n_edges = edge_features.shape[1]
+        # edge_index_reshaped = torch.tensor([edge_index[:, i:i+n_edges] for i in range(0, edge_index.shape[1], n_edges)])
+        edge_index_reshaped = edge_index.view(2, batchsize, n_edges).permute(1, 0, 2)
+        edge_index = edge_index_reshaped % 2000
+        print(f'{edge_index.size()=}')
+        print(f'{edge_index=}')
+
+        S = torch.view_as_complex(node_features[:, :, 0:2].contiguous())  # (2000, 2)
+        # S = torch.view_as_complex(node_features[:, 0:2].contiguous()) #(2000, 2)
+        print(f'{S.size()=}')
+        Vm = node_features[:, :, 2]
+        print(f'{Vm.size()=}')
+
+        bus_type = node_features[:, :, 3:6]
+        print(f'{bus_type.size()=}')
+
+        admittance = torch.view_as_complex(edge_features).to(torch.complex64)  # (batchsize, n_edges)
+        print(f'{admittance.size()=}')
+        print('admittance', admittance)
+        Y = torch.zeros((batchsize, 2000, 2000), dtype=torch.complex64, device=self.device)
+
+        # Edge indexing (batchsize, 2, n_edges) is split into source and target tensors
+        sources = edge_index[:, 0, :]  # (batchsize, n_edges)
+        targets = edge_index[:, 1, :]  # (batchsize, n_edges)
+
+        # Use advanced indexing to directly assign the admittance values to the Y matrix
+        Y[torch.arange(batchsize).unsqueeze(1), sources, targets] = admittance
+
+        print(f'{Vpred.size()=}')
+        print(f'{Vpred=}')
+        print(f'{Y.size()=}')
+        print(f'{Y=}')
+        print(f'{torch.bmm(Y, Vpred)=}')
+        print(f'{torch.bmm(Y, Vpred).size()=}')
+        print(f'{torch.conj(torch.bmm(Y, Vpred))=}')
+        print(f'{torch.conj(torch.bmm(Y, Vpred)).size()=}')
+
+        Spred = torch.mul(Vpred, torch.conj(torch.bmm(Y, Vpred)))  # .to(device=self.device)
+        S_mean = torch.mean(S, dim=1)
+        print('S_mean', S_mean.size())
+        S_mean = torch.unsqueeze(S_mean, 1)
+        # print('S_mean', S_mean.size())
+        S_inverse = torch.where(S != 0, 1.0 / S, 1.0 / S_mean)
+        S_inverse_norm = torch.abs(S_inverse)
+        print(f'{S_inverse_norm=}')
+
+        # print(f'{Spred.size()=}')
+        # print(f'{S.size()=}')
+        Spred = torch.squeeze(Spred, 2)
+        # print(f'{S.size()=}')
+
+        # print(f'{torch.abs(Spred - S).size()=}')
+        # print(f'{bus_type[:,:,0].size()=}')
+        print(f'{Spred=}')
+        print(f'{S=}')
+        result1 = torch.mul((Spred - S) ** 2, bus_type[:, :, 0])
+        result2 = torch.mul((Spred.real - S.real) ** 2, bus_type[:, :, 1])
+        print(f'{result1=}')
+        print(f'{result2=}')
+
+        # print('Vm size', Vm.size())
+        Vm_mean = torch.mean(Vm, dim=1)
+        Vm_mean = torch.unsqueeze(Vm_mean, 1)
+        Vm_inverse = torch.where(Vm != 0, 1.0 / Vm, 1.0 / Vm_mean)
+        D1 = torch.mul(S_inverse_norm, result1 + result2)
+
+        print('torch.abs(Vpred)', torch.abs(Vpred).size())
+        print('torch.mul(torch.abs(Vpred), bus_type[:,:,1] + bus_type[:,:,2])',
+              torch.mul(torch.squeeze(torch.abs(Vpred), 2), bus_type[:, :, 1] + bus_type[:, :, 2]).size())
+        D2 = torch.mul(
+            torch.abs(torch.mul(torch.squeeze(torch.abs(Vpred), 2), bus_type[:, :, 1] + bus_type[:, :, 2]) - Vm),
+            Vm_inverse)
+        print('Vm_inverse', Vm_inverse.size())
+        print('torch.squeeze(Vpred.imag, 1),', torch.squeeze(Vpred.imag, 1).size())
+        print('bus_type[:,:,2]', bus_type[:, :, 2].size())
+        print('torch.mul(torch.squeeze(Vpred.imag, 2), bus_type[:,:,2]))',
+              torch.mul(torch.squeeze(Vpred.imag, 2), bus_type[:, :, 2]).size())
+        D3 = torch.mul(torch.abs(torch.mul(torch.squeeze(Vpred.imag, 2), bus_type[:, :, 2])), Vm_inverse)
+        print('D1 size', D1.size())
+        print('D2 size', D2.size())
+        print('D3 size', D3.size())
+
+        print('D1', torch.mean(D1))
+        print('D2', torch.mean(D2))
+        print('D3', torch.mean(D3))
+
+        physics_loss = self.w1 * torch.mean(D1) + self.w2 * torch.mean(D2) + self.w3 * torch.mean(D3)
+        print('loss size', physics_loss.size())
+
+        MSE_loss = F.mse_loss(outputs, labels)
+        print(f'{MSE_loss.size()=}')
+        loss = MSE_loss + self.lmbda * physics_loss
+
+        return loss, physics_loss, torch.mean(D1), torch.mean(D2), torch.mean(D3)
+
 
 
