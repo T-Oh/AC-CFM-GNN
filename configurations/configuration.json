@@ -7,59 +7,63 @@
     "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
     "edge_attr":            "Y",    //edge_attr: Y, multi
     "ls_threshold":         0.1,    //Load shed threshold under which only N_below_threshold samples are collected
-    "N_below_threshold":    1000,
-    "n_scenarios":          10,
-    "max_seq_length":       3, 
+    "N_below_threshold":    1000,   //Number of samples below the load shed threshold
+    "n_scenarios":          10,     //used only for stormsplit should be larger than the largest ID of used scenarios
+    "max_seq_length":       5,      //Maximum sequence length for LSTM; in case of autoregressive this defines the window size
 
     /*General Run Control*/
-    "crossvalidation":  false,
-    "study::run" :      false,
-    "study::continue":  false,
-    "study_ID":         "Test_StateReg",
+    "crossvalidation":  false,     //Crossvalidation not implemented for LSTM
+    "study::run" :      false,     //Run a study
+    "study::continue":  false,     //Continue a study
+    "study_ID":         "Test_StateReg",    
 
     //Specific Run Control
-    "checkpointing":    false,
-    "epochs":           3,
-    "output_freq" :     1,
-    "full_output":      false,
+    "checkpointing":    false,     //Not implemented
+    "epochs":           100,  
+    "output_freq" :     1,         //Output frequency
+    "full_output":      true,     //If false only saves 16 random instances
     
     /*Data split settings*/
-    "train_size":           0.5,
-    "stormsplit" :          1,
+    "train_size":           1,    //Ignored if stormsplit > 0 otherwise the percentage of data that should be used as training data
+    "stormsplit" :          0,     //For stormsplit the files need to be named so that different storms have different IDs i.e. the scenarios of storm 1 should all be named data_1*_*.pt. Then the ID of the storm to be used as training data should be put here
     "test_set::batchsize":  2,
     "train_set::batchsize": 2,
     "train_set::shuffle":   false,
 
     /*Model Settings*/
-    "task":         "StateReg", //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg (possibly more)
-    "model":        "TAGLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
-    "num_layers":   1,
-    "hidden_size":  45,
+    "task":         "StateRegPI",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI (possibly more)
+    "model":        "GATLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
+    "autoregressive": false,         //If true the model will be autoregressive, only works for LSTM type models (LSTM, GATLSTM, TAGLSTM)
+
+    //Convolutional Settings
+    "num_layers":   1,              //Number of convolutional layers
+    "hidden_size":  25,             //Embedding size of convolutional layers
 
     //Regression Head Settings
-    "reghead_size":     76,
-    "reghead_layers":   2,
+    "reghead_size":     25,         //Embedding size of regression and classification heads
+    "reghead_layers":   1,          //Number of layers of regression and classification heads
     "reghead_type":     "single",   //single, node_edge, node_node_edge
     //LSTM Settings
-    "num_conv_targets": 13,
-    "lstm_hidden_size": 64,
-    "num_lstm_layers":  1, 
+    "num_conv_targets": 25,         //Embedding size of the final convolutional layer
+    "lstm_hidden_size": 25,         //Hidden size of LSTM
+    "num_lstm_layers":  1,          //Number of LSTM layers
     //Others
     "dropout":          0.0,
-    "use_batchnorm":    true,
+    "use_batchnorm":    false,
     "use_skipcon":      false,
     //GAT Settings
     "num_heads":        2,
     "gat_dropout":      0.0,
     //TAG Settings
-    "tag_jumps" :       4,
+    "tag_jumps" :       7,
 
     /*Loss Settings*/
-    "gradclip" :            0.0,
-    "use_masking" :         false,
-    "mask_bias" :           1.0,
-    "weighted_loss_label":  false,
-    "weighted_loss_factor": 0.2,
+    "gradclip" :            7.1,    //Threshold for Gradient Clipping (if set to 0 no gradient clipping will be performed)
+    "use_masking" :         false,  //If true applies node masking to the loss function (not applicable for LSTM)
+    "mask_bias" :           1.0,    //Bias for the masking function (not applicable for LSTM)
+    "weighted_loss_label":  false,  //If true the loss function will be weighted by the number of samples in the batch
+    "weighted_loss_factor": 1,    //Factor for the weighted loss function (if set to 0 no weighting will be performed)
+    "PI_factor":            0.5,    //Factor for the power injection loss (only applicable if task is StateRegPI)
 
     /*Optimizer Settings*/
     "optim::LR":            1e-3,
@@ -84,7 +88,7 @@
     
     /*Study Settings*/
     "study::n_trials" :     4,
-    "grace_period" :        3,
+    "grace_period" :        3,  //Number of epochs to be run at least before Ray decides to kill the trial if performance up to that point is not good enough
 
     "study::lr::lower": -7,
     "study::lr::upper": -3,
@@ -93,7 +97,7 @@
     "study::weight_decay_upper":    -3,
 
     "study::layers_lower":  1,
-    "study::layers_upper":  1,
+    "study::layers_upper":  3,
 
     "study::hidden_features_lower": 64,
     "study::hidden_features_upper": 64,
