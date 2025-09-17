@@ -11,6 +11,7 @@ from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, 
 from datasets.dataset import mask_probs_add_bias
 
 from utils.utils import state_loss
+from utils.utils import physics_loss
 
 
 class Engine(object):
@@ -19,7 +20,7 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False, physics_loss_func=None):
         """
         Initializes the Engine
 
@@ -66,6 +67,9 @@ class Engine(object):
         self.scaler = GradScaler()  #necessary for mixed precision learning
         self.R2Score = R2Score()
         #self.track_loss = state_loss(0.2).to(self.device)  #TO BE REMOVED. ONLY USED FOR TRACKING PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS
+        self.physics_loss_func = physics_loss_func  # if passed will try to compute pl and add it to metrics
+
+
         if 'Class' in self.task or self.task == 'typeII':
             self.f1_metric = MulticlassF1Score(num_classes=4, average=None)
             self.precision_metric = MulticlassPrecision(num_classes=4, average=None)
@@ -167,6 +171,7 @@ class Engine(object):
                 if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
                 elif self.task in ['StateReg']:   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                 elif self.task == 'StateRegPI': temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                elif isinstance(self.criterion, physics_loss): temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
                 else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
                 print('Time to calculate loss of one batch: ', time.time()-loss_start)
                 #compile outputs and labels for saving                        
@@ -328,6 +333,9 @@ class Engine(object):
                         self.recall_metric.update(preds, labels.reshape(-1)) 
                         self.accuracy_metric.update(preds, labels.reshape(-1))
 
+
+                    elif isinstance(self.criterion, physics_loss):
+                        temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
                     else:
                         temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
 
@@ -451,6 +459,11 @@ class Engine(object):
                     'loss'  : float(loss/count),
                     'R2'    : float(R2)
                 }
+
+            if self.physics_loss_func is not None:
+                temp_D_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output.to(
+                        self.device))  # , labels.to(self.device))#.float()
+
         else:
             F1 = self.f1_metric.compute()
             precision = self.precision_metric.compute()

@@ -4,7 +4,7 @@
     "dataset::path":    "",
 
     /*Data Settings*/
-    "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
+    "data":                 "Zhu_n_minus_k", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
     "edge_attr":            "Y",    //edge_attr: Y, multi
     "ls_threshold":         0.1,    //Load shed threshold under which only N_below_threshold samples are collected
     "N_below_threshold":    1000,   //Number of samples below the load shed threshold
@@ -53,6 +53,7 @@
     "use_skipcon":      false,
     //GAT Settings
     "num_heads":        2,
+    "num_heads":        2,
     "gat_dropout":      0.0,
     //TAG Settings
     "tag_jumps" :       7,
@@ -66,14 +67,14 @@
     "PI_factor":            0.5,    //Factor for the power injection loss (only applicable if task is StateRegPI)
 
     /*Optimizer Settings*/
-    "optim::LR":            1e-3,
+    "optim::LR":            1e-7,
     "optim::betas":         [0.9, 0.999],
     "optim::epsilon":       1e-8,
     "optim::loss":          "MSE",
     "optim::momentum":      0.99,
     "optim::nesterov":      false,
     "optim::optimizer":     "Adam",
-    "optim::weight_decay":  1e-4,
+    "optim::weight_decay":  1e-6,
 
     /*Node2Vec Control*/
     "N2V":                  false,
@@ -165,9 +166,13 @@
     /*Others*/
     "manual_seed" : 7,
     "accuracy_tolerance":0.15,
+
+
     "supernode" : false,
-    "normalize_injection" : false,
-    "multiply_base_voltage": true,
+
+    /*for per unit use "multiply_base_voltage": false and "normalize_injection" : true*/
+    "normalize_injection" : true,
+    "multiply_base_voltage": false,
     "zhu_check_buses" :  false,
     "check_s_y" : false,
 

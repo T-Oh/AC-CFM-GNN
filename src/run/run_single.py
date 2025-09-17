@@ -10,14 +10,17 @@ import torch
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import setup_params, choose_criterion, save_params, setup_datasets_and_loaders, save_output
+from utils.utils import setup_params, choose_criterion, save_params, setup_datasets_and_loaders, save_output, physics_loss
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
+
+
 
 
 def run_single(cfg, device, N_CPUS):
@@ -62,7 +65,7 @@ def run_single(cfg, device, N_CPUS):
         optimizer = get_optimizer(cfg, model, params)
 
         #Init LR Scheduler
-        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001, verbose=True)
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001)
 
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,

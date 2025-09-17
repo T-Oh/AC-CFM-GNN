@@ -6,8 +6,12 @@ from models.gtrans import GraphTransformer
 from models.lstm import GCNLSTM
 from models.lstm_LDTSF import LSTM_LDTSF
 from models.gatlstm import GAT_LSTM
+
 from models.mlplstm import LSTM_Baseline
 from models.taglstm import TAG_LSTM
+
+from models.gtrans2 import GATpaper
+
 
 
 
@@ -124,6 +128,24 @@ def get_model(cfg, params):
             checkpoint      = cfg['checkpointing'],
             task            = params['task']
         )
+    elif cfg['model'] == 'GATpaper':
+        print('Using Graph Transformer2 i.e. GAT for physics informed loss!\n')
+
+        model = GATpaper(
+            num_node_features=params["num_features"],
+            num_edge_features=params["num_edge_features"],
+            num_targets=params["num_targets"],
+            hidden_size=params["hidden_size"],
+            num_layers=params["num_layers"],
+            reghead_size=params['reghead_size'],
+            reghead_layers=params['reghead_layers'],
+            dropout=params['dropout'],
+            gat_dropout=params['gat_dropout'],
+            num_heads=params["heads"],
+            use_skipcon=params['use_skipcon'],
+            use_batchnorm=params['use_batchnorm'],
+        )
+
     elif cfg['model'] == 'LSTM':
         print('Using GCN LSTM')
         model = GCNLSTM(

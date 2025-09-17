@@ -563,7 +563,11 @@ class physics_loss(torch.nn.Module):
         S = torch.view_as_complex(node_features[:, :, 0:2].contiguous())  # (2000, 2)
         # S = S/100
         # print(f'{S=}')
+
+
+
         Vm = node_features[:, :, 2]
+
         bus_type = node_features[:, :, 3:6]
 
         '''using magnitude-angle representation for complex labels instead of real-imag'''
