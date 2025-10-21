@@ -10,8 +10,21 @@ from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, 
 
 from datasets.dataset import mask_probs_add_bias
 
-from utils.utils import state_loss
-from utils.utils import physics_loss
+from utils.utils import grad_norm, state_loss, physics_loss
+
+def safe_grad_norm(loss, model, retain_graph=False):
+    grads = torch.autograd.grad(
+        loss,
+        model.parameters(),
+        retain_graph=retain_graph,
+        allow_unused=True
+    )
+    grads = [g for g in grads if g is not None]  # filter out unused params
+    if len(grads) == 0:
+        return torch.tensor(0.0, device=loss.device)
+    return torch.norm(torch.stack([torch.norm(g) for g in grads]))
+
+
 
 
 class Engine(object):
@@ -20,7 +33,8 @@ class Engine(object):
     a single epoch
     """
 
-    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False, physics_loss_func=None):
+    def __init__(self, model, optimizer, device, criterion, tol=0.1, task="NodeReg", var=None, masking=False, mask_bias=0.0, return_full_output = False, 
+                 physics_loss_func=None, track_gradients=False, track_test_gradients=False):
         """
         Initializes the Engine
 
@@ -68,6 +82,8 @@ class Engine(object):
         self.R2Score = R2Score()
         #self.track_loss = state_loss(0.2).to(self.device)  #TO BE REMOVED. ONLY USED FOR TRACKING PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS
         self.physics_loss_func = physics_loss_func  # if passed will try to compute pl and add it to metrics
+        self.track_gradients = track_gradients
+        self.track_test_gradients = track_test_gradients
 
 
         if 'Class' in self.task or self.task == 'typeII':
@@ -126,8 +142,10 @@ class Engine(object):
 
         data_loading_time = 0.
         gpu_processing_time = 0.
+        g_node_list, g_edge_list, g_pi_list, g_total_list = [], [], [], [] #for gradient tracking
 
         self.model.train()  #sets the mode to training (layers can behave differently in training than testing)
+        torch.set_grad_enabled(True)
         if self.VERBOSE:
             print('Pre empty cache')
             self.log_gpu_usage()
@@ -153,40 +171,64 @@ class Engine(object):
                 print('Pre forward pass: ')
                 self.log_gpu_usage()
                 
-            with autocast():
-                output = self.model.forward(batch)
-                output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
-                if self.VERBOSE: 
-                    if any(torch.isnan(output[0].reshape(-1))) or any(torch.isinf(output[0].reshape(-1))):
-                        print("Node Output contains NaN or Inf values. Skipping this batch.")
-                    if any(torch.isnan(output[1].reshape(-1))) or any(torch.isinf(output[1].reshape(-1))):
-                        print("Edge Output contains NaN or Inf values. Skipping this batch.")
-                    if any(torch.isnan(labels[0].reshape(-1))) or any(torch.isinf(labels[0].reshape(-1))):
-                        print("Node Labels contain NaN or Inf values. Skipping this batch.")
-                    if any(torch.isnan(labels[1].reshape(-1))) or any(torch.isinf(labels[1].reshape(-1))):
-                            print("Edge Labels contain NaN or Inf values. Skipping this batch.")
-                #calc and backpropagate loss
-                loss_start = time.time()
-                if self.masking:    output, labels = self.apply_masking(output, labels)
-                if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
-                elif self.task in ['StateReg']:   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
-                elif self.task == 'StateRegPI': temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
-                elif isinstance(self.criterion, physics_loss): temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
-                else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
-                print('Time to calculate loss of one batch: ', time.time()-loss_start)
-                #compile outputs and labels for saving                        
-                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
-                if self.VERBOSE:
-                    print('Pre backward pass: ')
-                    self.log_gpu_usage()
-                backward_pass_start = time.time()
-                #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
-                #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
+            #with autocast():
+            output = self.model.forward(batch)
+            output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device)    #, edge_labels
+            if self.VERBOSE: 
+                if any(torch.isnan(output[0].reshape(-1))) or any(torch.isinf(output[0].reshape(-1))):
+                    print("Node Output contains NaN or Inf values. Skipping this batch.")
+                if any(torch.isnan(output[1].reshape(-1))) or any(torch.isinf(output[1].reshape(-1))):
+                    print("Edge Output contains NaN or Inf values. Skipping this batch.")
+                if any(torch.isnan(labels[0].reshape(-1))) or any(torch.isinf(labels[0].reshape(-1))):
+                    print("Node Labels contain NaN or Inf values. Skipping this batch.")
+                if any(torch.isnan(labels[1].reshape(-1))) or any(torch.isinf(labels[1].reshape(-1))):
+                        print("Edge Labels contain NaN or Inf values. Skipping this batch.")
+            #calc and backpropagate loss
+            loss_start = time.time()
+            if self.masking:    output, labels = self.apply_masking(output, labels)
+            if self.task == 'typeIIClass':  temp_loss = self.criterion(output.to(self.device), labels.to(self.device)).float()
+            elif self.task in ['StateReg']:   temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+            elif self.task == 'StateRegPI': temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+            elif isinstance(self.criterion, physics_loss): temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
+            else:                           temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).float()
+            print('Time to calculate loss of one batch: ', time.time()-loss_start)
+            #compile outputs and labels for saving                        
+            total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)  
+            if self.VERBOSE:
+                print('Pre backward pass: ')
+                self.log_gpu_usage()
+            
+            backward_pass_start = time.time()
+            #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
+            #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
 
+
+            # Track gradients for inspection, not training
+            if self.track_gradients:
+                g_node_loss = safe_grad_norm(temp_node_loss, self.model, retain_graph=True)
+                g_edge_loss = safe_grad_norm(temp_edge_loss, self.model, retain_graph=True)
+                #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=True)
+                print(f"grad norms: mse={g_node_loss:.3e}, ce={g_edge_loss:.3e}")#, pi={g_pi_loss:.3e}")
+
+            #self.scaler.scale(loss).backward()
+            #self.scaler.unscale_(self.optimizer)
+
+                g_total = grad_norm(self.model)
+
+                g_node_list.append(g_node_loss.detach().cpu())
+                g_edge_list.append(g_edge_loss.detach().cpu())
+                #g_pi_list.append(g_pi_loss.detach().cpu())
+                g_total_list.append(torch.tensor(g_total)) 
+
+            
             temp_loss.backward()
+
             print('Time for backward pass of one batch: ', time.time()-backward_pass_start)
             if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
             self.optimizer.step()
+            #self.scaler.step(self.optimizer)   #used for mixed precision training
+            #self.scaler.update()
+            self.optimizer.zero_grad(set_to_none=True)
 
            
             if self.VERBOSE: 
@@ -220,6 +262,17 @@ class Engine(object):
                 self.accuracy_metric.update(preds, labels)
             first = False
 
+        #save gradients
+        if self.track_gradients:
+            gradients = {
+                    'g_node_loss': torch.stack(g_node_list).mean(),
+                    'g_edge_loss': torch.stack(g_edge_list).mean(),
+                    #'g_pi': torch.stack(g_pi_list).mean(),
+                    'g_total': torch.stack(g_total_list).mean()
+                    }
+        else: gradients = None
+        
+
         metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count)
         if self.VERBOSE: 
             print(f'Total Loading time during epoch: {data_loading_time:.2f} s', flush=True)
@@ -227,9 +280,9 @@ class Engine(object):
         del batch, output, labels  
         t2 = time.time()
         if full_output:
-            return metrics, total_output, total_labels
+            return metrics, total_output, total_labels, gradients
         else:
-            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10])  #return only the first 2000 instances for saving memory
+            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
 
 
 
@@ -257,104 +310,132 @@ class Engine(object):
             print('Eval: Post empty cache: ')
             self.log_gpu_usage()
         start = time.time()
-        self.model.eval()
-        with no_grad():
-            with autocast():
-                loss = 0.
-                node_loss = 0.
-                edge_loss = 0.
-                PI_loss = 0.
-                temp_node_loss = 0.
-                temp_edge_loss = 0.
-                temp_PI_loss = 0.
-                self.R2Score.reset()
-                self.f1_metric.reset()
-                self.precision_metric.reset()
-                self.recall_metric.reset()
-                self.accuracy_metric.reset()
+        if self.track_test_gradients:
+            self.model.train()
+            grad_context = torch.enable_grad()
+            torch.set_grad_enabled(True)
+        else:
+            self.model.eval()
+            grad_context = torch.no_grad()
+            torch.set_grad_enabled(False)
+        g_node_list, g_edge_list, g_pi_list, g_total_list = [], [], [], []
 
-                first = True
-                count = 0
-                data_loading_time = 0.
-                gpu_processing_time = 0.
-                total_output = None
-                total_labels = None
+        
+        with grad_context:
+            #with autocast():
+            loss, node_loss, edge_loss, PI_loss = 0., 0., 0., 0.
+            temp_node_loss, temp_edge_loss, temp_PI_loss = 0., 0., 0.
+            self.R2Score.reset()
+            self.f1_metric.reset()
+            self.precision_metric.reset()
+            self.recall_metric.reset()
+            self.accuracy_metric.reset()
 
-                for batch in dataloader:
-                    count += 1
-                    #compile batch depending on task - ifinstance implies that the data is LDTSF
-                    data_start = time.time()
-                    batch = self.compile_batch(batch)
-                    data_loading_time += data_start-time.time()
-                    if self.VERBOSE: 
-                        print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
-                        print('Eval: Pre forward pass: ')
-                        self.log_gpu_usage()
-                    gpu_start = time.time()
-                   
-                    output = self.model.forward(batch)
-                    gpu_processing_time += time.time()-gpu_start
-                    if self.VERBOSE: print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
-                    output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device) #, edge_labels
-                    print(f'Output: {output}')
-                    print(f'Labels: {labels}')
-                   
-                    #compile labels and output fo saving
-                    total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)         
-                    first = False
-                    if 'Class' in self.task or self.task in ['StateReg', 'StateRegPI']:
-                        if self.task == 'typeIIClass': 
-                            temp_loss = self.criterion(output, labels).tolist() 
-                            labels = labels.reshape(-1).detach().cpu()
-                            preds = torch.argmax(output, dim=1).detach().cpu()
-                        elif self.task in ['StateReg', 'StateRegPI']:
-                            if self.task == 'StateReg':
-                                temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
-                            else:
-                                temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
-                            if self.VERBOSE:
-                                if torch.isnan(temp_loss) or torch.isinf(temp_loss):
-                                    print("Loss contains NaN or Inf values. Skipping this batch.")
-                                if torch.isnan(temp_node_loss) or torch.isinf(temp_node_loss):
-                                    print("Node Loss contains NaN or Inf values. Skipping this batch.")
-                                if torch.isnan(temp_edge_loss) or torch.isinf(temp_edge_loss):
-                                    print("Edge Loss contains NaN or Inf values. Skipping this batch.")
-                            if self.task == 'StateRegPI':
-                                if torch.isnan(temp_PI_loss) or torch.isinf(temp_PI_loss):
-                                    print("Power Injection Loss contains NaN or Inf values. Skipping this batch.")
-                            preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
-                            labels = 1-labels[1].reshape(-1).detach().cpu()
+            first = True
+            count = 0
+            data_loading_time = 0.
+            gpu_processing_time = 0.
+            total_output = None
+            total_labels = None
+
+            for batch in dataloader:
+                count += 1
+                #compile batch depending on task - ifinstance implies that the data is LDTSF
+                data_start = time.time()
+                batch = self.compile_batch(batch)
+                data_loading_time += data_start-time.time()
+                if self.VERBOSE: 
+                    print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
+                    print('Eval: Pre forward pass: ')
+                    self.log_gpu_usage()
+                gpu_start = time.time()
+                
+                output = self.model.forward(batch)
+                gpu_processing_time += time.time()-gpu_start
+                if self.VERBOSE: print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
+                output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device) #, edge_labels
+                print(f'Output: {output}')
+                print(f'Labels: {labels}')
+                
+                #compile labels and output fo saving
+                total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)         
+                first = False
+                if 'Class' in self.task or self.task in ['StateReg', 'StateRegPI']:
+                    if self.task == 'typeIIClass': 
+                        temp_loss = self.criterion(output, labels).tolist() 
+                        labels = labels.reshape(-1).detach().cpu()
+                        preds = torch.argmax(output, dim=1).detach().cpu()
+                    elif self.task in ['StateReg', 'StateRegPI']:
+                        if self.task == 'StateReg':
+                            temp_loss, temp_node_loss, temp_edge_loss = self.criterion(output[0], output[1], labels[0], labels[1])
                         else:
-                            temp_loss = self.criterion(output.reshape(-1), labels.reshape(-1)).tolist()
-                            preds = torch.argmax(output, dim=1).detach().cpu()
-
-                        self.f1_metric.update(preds, labels.reshape(-1))
-                        self.precision_metric.update(preds, labels.reshape(-1))
-                        self.recall_metric.update(preds, labels.reshape(-1)) 
-                        self.accuracy_metric.update(preds, labels.reshape(-1))
-
-
-                    elif isinstance(self.criterion, physics_loss):
-                        temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
+                            temp_loss, temp_node_loss, temp_edge_loss, temp_PI_loss = self.criterion(output[0], output[1], labels[0], labels[1])
+                        if self.VERBOSE:
+                            if torch.isnan(temp_loss) or torch.isinf(temp_loss):
+                                print("Loss contains NaN or Inf values. Skipping this batch.")
+                            if torch.isnan(temp_node_loss) or torch.isinf(temp_node_loss):
+                                print("Node Loss contains NaN or Inf values. Skipping this batch.")
+                            if torch.isnan(temp_edge_loss) or torch.isinf(temp_edge_loss):
+                                print("Edge Loss contains NaN or Inf values. Skipping this batch.")
+                        if self.task == 'StateRegPI':
+                            if torch.isnan(temp_PI_loss) or torch.isinf(temp_PI_loss):
+                                print("Power Injection Loss contains NaN or Inf values. Skipping this batch.")
+                        preds = 1-torch.argmax(output[1], dim=1).detach().cpu()
+                        labels = 1-labels[1].reshape(-1).detach().cpu()
                     else:
-                        temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
+                        temp_loss = self.criterion(output.reshape(-1), labels.reshape(-1)).tolist()
+                        preds = torch.argmax(output, dim=1).detach().cpu()
 
-                    #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
-                    #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
-                    loss += temp_loss
-                    node_loss += temp_node_loss
-                    edge_loss += temp_edge_loss
-                    PI_loss += temp_PI_loss if self.task == 'StateRegPI' else 0
+                    self.f1_metric.update(preds, labels.reshape(-1))
+                    self.precision_metric.update(preds, labels.reshape(-1))
+                    self.recall_metric.update(preds, labels.reshape(-1)) 
+                    self.accuracy_metric.update(preds, labels.reshape(-1))
+
+
+                elif isinstance(self.criterion, physics_loss):
+                    temp_loss, temp_D1, temp_D2, temp_D3 = self.criterion(batch, output)
+                else:
+                    temp_loss = self.criterion(output.reshape(-1).to(self.device), labels.reshape(-1).to(self.device)).tolist()
+
+                #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
+                #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
+                if self.track_test_gradients:
+                    g_node_loss = safe_grad_norm(temp_node_loss, self.model, retain_graph=True)
+                    g_edge_loss = safe_grad_norm(temp_edge_loss, self.model, retain_graph=True)
+                    #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=True)
+
+                    print(f"grad norms: mse={g_node_loss:.3e}, ce={g_edge_loss:.3e}")#, pi={g_pi_loss:.3e}")
+                    g_total = grad_norm(self.model)
+
+
+                    g_node_list.append(g_node_loss.detach().cpu())
+                    g_edge_list.append(g_edge_loss.detach().cpu())
+                    #g_pi_list.append(g_pi_loss.detach().cpu())
+                    g_total_list.append(torch.tensor(g_total)) 
+                    
+
+                loss += float(temp_loss)
+                node_loss += temp_node_loss
+                edge_loss += temp_edge_loss
+                PI_loss += temp_PI_loss if self.task == 'StateRegPI' else 0
 
             metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count)
+            if self.track_test_gradients:
+                gradients = {
+                    'g_node_loss': torch.stack(g_node_list).mean(),
+                    'g_edge_loss': torch.stack(g_edge_list).mean(),
+                    #'g_pi': torch.stack(g_pi_list).mean(),
+                    'g_total': torch.stack(g_total_list).mean()
+                    }
+            else: gradients = None
             if self.VERBOSE:
                 print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
                 print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
                 print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
             if full_output:
-                return metrics, total_output, total_labels
+                return metrics, total_output, total_labels, gradients
             else:
-                return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10])  #return only the first 2000 instances for saving memory
+                return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
                 
 
 
@@ -372,7 +453,7 @@ class Engine(object):
             elif self.task == 'GraphClass': batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[3] contains the classification label                   
             elif self.task == 'typeIIClass':     batch = (batch[0].to(self.device), batch[3].to(self.device), batch[2])  #batch[1] contains the regression label
         elif not self.model.__class__.__name__ == 'GAT_LSTM':   
-            batch.to(self.device)
+            batch = batch.to(self.device)
         return batch
 
 

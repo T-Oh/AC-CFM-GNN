@@ -22,6 +22,8 @@
     "epochs":           100,  
     "output_freq" :     1,         //Output frequency
     "full_output":      true,     //If false only saves 16 random instances
+    "track_gradients":  false,     //If true tracks gradient norms during training
+    "track_test_gradients": false,    //If true tracks gradient norms on the test set during training
     
     /*Data split settings*/
     "train_size":           1,    //Ignored if stormsplit > 0 otherwise the percentage of data that should be used as training data

@@ -52,7 +52,7 @@ def run_epoch_loop(
 
         # Evaluation
         if cfg.get('train_size', 1) == 1 and not report_to_session:
-            temp_eval, _, _ = engine.eval(trainloader)
+            temp_eval, _, _, gradients = engine.eval(trainloader)
         else:
             temp_eval, _, _ = engine.eval(testloader)
 
