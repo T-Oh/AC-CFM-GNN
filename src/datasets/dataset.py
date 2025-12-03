@@ -24,11 +24,11 @@ from functools import partial
 
 from utils.enums import ZhuIdx, BusTypes
 
-from torch.serialization import add_safe_globals
-from torch_geometric.data.data import DataEdgeAttr
+#from torch.serialization import add_safe_globals
+#from torch_geometric.data.data import DataEdgeAttr
 
 # Register the allowed globals once at module load time
-add_safe_globals([DataEdgeAttr])
+# add_safe_globals([DataEdgeAttr])
 
 
 
@@ -78,11 +78,6 @@ class HurricaneDataset(Dataset):
         self.edge_attr = edge_attr
         self.ls_threshold = ls_threshold
         self.N_below_threshold = N_below_threshold
-        super().__init__(root, transform, pre_transform, pre_filter)
-        self.stormsplit = stormsplit
-        self.data_list = self.processed_file_names
-        if self.data_type == 'LDTSF':
-            self.data_list = self.get_data_list(N_Scenarios)  #list containing all instances in order
 
         self.normalize_injection = normalize_injection
         self.multiply_base_voltage = multiply_base_voltage
@@ -92,6 +87,12 @@ class HurricaneDataset(Dataset):
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
         self.data_list = self.processed_file_names
+        if self.data_type == 'LDTSF':
+            self.data_list = self.get_data_list(N_Scenarios)  #list containing all instances in order
+
+        
+
+
 
 
         #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
@@ -300,26 +301,26 @@ class HurricaneDataset(Dataset):
                     else:
                         adj, edge_attr = self.get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False)
                     
-                        #save unscaled data (non LSTM)
-                        if self.data_type in ['AC', 'ANGF_Vcf']:
-                            data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
-                            torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
-                        elif self.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
-                            data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], admittance_matrix=admittance_matrix, y=graph_label)
-                            torch.save(data, os.path.join(self.processed_dir, f'data_{str(scenario)}_{str(i)}.pt'))
-                            """
-                            admittance_matrix = torch.tensor(edge_data_post)
+                    #save unscaled data (non LSTM)
+                    if self.data_type in ['AC', 'ANGF_Vcf']:
+                        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
+                        torch.save(data, os.path.join(self.processed_dir, f'data_{scenario}_{i}.pt'))
+                    elif self.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
+                        data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label)
+                        torch.save(data, os.path.join(self.processed_dir, f'data_{str(scenario)}_{str(i)}.pt'))
+                        """
+                        admittance_matrix = torch.tensor(edge_data_post)
 
-                        #
-                            Vreal = node_feature[:, 2]
-                            Vimag = node_feature[:, 3]
-                            Vm = torch.sqrt(Vreal ** 2 + Vimag ** 2).unsqueeze(1)
+                    #
+                        Vreal = node_feature[:, 2]
+                        Vimag = node_feature[:, 3]
+                        Vm = torch.sqrt(Vreal ** 2 + Vimag ** 2).unsqueeze(1)
 
-                            node_feature = torch.cat([
-                                node_feature[:, 0:2],  #S real and imag
-                                Vm,  # only magnitude used as a feature in Zhu paper
-                                node_feature[:, 4:7],  #inactive buses not in features
-                            ], dim=1)"""
+                        node_feature = torch.cat([
+                            node_feature[:, 0:2],  #S real and imag
+                            Vm,  # only magnitude used as a feature in Zhu paper
+                            node_feature[:, 4:7],  #inactive buses not in features
+                        ], dim=1)"""
 
                        
                     
@@ -394,7 +395,7 @@ class HurricaneDataset(Dataset):
 
     def save_static_data(self, KEY, init_data, filetype):
         assert self.edge_attr == 'Y', 'Edge attribute must be Y for static data' 
-        node_data_pre, gen_data_pre, edge_data_pre, edge_data_post, node_data_post, gen_data_post, _ = self.get_data(init_data, init_data, KEY, -1, filetype)
+        node_data_pre, gen_data_pre, edge_data_pre, _, node_data_post, _ = self.get_data(init_data, init_data, KEY, -1, filetype)
         node_feature, node_labels, graph_label = self.get_node_features(node_data_pre, node_data_post, gen_data_pre)   #extract node features and labels from data  
 
         adj, edge_attr = self.get_edge_attrY(edge_data_pre, [])
@@ -854,8 +855,7 @@ class HurricaneDataset(Dataset):
 
             Vm2 = torch.tensor(node_data_post[:,7]) #*node_data_post[:,9]
             Va2 = torch.tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
-            Vm2[bus_type2[:,3]==1] = 0
-            Va2[bus_type2[:,3]==1] = 0
+
             if normalize_injection:
                 P_injection /= 100
                 Q_injection /= 100
@@ -882,12 +882,12 @@ class HurricaneDataset(Dataset):
                         Va2=Va2,
                     )
 
-                P_injection = P_injection * (bus_type[:, BusTypes.PQ] + bus_type[:, BusTypes.PV])  # P only given for PQ and PV buses
-                Q_injection = Q_injection * (bus_type[:, BusTypes.PQ])  # Q only given for PQ
+                #P_injection = P_injection * (bus_type[:, BusTypes.PQ] + bus_type[:, BusTypes.PV])  # P only given for PQ and PV buses
+                #Q_injection = Q_injection * (bus_type[:, BusTypes.PQ])  # Q only given for PQ
 
-                Vreal = Vreal * (
-                            bus_type[:, BusTypes.PV] + bus_type[:, BusTypes.SL])  # V only given for PV and slack bus
-                Vimag = Vimag * (bus_type[:, BusTypes.PV] + bus_type[:, BusTypes.SL])
+                #Vreal = Vreal * (
+                #            bus_type[:, BusTypes.PV] + bus_type[:, BusTypes.SL])  # V only given for PV and slack bus
+                #Vimag = Vimag * (bus_type[:, BusTypes.PV] + bus_type[:, BusTypes.SL])
 
 
             Vm2[bus_type2[:,BusTypes.inactive]==1] = 0
@@ -1002,7 +1002,6 @@ class HurricaneDataset(Dataset):
         threshold = 1e-8
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
         if len(edge_data) == 1: 
-            for edge in edge_data: print(edge)
             if np.all(edge_data == 0):    edge_data = torch.complex(torch.tensor(np.zeros((2000,2000))), torch.tensor(np.zeros((2000,2000))))
             else:                       edge_data = torch.complex(torch.tensor(edge_data[0]['real']), torch.tensor(edge_data[0]['imag']))
             mask = np.abs(edge_data) > threshold
@@ -1347,7 +1346,7 @@ class HurricaneDataset(Dataset):
         else:
             #data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
 
-            data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]), weights_only=False)
+            data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
 
         #QUESTION
         if 'zhu' not in self.data_type.lower():

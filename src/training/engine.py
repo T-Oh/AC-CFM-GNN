@@ -12,7 +12,7 @@ from datasets.dataset import mask_probs_add_bias
 
 from utils.utils import grad_norm, state_loss, physics_loss
 
-def safe_grad_norm(loss, model, retain_graph=False):
+"""def safe_grad_norm(loss, model, retain_graph=False):
     grads = torch.autograd.grad(
         loss,
         model.parameters(),
@@ -22,7 +22,24 @@ def safe_grad_norm(loss, model, retain_graph=False):
     grads = [g for g in grads if g is not None]  # filter out unused params
     if len(grads) == 0:
         return torch.tensor(0.0, device=loss.device)
-    return torch.norm(torch.stack([torch.norm(g) for g in grads]))
+    return torch.norm(torch.stack([torch.norm(g) for g in grads]))"""
+
+def safe_grad_norm(loss, model, retain_graph=False):
+    # compute gradients without creating higher-order graph
+    grads = torch.autograd.grad(
+        loss,
+        [p for p in model.parameters() if p.requires_grad],
+        retain_graph=retain_graph,
+        create_graph=False,
+        allow_unused=True
+    )
+    grads = [g.detach().cpu() for g in grads if g is not None]
+    if len(grads) == 0:
+        return torch.tensor(0.0, device=loss.device)
+    # compute L2 norm from gradients
+    norms = [g.norm() for g in grads]
+    return torch.stack(norms).norm()
+
 
 
 
@@ -128,10 +145,11 @@ class Engine(object):
         edge_loss = 0.
         PI_loss = 0.
         self.R2Score.reset()
-        self.f1_metric.reset()
-        self.precision_metric.reset()
-        self.recall_metric.reset()
-        self.accuracy_metric.reset()
+        if 'Class' in self.task or self.task == 'typeII' or self.task in ['StateReg', 'StateRegPI']:
+            self.f1_metric.reset()
+            self.precision_metric.reset()
+            self.recall_metric.reset()
+            self.accuracy_metric.reset()
         temp_node_loss = 0.
         temp_edge_loss = 0.
         temp_PI_loss = 0.
@@ -200,14 +218,16 @@ class Engine(object):
             
             backward_pass_start = time.time()
             #print('HARDCODED USING STATE LOSS (NOT STATE LOSS PI) TO TRACK PI LOSS WHILE TRAINING WITH REGULAR STATE LOSS')
-            #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1])
+            #temp_loss, temp_node_loss, temp_edge_loss = self.track_loss(output[0], output[1], labels[0], labels[1]
 
+            
 
             # Track gradients for inspection, not training
             if self.track_gradients:
+                temp_loss.backward(retain_graph=True)
                 g_node_loss = safe_grad_norm(temp_node_loss, self.model, retain_graph=True)
                 g_edge_loss = safe_grad_norm(temp_edge_loss, self.model, retain_graph=True)
-                #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=True)
+                #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=False)
                 print(f"grad norms: mse={g_node_loss:.3e}, ce={g_edge_loss:.3e}")#, pi={g_pi_loss:.3e}")
 
             #self.scaler.scale(loss).backward()
@@ -219,9 +239,8 @@ class Engine(object):
                 g_edge_list.append(g_edge_loss.detach().cpu())
                 #g_pi_list.append(g_pi_loss.detach().cpu())
                 g_total_list.append(torch.tensor(g_total)) 
-
-            
-            temp_loss.backward()
+            else:
+                temp_loss.backward()
 
             print('Time for backward pass of one batch: ', time.time()-backward_pass_start)
             if gradclip >= 0.02:    torch.nn.utils.clip_grad_norm_(self.model.parameters(), gradclip)   #Gradient Clipping
@@ -282,7 +301,7 @@ class Engine(object):
         if full_output:
             return metrics, total_output, total_labels, gradients
         else:
-            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
+            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:20000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
 
 
 
@@ -321,41 +340,45 @@ class Engine(object):
         g_node_list, g_edge_list, g_pi_list, g_total_list = [], [], [], []
 
         
-        with grad_context:
-            #with autocast():
-            loss, node_loss, edge_loss, PI_loss = 0., 0., 0., 0.
-            temp_node_loss, temp_edge_loss, temp_PI_loss = 0., 0., 0.
-            self.R2Score.reset()
+
+        #with autocast():
+        loss, node_loss, edge_loss, PI_loss = 0., 0., 0., 0.
+        temp_node_loss, temp_edge_loss, temp_PI_loss = 0., 0., 0.
+        self.R2Score.reset()
+        if 'Class' in self.task or self.task in ['StateReg', 'StateRegPI']:
             self.f1_metric.reset()
             self.precision_metric.reset()
             self.recall_metric.reset()
             self.accuracy_metric.reset()
 
-            first = True
-            count = 0
-            data_loading_time = 0.
-            gpu_processing_time = 0.
-            total_output = None
-            total_labels = None
+        first = True
+        count = 0
+        data_loading_time = 0.
+        gpu_processing_time = 0.
+        total_output = None
+        total_labels = None
+        self.model.zero_grad(set_to_none=True)
+        torch.cuda.empty_cache()
 
-            for batch in dataloader:
-                count += 1
-                #compile batch depending on task - ifinstance implies that the data is LDTSF
-                data_start = time.time()
-                batch = self.compile_batch(batch)
-                data_loading_time += data_start-time.time()
-                if self.VERBOSE: 
-                    print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
-                    print('Eval: Pre forward pass: ')
-                    self.log_gpu_usage()
-                gpu_start = time.time()
-                
+
+        for batch in dataloader:
+            count += 1
+            #compile batch depending on task - ifinstance implies that the data is LDTSF
+            data_start = time.time()
+            batch = self.compile_batch(batch)
+            data_loading_time += data_start-time.time()
+            if self.VERBOSE: 
+                print(f'Total Loading Time so far (EVAL): {data_loading_time:.2f} s', flush=True)
+                print('Eval: Pre forward pass: ')
+                self.log_gpu_usage()
+            gpu_start = time.time()
+            with grad_context:
                 output = self.model.forward(batch)
                 gpu_processing_time += time.time()-gpu_start
                 if self.VERBOSE: print(f'Total GPU processing time so far (EVAL) {gpu_processing_time:.2f}s', flush=True)
                 output, labels = shape_and_cast_labels_and_output(output, batch, self.task, self.device) #, edge_labels
-                print(f'Output: {output}')
-                print(f'Labels: {labels}')
+                #print(f'Output: {output}')
+                #print(f'Labels: {labels}')
                 
                 #compile labels and output fo saving
                 total_output, total_labels = self.compile_labels_output_for_saving(first, output, labels, total_output, total_labels)         
@@ -402,22 +425,34 @@ class Engine(object):
                 if self.track_test_gradients:
                     g_node_loss = safe_grad_norm(temp_node_loss, self.model, retain_graph=True)
                     g_edge_loss = safe_grad_norm(temp_edge_loss, self.model, retain_graph=True)
-                    #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=True)
+                    #g_pi_loss   = safe_grad_norm(temp_PI_loss, self.model, retain_graph=False)
 
                     print(f"grad norms: mse={g_node_loss:.3e}, ce={g_edge_loss:.3e}")#, pi={g_pi_loss:.3e}")
-                    g_total = grad_norm(self.model)
+                    g_total = safe_grad_norm(temp_loss, self.model, retain_graph=True)
 
 
                     g_node_list.append(g_node_loss.detach().cpu())
                     g_edge_list.append(g_edge_loss.detach().cpu())
                     #g_pi_list.append(g_pi_loss.detach().cpu())
                     g_total_list.append(torch.tensor(g_total)) 
-                    
+                self.model.zero_grad(set_to_none=True)
 
-                loss += float(temp_loss)
-                node_loss += temp_node_loss
-                edge_loss += temp_edge_loss
-                PI_loss += temp_PI_loss if self.task == 'StateRegPI' else 0
+            if self.task in ['StateReg', 'StateRegPI']:
+                loss += temp_loss.detach().cpu()
+                node_loss += temp_node_loss.detach().cpu()
+                edge_loss += temp_edge_loss.detach().cpu()
+                PI_loss += temp_PI_loss.detach().cpu() if self.task == 'StateRegPI' else 0
+                temp_loss = temp_loss.detach()
+                temp_node_loss = temp_node_loss.detach()
+                temp_edge_loss = temp_edge_loss.detach()
+                del temp_node_loss, temp_edge_loss
+            if self.task == 'StateRegPI':
+                temp_PI_loss = temp_PI_loss.detach()
+                del  temp_PI_loss
+
+            del batch, output, labels, temp_loss
+            torch.cuda.empty_cache()
+                
 
             metrics = self.compute_metrics(total_output, total_labels, loss, node_loss, edge_loss, PI_loss, count)
             if self.track_test_gradients:
@@ -432,11 +467,13 @@ class Engine(object):
                 print(f"Total Loading time during EVAL: {data_loading_time:.2f} s", flush=True)
                 print(f"Total processing time during EVAL: {gpu_processing_time:.2f} s", flush=True)
                 print(f"Total time for EVAL: {time.time()-start:.2f} s", flush=True)
-            if full_output:
-                return metrics, total_output, total_labels, gradients
-            else:
-                return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
-                
+            self.model.zero_grad(set_to_none=True)
+
+        if full_output:
+            return metrics, total_output, total_labels, gradients
+        else:
+            return metrics, (total_output[0][:20000], total_output[1][:7064*10]), (total_labels[0][:2000], total_labels[1][0,7064*10]), gradients  #return only the first 2000 instances for saving memory
+            
 
 
     def log_gpu_usage(self):

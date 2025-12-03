@@ -10,7 +10,7 @@ from ray import train
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import matplotlib
 
-from dataset import create_datasets_zhu
+#from dataset import create_datasets_zhu
 
 matplotlib.use('Agg')  # Use a non-GUI backend for Matplotlib
 import matplotlib.pyplot as plt
@@ -23,7 +23,7 @@ from utils.get_optimizers import get_optimizer
 
 from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params, save_output, physics_loss
 
-from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes
+from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes, create_datasets_zhu
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sklearn.metrics import confusion_matrix
 
@@ -43,6 +43,7 @@ def run_epoch_loop(
     output_freq=None
 ):
     output, labels = [], []
+    learning_rates = []
 
     for i in range(1, cfg['epochs'] + 1):
         print(f'Epoch: {i}', flush=True)
@@ -54,11 +55,14 @@ def run_epoch_loop(
         if cfg.get('train_size', 1) == 1 and not report_to_session:
             temp_eval, _, _, gradients = engine.eval(trainloader)
         else:
-            temp_eval, _, _ = engine.eval(testloader)
+            temp_eval, _, _, gradients = engine.eval(testloader)
 
         # Log and update learning rate
         result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['cfg_path'], name_or_fold)
         LRScheduler.step(temp_eval['loss'])
+        current_lr = LRScheduler.get_last_lr()[0]
+        print(f'Current LR: {current_lr}', flush=True)
+        learning_rates.append(current_lr)
 
         if report_to_session and (i % output_freq == 0):
             temp_report = {
@@ -96,7 +100,7 @@ def run_epoch_loop(
 
         t2 = time.time()
         print(f'Training Epoch took {(t2 - t1) / 60} mins', flush=True)
-
+    torch.save(torch.tensor(learning_rates), cfg['cfg_path'] + "results/learning_rates.pt")
     # Final plotting
     if plotting_dir:
         plotting(metrics, evaluation, output, labels, plotting_dir, name_or_fold, TASK)
@@ -140,13 +144,17 @@ def run_training(trainloader, testloader, engine, cfg, LRScheduler, fold = -1):
         print(f'Epoch: {i}', flush=True)
         #torch.cuda.synchronize()
         t1 = time.time()
-        temp_metrics, train_output, train_labels = engine.train_epoch(trainloader, cfg['gradclip'], cfg['full_output'])
+        temp_metrics, train_output, train_labels, gradients = engine.train_epoch(trainloader, cfg['gradclip'], cfg['full_output'])
 
         if cfg['train_size'] == 1:
-            temp_eval, test_output, test_labels = engine.eval(trainloader, cfg['full_output'])    #TO change back to testloader if train_size <1
+            temp_eval, test_output, test_labels, gradients_testset = engine.eval(trainloader, cfg['full_output'])    #TO change back to testloader if train_size <1
         else:
-            temp_eval, test_output, test_labels = engine.eval(testloader, cfg['full_output'])
+            temp_eval, test_output, test_labels, gradients_testset = engine.eval(testloader, cfg['full_output'])
         LRScheduler.step(temp_eval['loss'])
+
+        torch.save(gradients, f'results/gradients_epoch_{i}.pt')
+        torch.save(gradients_testset, f'results/gradients_testset_epoch_{i}.pt')
+
 
         _, metrics_, eval = log_metrics(temp_metrics, temp_eval, metrics, eval, i, TASK, cfg['cfg_path'], SAVENAME)
         t2 = time.time()

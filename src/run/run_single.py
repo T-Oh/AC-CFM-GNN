@@ -65,11 +65,13 @@ def run_single(cfg, device, N_CPUS):
         optimizer = get_optimizer(cfg, model, params)
 
         #Init LR Scheduler
-        LRScheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=100, threshold=0.0001)
+        LRScheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=100, threshold=0.001)
+
 
         # Initializing engine
         engine = Engine(model, optimizer, device, criterion,
-                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'], return_full_output=True)
+                        tol=cfg["accuracy_tolerance"], task=cfg["task"], var=mask_probs, masking=cfg['use_masking'], mask_bias=cfg['mask_bias'],
+                         return_full_output=True, track_gradients=cfg['track_gradients'], track_test_gradients=cfg['track_test_gradients'])
 
         #Run Training
         _, _, output, labels, test_output, test_labels = run_training(trainloader, testloader, engine, cfg, LRScheduler)

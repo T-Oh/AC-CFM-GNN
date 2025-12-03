@@ -63,22 +63,22 @@ def compute_min_max(processed_path):
 
             if min_values is None:
                 min_values = {
-                    #"x": np.min(data.x.numpy(), axis=0),
+                    "x": np.min(data.x.numpy(), axis=0),
                     #"node_labels": np.min(data.node_labels.numpy(), axis=0),
                     "edge_attr": np.min(data.edge_attr.numpy(), axis=0) if data.edge_attr.size(0) > 0 else None,
                     "y": data.y,
                     "y_cummulative": data.y_cummulative
                 }
                 max_values = {
-                    #"x": np.max(data.x.numpy(), axis=0),
+                    "x": np.max(data.x.numpy(), axis=0),
                     #"node_labels": np.max(data.node_labels.numpy(), axis=0),
                     "edge_attr": np.max(data.edge_attr.numpy(), axis=0) if data.edge_attr.size(0) > 0 else None,
                     "y": data.y,
                     "y_cummulative": data.y_cummulative
                 }
             else:
-                #min_values["x"] = np.minimum(min_values["x"], np.min(data.x.numpy(), axis=0))
-                #max_values["x"] = np.maximum(max_values["x"], np.max(data.x.numpy(), axis=0))
+                min_values["x"] = np.minimum(min_values["x"], np.min(data.x.numpy(), axis=0))
+                max_values["x"] = np.maximum(max_values["x"], np.max(data.x.numpy(), axis=0))
 
                 #min_values["node_labels"] = np.minimum(min_values["node_labels"], np.min(data.node_labels.numpy(), axis=0))
                 #max_values["node_labels"] = np.maximum(max_values["node_labels"], np.max(data.node_labels.numpy(), axis=0))
@@ -102,7 +102,8 @@ def normalize_data(data, min_values, max_values, log_normalize, num_features):
     # Normalize only the the power features and labels (devide by 100 MW (MVar)
     #data.x[:, 3:4] = data.x[:, 3:5] / 100.0  # P,Q
     #data.node_labels = data.node_labels / 100.0 # P,Q
-
+    data.x[:, 0:2] = (data.x[:, :2] - torch.tensor(min_values["x"][:2])) / (torch.tensor(max_values["x"][:2]) - torch.tensor(min_values["x"][:2])) # P,Q
+   
     # Normalize edge features if not empty
     if data.edge_attr.size(0) > 0:
         if log_normalize:
@@ -120,7 +121,7 @@ def normalize_data(data, min_values, max_values, log_normalize, num_features):
     return data
 
 if __name__ == "__main__":
-    processed_path = "processed/"
+    processed_path = "processed_1_111_PU/"
     normalized_path = "normalized/"
     min_max_file = "min_max_PU_test.pkl"
     recalculate_min_max = True  # Set to True to recalculate min/max values

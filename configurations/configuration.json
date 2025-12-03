@@ -1,14 +1,14 @@
 {
     /*General Settings*/
-    "cfg_path":         "",
-    "dataset::path":    "",
+    "cfg_path":         "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path of the configuration file
+    "dataset::path":    "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path to the dataset - the folder with the dataset must be called 'processed/'
 
     /*Data Settings*/
-    "data":                 "Zhu_n_minus_k", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype
+    "data":                 "Zhu", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
     "edge_attr":            "Y",    //edge_attr: Y, multi
-    "ls_threshold":         0.1,    //Load shed threshold under which only N_below_threshold samples are collected
+    "ls_threshold":         0.0,    //Load shed threshold under which only N_below_threshold samples are collected
     "N_below_threshold":    1000,   //Number of samples below the load shed threshold
-    "n_scenarios":          10,     //used only for stormsplit should be larger than the largest ID of used scenarios
+    "n_scenarios":          1000,     //used only for stormsplit should be larger than the largest ID of used scenarios
     "max_seq_length":       5,      //Maximum sequence length for LSTM; in case of autoregressive this defines the window size
 
     /*General Run Control*/
@@ -18,8 +18,8 @@
     "study_ID":         "Test_StateReg",    
 
     //Specific Run Control
-    "checkpointing":    false,     //Not implemented
-    "epochs":           100,  
+
+    "epochs":           3,  
     "output_freq" :     1,         //Output frequency
     "full_output":      true,     //If false only saves 16 random instances
     "track_gradients":  false,     //If true tracks gradient norms during training
@@ -33,43 +33,50 @@
     "train_set::shuffle":   false,
 
     /*Model Settings*/
-    "task":         "StateRegPI",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI (possibly more)
-    "model":        "GATLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
-    "autoregressive": false,         //If true the model will be autoregressive, only works for LSTM type models (LSTM, GATLSTM, TAGLSTM)
-
+    "task":         "StateReg",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI (possibly more)
+    "model":        "TAGLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
+    "autoregressive":    false,          //If true uses autoregressive training for LSTM models
+    
     //Convolutional Settings
-    "num_layers":   1,              //Number of convolutional layers
+    "num_layers":   2,              //Number of convolutional layers
     "hidden_size":  25,             //Embedding size of convolutional layers
 
     //Regression Head Settings
     "reghead_size":     25,         //Embedding size of regression and classification heads
-    "reghead_layers":   1,          //Number of layers of regression and classification heads
+    "reghead_layers":   2,          //Number of layers of regression and classification heads
     "reghead_type":     "single",   //single, node_edge, node_node_edge
+
     //LSTM Settings
     "num_conv_targets": 25,         //Embedding size of the final convolutional layer
     "lstm_hidden_size": 25,         //Hidden size of LSTM
-    "num_lstm_layers":  1,          //Number of LSTM layers
+    "num_lstm_layers":  2,          //Number of LSTM layers
+
     //Others
     "dropout":          0.0,
     "use_batchnorm":    false,
     "use_skipcon":      false,
+
     //GAT Settings
     "num_heads":        2,
-    "num_heads":        2,
     "gat_dropout":      0.0,
+
     //TAG Settings
     "tag_jumps" :       7,
 
     /*Loss Settings*/
-    "gradclip" :            7.1,    //Threshold for Gradient Clipping (if set to 0 no gradient clipping will be performed)
+    "gradclip" :            0.0,    //Threshold for Gradient Clipping (if set to 0 no gradient clipping will be performed)
     "use_masking" :         false,  //If true applies node masking to the loss function (not applicable for LSTM)
     "mask_bias" :           1.0,    //Bias for the masking function (not applicable for LSTM)
     "weighted_loss_label":  false,  //If true the loss function will be weighted by the number of samples in the batch
-    "weighted_loss_factor": 1,    //Factor for the weighted loss function (if set to 0 no weighting will be performed)
-    "PI_factor":            0.5,    //Factor for the power injection loss (only applicable if task is StateRegPI)
+    "weighted_loss_factor": 0.1,    //Factor for the weighted loss function (if set to 0 no weighting will be performed)
+    "PI_factor":            0.05,    //Factor for the power injection loss (only applicable if task is StateRegPI)
+    "weight_nodes_by_centrality":   false,
+    "weight_nodes_by_voltage_threshold":    false,
+    "voltage_weight":               2.0,
+
 
     /*Optimizer Settings*/
-    "optim::LR":            1e-7,
+    "optim::LR":            1e-3,
     "optim::betas":         [0.9, 0.999],
     "optim::epsilon":       1e-8,
     "optim::loss":          "MSE",
@@ -77,6 +84,7 @@
     "optim::nesterov":      false,
     "optim::optimizer":     "Adam",
     "optim::weight_decay":  1e-6,
+
 
     /*Node2Vec Control*/
     "N2V":                  false,
@@ -88,6 +96,7 @@
     "num_negative_samples": 1,
     "p" :                   1,
     "q" :                   1,
+ 
     
     /*Study Settings*/
     "study::n_trials" :     4,
@@ -175,8 +184,8 @@
     /*for per unit use "multiply_base_voltage": false and "normalize_injection" : true*/
     "normalize_injection" : true,
     "multiply_base_voltage": false,
-    "zhu_check_buses" :  false,
-    "check_s_y" : false,
+    "zhu_check_buses" :  true,
+    "check_s_y" : true,
 
     /*Zhu*/
     "pl_w1": 1,

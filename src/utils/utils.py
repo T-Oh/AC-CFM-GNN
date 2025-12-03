@@ -1,3 +1,4 @@
+#from sklearn.base import r2_score
 import torch
 import json
 import os
@@ -8,6 +9,7 @@ import torch.nn
 import numpy as np
 import pickle as pkl
 import matplotlib.pyplot as plt
+import networkx as nx
 
 from ray import tune
 import warnings
@@ -239,15 +241,18 @@ def save_output(output, labels, test_output, test_labels, name=""):
         torch.save(test_labels, f)
 
 
-def choose_criterion(task, weighted_loss_label, weighted_loss_factor, cfg, device):
+def choose_criterion(task, use_weighted_loss_label, weighted_loss_factor, cfg, device):
             # Init Criterion
-        if task in ['GraphClass', 'typeIIClass']:
+        if cfg['physics_loss']:
+            criterion = physics_loss(cfg['pl_w1'], cfg['pl_w2'], cfg['pl_w3'], device)
+        
+        elif task in ['GraphClass', 'typeIIClass']:
             criterion = torch.nn.CrossEntropyLoss()
-        elif weighted_loss_label:
+        elif use_weighted_loss_label:
             criterion = weighted_loss_label(
             factor=torch.tensor(weighted_loss_factor))
         elif task == 'StateReg':
-            criterion = state_loss(weighted_loss_factor)
+            criterion = state_loss(weighted_loss_factor, cfg['dataset::path'], cfg['weight_nodes_by_centrality'], cfg['weight_nodes_by_voltage_threshold'], cfg['voltage_weight'])
         elif task == 'StateRegPI':
             criterion = state_loss_power_injection(cfg, weighted_loss_factor, cfg['PI_factor'], device)
         elif task == 'NodeReg':
@@ -303,18 +308,83 @@ def multiclass_classification(output, labels, N_bins):
     return outputclasses, labelclasses, matrix
 
 class state_loss(torch.nn.Module):
-    def __init__(self, edge_factor):
+    def __init__(self, edge_factor, dataset_path, weight_nodes_by_centrality, weight_nodes_by_voltage_threshold=False, voltage_weight=2.0):
         super(state_loss, self).__init__()
         self.edge_factor = edge_factor
-        self.node_loss = torch.nn.MSELoss(reduction='mean')
+        self.node_loss = torch.nn.MSELoss(reduction='none')
         self.edge_loss = torch.nn.CrossEntropyLoss(reduction='mean')
+        self.weight_nodes_by_centrality = weight_nodes_by_centrality
+        self.weight_nodes_by_voltage_threshold = weight_nodes_by_voltage_threshold
+        if weight_nodes_by_voltage_threshold:
+            #weighting by voltage threshold applies the weight both when imag and/or real part of the voltage is below/above threshold
+            #if both are true the weight is applied twice
+            data = torch.load(os.path.join(dataset_path, 'processed/data_static.pt'))
+            voltage_real = data.x[:,2]  
+            voltage_imag = data.x[:,3]  
+            weight_mask = voltage_real > 0.7    #thresholds chosen from according scatterplot from check_for_hard_nodes_aggregate.py (Documentation_Time_series plots 33 (c) and (d))
+            weight_mask_imag = voltage_imag < 0.31
+
+            self.voltage_node_weights = (torch.ones(2000) + (voltage_weight-1.0) * (weight_mask.float() + weight_mask_imag.float()))
+            self.voltage_node_weights = self.voltage_node_weights / self.voltage_node_weights.mean()
+            print(self.voltage_node_weights)
+            print(self.voltage_node_weights.max())
+
+        if weight_nodes_by_centrality:
+            print('Weighting Node Loss by Betweenness Centrality')
+            data = torch.load(os.path.join(dataset_path, 'processed/data_static.pt'))
+            edge_index = data.edge_index.numpy()
+            edge_weight = np.sqrt(data.edge_attr[:, 0].numpy()**2 + data.edge_attr[:,1].numpy()**2) if data.edge_attr is not None else np.ones(edge_index.shape[1])
+
+            G = nx.Graph()
+            G.add_nodes_from(range(data.x.size(0)))
+            for (u, v), w in zip(edge_index.T, edge_weight):
+                G.add_edge(int(u), int(v), weight=float(w))
+            betweenness = nx.betweenness_centrality(G, weight="weight", normalized=True)
+            self.centrality_node_weights = torch.tensor(
+            [betweenness[i] for i in range(2000)]
+            )
+            self.centrality_node_weights = self.centrality_node_weights / self.centrality_node_weights.mean()
         print(f'Using State Loss with edge factor {self.edge_factor}')
 
     def forward(self, node_output, edge_output, node_labels, edge_labels):
-        node_loss = self.node_loss(node_output, node_labels)
+        raw_node_loss = self.node_loss(node_output, node_labels)
+        if self.weight_nodes_by_centrality:
+            #print('Weighting node loss by betweenness centrality')
+            weights = torch.tensor(
+            [self.centrality_node_weights[i] for i in range(2000)],
+            device=node_output.device,
+            dtype=node_output.dtype
+            )
+            weights = weights.repeat(int(len(node_output)/2000))
+            # if raw_node_loss has shape [num_nodes, features], average across features first
+            if raw_node_loss.dim() > 1:
+                """num_blocks = len(node_output) // 2000
+                losses = []
+                for i in range(num_blocks):
+                    block_loss = (raw_node_loss[i*2000:(i+1)*2000] * weights).mean()
+                    losses.append(block_loss)
+                weighted_node_loss = torch.stack(losses).mean()"""
+
+                """raw_node_loss = raw_node_loss.mean(dim=1)
+                for i in range(int(len(node_output)/2000)):
+                    weighted_node_loss = (raw_node_loss[i*2000:(i+1)*2000] * weights).mean()"""
+                raw_node_loss = raw_node_loss.mean(dim=1)
+            weighted_node_loss = (raw_node_loss * weights).mean()
+        else:
+            weighted_node_loss = raw_node_loss.mean()
+
+        if self.weight_nodes_by_voltage_threshold:
+            print('Weighting node loss by voltage thresholding')
+            weights = self.voltage_node_weights.to(node_output.device).to(node_output.dtype)
+            weights = weights.repeat(int(len(node_output)/2000))
+            # if raw_node_loss has shape [num_nodes, features], average across features first
+            if raw_node_loss.dim() > 1:
+                raw_node_loss = raw_node_loss.mean(dim=1)
+            weighted_node_loss = (raw_node_loss * weights).mean()
+
         edge_loss = self.edge_loss(edge_output, edge_labels.reshape(-1))
-        loss = node_loss + edge_loss*self.edge_factor
-        return loss, node_loss, edge_loss
+        loss = weighted_node_loss + edge_loss*self.edge_factor
+        return loss, weighted_node_loss, edge_loss
     
 class state_loss_power_injection(torch.nn.Module):
     def __init__(self, cfg, edge_factor, PI_factor, device):
@@ -341,6 +411,8 @@ class state_loss_power_injection(torch.nn.Module):
         self.edge_loss = torch.nn.CrossEntropyLoss(reduction='mean')
         self.PI_loss = torch.nn.MSELoss(reduction='mean')
 
+
+
         self.device=device
         #Things needed for the power injection loss
         static_data = torch.load(os.path.join(cfg['dataset::path'], 'processed/data_static.pt'))    #Used for pytorch branch IDs of fully functioning grid
@@ -366,11 +438,12 @@ class state_loss_power_injection(torch.nn.Module):
         S = self.calculate_S((node_output, edge_output), (node_labels, edge_labels), use_edge_labels=True)
         S_true = self.calculate_S((node_labels, edge_labels), (node_labels, edge_labels), use_edge_labels=True)
         PI_loss = self.PI_loss(torch.view_as_real(S), torch.view_as_real(S_true))
+        #PI_R2 = r2_score(torch.view_as_real(S_true).cpu().detach().numpy(), torch.view_as_real(S).cpu().detach().numpy())
 
         loss = node_loss + self.edge_factor*edge_loss + self.PI_factor*PI_loss
         return loss, node_loss, edge_loss, PI_loss
-    
-    
+
+
     def build_Y_matrix_from_predictions(self, edge_predictions):
         Y = self.Y_raw.clone()
         Y = Y.to(torch.complex64)
@@ -385,25 +458,6 @@ class state_loss_power_injection(torch.nn.Module):
             if i!=j:
                 Y[i, i] += y_ij - self.b_edge_attr[idx]
                 Y[i, j] = 0
-            """if i < 10:
-                print('iterative')
-                print(i,j)
-                print(Y[i,j])
-
-        Y = self.Y_raw.clone()
-        Y = Y.to(torch.complex64)
-        
-        mask = (edge_predictions == 0)  # inactive edges
-        i_idx, j_idx = self.edge_index[:, mask]
-
-        # zero out Y[i, j] for inactive edges
-        Y[i_idx, j_idx] = 0
-
-        # fix diagonal in a vectorized way
-        diag_add = Y[i_idx, j_idx] - self.b_edge_attr[mask]
-        Y[i_idx, i_idx] += diag_add
-        print('vectorized')
-        print(Y[:10, :10])"""
 
 
         Y[abs(Y.real)<0.001] = 0j
@@ -453,6 +507,14 @@ class state_loss_power_injection(torch.nn.Module):
             if key in line_to_shunt:
                 shunt_attr[k] = torch.tensor(line_to_shunt[key], dtype=torch.cfloat)
         return shunt_attr
+    
+def grad_norm(model):
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            total_norm += p.grad.data.norm(2).item()**2
+    return total_norm**0.5
+
 
 
 class weighted_loss_label(torch.nn.Module):
@@ -462,8 +524,8 @@ class weighted_loss_label(torch.nn.Module):
     def __init__(self, factor):
         super(weighted_loss_label, self).__init__()
         self.factor = torch.sqrt(factor)
-        self.node_loss= torch.nn.MSELoss(reduction='mean')
-        self.edge_loss
+        self.base_loss= torch.nn.MSELoss(reduction='mean')
+
 
     def forward(self, output, labels):
         print('Using weighted loss label')
@@ -471,7 +533,7 @@ class weighted_loss_label(torch.nn.Module):
         labels_ = labels.clone()
         output_[labels>0] = output_[labels>0]*self.factor
         labels_[labels>0] = labels_[labels>0].clone()*self.factor
-        return self.baseloss(self.factor*output_,self.factor*labels_)
+        return self.base_loss(self.factor*output_,self.factor*labels_)
 
 
 class weighted_loss_var(torch.nn.Module):

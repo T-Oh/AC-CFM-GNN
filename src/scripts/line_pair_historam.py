@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import scipy
 
-PATH_DATASET = 'damage_files/'
+PATH_DATASET = 'data/damage_files/'
 
 
 def get_initial_damages(file):

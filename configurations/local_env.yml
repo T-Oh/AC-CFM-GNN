@@ -2,8 +2,8 @@ name: pik
 channels:
   - pytorch
   - pyg
-  - conda-forge
   - defaults
+  - conda-forge
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=1_gnu
@@ -236,8 +236,10 @@ dependencies:
       - ray==2.3.0
       - rsa==4.9
       - scipy==1.11.1
+      - seaborn==0.13.2
       - smart-open==6.3.0
       - tensorboardx==2.6
+      - torcheval==0.0.7
       - typing-extensions==4.5.0
       - virtualenv==20.19.0
       - yarl==1.8.2

@@ -4,15 +4,15 @@ import matplotlib.pyplot as plt
 import torch
 import numpy as np
 
-FILE = 'processed/data_14_16.pt'
+FILE = 'processed/data_static.pt'
 
 # Assuming you have a PyTorch Geometric graph object named `data`
-init_data = torch.load('processed/data_14_0.pt')
+init_data = torch.load('processed/data_static.pt')
 data = torch.load(FILE)
 
 
 # Step 1: Extract node positions
-node_positions = np.loadtxt('/home/tohlinger/Documents/AC-CFM/Data/bus_positions.txt', delimiter='\t', usecols=(14, 15), dtype=float)
+node_positions = np.loadtxt('/home/tohlinger/HUI/Documents/AC-CFM/Data/bus_positions.txt', delimiter='\t', usecols=(14, 15), dtype=float)
 node_positions[:,[0,1]] = node_positions[:,[1,0]]
 
 #remove half of the edges (since edges are implemented bidirectional with one edge per direction we remove every 2nd edge)
