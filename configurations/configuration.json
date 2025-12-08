@@ -4,7 +4,7 @@
     "dataset::path":    "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path to the dataset - the folder with the dataset must be called 'processed/'
 
     /*Data Settings*/
-    "data":                 "Zhu", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
+    "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
     "edge_attr":            "Y",    //edge_attr: Y, multi
     "ls_threshold":         0.0,    //Load shed threshold under which only N_below_threshold samples are collected
     "N_below_threshold":    1000,   //Number of samples below the load shed threshold
@@ -18,18 +18,17 @@
     "study_ID":         "Test_StateReg",    
 
     //Specific Run Control
-
-    "epochs":           3,  
+    "epochs":           100,  
     "output_freq" :     1,         //Output frequency
     "full_output":      true,     //If false only saves 16 random instances
     "track_gradients":  false,     //If true tracks gradient norms during training
     "track_test_gradients": false,    //If true tracks gradient norms on the test set during training
     
     /*Data split settings*/
-    "train_size":           1,    //Ignored if stormsplit > 0 otherwise the percentage of data that should be used as training data
-    "stormsplit" :          0,     //For stormsplit the files need to be named so that different storms have different IDs i.e. the scenarios of storm 1 should all be named data_1*_*.pt. Then the ID of the storm to be used as training data should be put here
-    "test_set::batchsize":  2,
-    "train_set::batchsize": 2,
+    "train_size":           0.85,    //Ignored if stormsplit > 0 otherwise the percentage of data that should be used as training data
+    "stormsplit" :          1,     //For stormsplit the files need to be named so that different storms have different IDs i.e. the scenarios of storm 1 should all be named data_1*_*.pt. Then the ID of the storm to be used as training data should be put here
+    "test_set::batchsize":  300,
+    "train_set::batchsize": 300,
     "train_set::shuffle":   false,
 
     /*Model Settings*/
@@ -38,13 +37,13 @@
     "autoregressive":    false,          //If true uses autoregressive training for LSTM models
     
     //Convolutional Settings
-    "num_layers":   2,              //Number of convolutional layers
-    "hidden_size":  25,             //Embedding size of convolutional layers
+    "num_layers":   3,              //Number of convolutional layers
+    "hidden_size":  64,             //Embedding size of convolutional layers
 
     //Regression Head Settings
-    "reghead_size":     25,         //Embedding size of regression and classification heads
+    "reghead_size":     64,         //Embedding size of regression and classification heads
     "reghead_layers":   2,          //Number of layers of regression and classification heads
-    "reghead_type":     "single",   //single, node_edge, node_node_edge
+    "reghead_type":     "node_edge",   //single, node_edge, node_node_edge
 
     //LSTM Settings
     "num_conv_targets": 25,         //Embedding size of the final convolutional layer
@@ -52,26 +51,26 @@
     "num_lstm_layers":  2,          //Number of LSTM layers
 
     //Others
-    "dropout":          0.0,
-    "use_batchnorm":    false,
+    "dropout":          0.2,
+    "use_batchnorm":    true,
     "use_skipcon":      false,
 
     //GAT Settings
     "num_heads":        2,
-    "gat_dropout":      0.0,
+    "gat_dropout":      0.2,
 
     //TAG Settings
     "tag_jumps" :       7,
 
     /*Loss Settings*/
-    "gradclip" :            0.0,    //Threshold for Gradient Clipping (if set to 0 no gradient clipping will be performed)
+    "gradclip" :            7.1,    //Threshold for Gradient Clipping (if set to 0 no gradient clipping will be performed)
     "use_masking" :         false,  //If true applies node masking to the loss function (not applicable for LSTM)
     "mask_bias" :           1.0,    //Bias for the masking function (not applicable for LSTM)
     "weighted_loss_label":  false,  //If true the loss function will be weighted by the number of samples in the batch
     "weighted_loss_factor": 0.1,    //Factor for the weighted loss function (if set to 0 no weighting will be performed)
     "PI_factor":            0.05,    //Factor for the power injection loss (only applicable if task is StateRegPI)
     "weight_nodes_by_centrality":   false,
-    "weight_nodes_by_voltage_threshold":    false,
+    "weight_nodes_by_voltage_threshold":    true,
     "voltage_weight":               2.0,
 
 
@@ -192,6 +191,6 @@
     "pl_w2": 1,
     "pl_w3": 1,
     "pl_simply_train": false,
-    "physics_loss": true,
+    "physics_loss": false,
     "pl_stage": "pretrain"
 }

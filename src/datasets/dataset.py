@@ -308,20 +308,6 @@ class HurricaneDataset(Dataset):
                     elif self.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
                         data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label)
                         torch.save(data, os.path.join(self.processed_dir, f'data_{str(scenario)}_{str(i)}.pt'))
-                        """
-                        admittance_matrix = torch.tensor(edge_data_post)
-
-                    #
-                        Vreal = node_feature[:, 2]
-                        Vimag = node_feature[:, 3]
-                        Vm = torch.sqrt(Vreal ** 2 + Vimag ** 2).unsqueeze(1)
-
-                        node_feature = torch.cat([
-                            node_feature[:, 0:2],  #S real and imag
-                            Vm,  # only magnitude used as a feature in Zhu paper
-                            node_feature[:, 4:7],  #inactive buses not in features
-                        ], dim=1)"""
-
                        
                     
                     if self.data_type == 'LSTM':
