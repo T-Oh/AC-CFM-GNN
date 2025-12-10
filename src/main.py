@@ -5,7 +5,7 @@ import shutil
 import time
 import os
 
-from sys import argv
+from utils.utils import get_arg
 from numpy.random import seed as numpy_seed
 
 from run.run_single import run_single
@@ -31,10 +31,11 @@ if __name__ == "__main__":
     PATH = cfg["cfg_path"]
 
     #Pass Input Arguments
-    N_TASKS = int(argv[1])  #should only be >1 for studies -> controls the number of parallel trials
-    N_CPUS_PER_TASK = int(argv[2])   #controls the number of cpus per trial used as dataloaders (for run_single and run_crossval should be total number of cpus (used as loaders))
-    N_GPUS = int(argv[3])
-    port_dashboard = int(argv[4])
+    N_TASKS = get_arg(1)
+    N_CPUS_PER_TASK = get_arg(2)
+    N_GPUS = get_arg(3)
+    port_dashboard = get_arg(4)
+
     print('N_TASKS:', N_TASKS)
     print('N_CPUS_PER_TASK:', N_CPUS_PER_TASK)
     print('N_GPUS: ', N_GPUS, flush=True)

@@ -17,6 +17,7 @@ from torch_geometric.data import Data
 from torch_scatter import scatter_add
 from datasets.dataset import create_datasets, create_loaders
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
+from sys import argv
 
 
 def check_config_conflicts(cfg):
@@ -819,6 +820,14 @@ class MSE_plus_physics_loss(torch.nn.Module):
         loss = MSE_loss + self.lmbda * physics_loss
 
         return loss, physics_loss, torch.mean(D1), torch.mean(D2), torch.mean(D3)
+    
+
+# Helper to safely read argv[i]
+def get_arg(i, default=1):
+    try:
+        return int(argv[i])
+    except (IndexError, ValueError):
+        return default
 
 
 
