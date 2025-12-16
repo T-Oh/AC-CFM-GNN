@@ -14,7 +14,7 @@ import networkx as nx
 from ray import tune
 import warnings
 from torch_geometric.data import Data
-from torch_scatter import scatter_add
+from torch import scatter_add
 from datasets.dataset import create_datasets, create_loaders
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sys import argv
@@ -27,8 +27,8 @@ def check_config_conflicts(cfg):
     assert not (cfg['data'] == 'LDTSF' and cfg['task'] == 'NodeReg'),   'LDTSF Only works with GraphReg and GraphClass'
     assert not (cfg['data'] == 'LDTSF' and cfg['model'] != 'lstm'),     'LDTSF Only works with lstm as model'
     assert not (cfg['data'] == 'AC' and cfg['task'] == 'GraphClass'),   'None of the models working with AC data has GraphClass implemented' 
-    if cfg['data'] == 'LSTM' and not cfg['model'] == 'GATLSTM': 
-        warnings.warn("Using LSTM data with a model that is not GATLSTM, this should only be done for processing of LSTM data", UserWarning)
+    if cfg['data'] == 'LSTM' and not cfg['model'] in ['GATLSTM', 'TAGLSTM', 'MLPLSTM']: 
+        warnings.warn("Using Time Series data with a model that has no recurrent layers, this should only be done for processing of LSTM data", UserWarning)
     
 
 def setup_searchspace(cfg):
