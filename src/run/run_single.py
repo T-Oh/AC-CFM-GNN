@@ -39,8 +39,10 @@ def run_single(cfg, device, N_CPUS):
         else:                   pin_memory = False
 
         # Create Datasets and Dataloaders
-        max_seq_len_LDTSF, trainset, trainloader, testloader = setup_datasets_and_loaders(cfg, N_CPUS, pin_memory)
-
+        max_seq_len_LDTSF, trainset, trainloader, testloader, PROCESSING_LSTM_DATA = setup_datasets_and_loaders(cfg, N_CPUS, pin_memory)
+        if PROCESSING_LSTM_DATA:
+                print('Processing Successful \n After normalization using normalize_GTSF.py or normalize_GTSF_PU.py, switch to one of the LSTM models and run the main again.')
+                return
         # Calculate probabilities for masking of nodes if necessary
         mask_probs = calc_mask_probs(trainloader, cfg)
 
@@ -58,8 +60,6 @@ def run_single(cfg, device, N_CPUS):
 
         # Loading GNN model
         model = get_model(cfg, params)
-        #model = model_  #torch.compile(model_)
-        #model.to(device)
 
         # Init optimizer
         optimizer = get_optimizer(cfg, model, params)

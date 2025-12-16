@@ -121,7 +121,7 @@ def normalize_data(data, min_values, max_values, log_normalize, num_features):
     return data
 
 if __name__ == "__main__":
-    processed_path = "processed_1_111_PU/"
+    processed_path = "processed/"
     normalized_path = "normalized/"
     min_max_file = "min_max_PU_test.pkl"
     recalculate_min_max = True  # Set to True to recalculate min/max values

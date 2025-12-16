@@ -1,8 +1,3 @@
-"""
-Author : Tobias Ohlinger
-
-File setting up training and test data as well as neural network models
-"""
 import os
 import numpy as np
 import scipy.io
@@ -15,7 +10,6 @@ from os.path import isfile
 from matplotlib import pyplot as plt
 from torch_geometric.data import Dataset, Data, Batch
 from torch_geometric.loader import DataLoader
-#from torch.utils.data import DataLoader
 from torch.utils.data import Subset, random_split
 from torch_geometric.utils import to_undirected
 from torch.nn.utils.rnn import pad_sequence
@@ -23,13 +17,6 @@ import torch.utils
 from functools import partial
 
 from utils.enums import ZhuIdx, BusTypes
-
-#from torch.serialization import add_safe_globals
-#from torch_geometric.data.data import DataEdgeAttr
-
-# Register the allowed globals once at module load time
-# add_safe_globals([DataEdgeAttr])
-
 
 
 #######################
@@ -47,7 +34,7 @@ class HurricaneDataset(Dataset):
     stormsplit      no stormsplit is applied if 0 otherwise the data is split by putting all instances where the scenario indicator starts with stormsplit (f.e. 1) in the test set
     embedding       Node2Vec embedding to be used
     device          torch device
-    data_type       'AC' or 'DC' (only intended for AC)
+    data_type       the type of data to be processed (AC, LSTM, Zhu, Zhu_mat73, ANGF_Vcf, Zhu_nobustype, Zhu_n_minus_k, LDTSF, LDTSF_DC, n-k)
     """
 
     
@@ -71,7 +58,8 @@ class HurricaneDataset(Dataset):
             zhu_check_buses=False,
             check_s_y=False
     ):
-        self.use_supernode=use_supernode
+        #self.use_supernode=use_supernode
+        self.PROCESSING_LSTM_DATA = False 
         self.embedding = embedding
         self.device = device
         self.data_type = data_type
@@ -145,6 +133,7 @@ class HurricaneDataset(Dataset):
     
     def process(self):
         if self.data_type in ['AC', 'LSTM', 'Zhu', 'Zhu_mat73', 'ANGF_Vcf', 'Zhu_nobustype']:
+            if self.data_type == 'LSTM':    self.PROCESSING_LSTM_DATA = True
             self.process_ac()
         elif self.data_type == 'Zhu_n_minus_k':
             self.process_zhu_n_minus_k()
@@ -155,7 +144,8 @@ class HurricaneDataset(Dataset):
         elif self.data_type == 'n-k':
             self.process_n_minus_k()
         else:
-            assert False, 'Datatype must be AC or DC!'
+            assert False, 'Datatype must be one of the following: AC, LSTM, Zhu, Zhu_mat73, ANGF_Vcf, Zhu_nobustype, Zhu_n_minus_k, LDTSF, LDTSF_DC, n-k!'
+
 
 
     def process_zhu_n_minus_k(self):
@@ -314,8 +304,8 @@ class HurricaneDataset(Dataset):
                         cummulative_ls += graph_label
                         edge_labels = self.get_edge_labels(adj_init, adj_post, edge_attr_post)
                         data = Data(x=node_feature.to(torch.float32), edge_index=adj, edge_attr=edge_attr.to(torch.float32), node_labels=node_labels.to(torch.float32), 
-                                    y=graph_label.to(torch.float32), y_cummulative=torch.tensor(cummulative_ls).to(torch.float32), 
-                                    edge_labels=torch.tensor(edge_labels).to(torch.float32)) 
+                                    y=graph_label.to(torch.float32), y_cummulative=torch.as_tensor(cummulative_ls).to(torch.float32), 
+                                    edge_labels=torch.as_tensor(edge_labels).to(torch.float32)) 
                         scenario_dir = os.path.join(self.root, f'processed/scenario_{scenario}')
                         os.makedirs(scenario_dir, exist_ok=True)
                         torch.save(data, os.path.join(scenario_dir, f'data_{scenario}_{i}.pt'))
@@ -677,7 +667,7 @@ class HurricaneDataset(Dataset):
                 if len(idx) > 0:  # Edge exists in updated graph
                     edge_labels[i] = 1 if abs(edge_attr_post[idx[0],0]) >= threshold or abs(edge_attr_post[idx[0],1]) >= threshold  else 0
 
-        return torch.tensor(edge_labels)
+        return edge_labels
 
     def zhu_perform_bus_check(self, bus_type, bus_type_post, P1_net, Q1_net, Vm, Va, P2_net, Q2_net, Vm2, Va2):
         path_plots = 'plots_fixed/'
@@ -782,14 +772,14 @@ class HurricaneDataset(Dataset):
             bus_type[i, int(node_data_pre[i,1]-1)] = 1
             bus_type2[i, int(node_data_post[i,1]-1)] = 1
 
-        P1 = torch.tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
-        Q1 = torch.tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
+        P1 = torch.as_tensor(node_data_pre[:,2]) #P of all buses at initial condition - Node feature
+        Q1 = torch.as_tensor(node_data_pre[:,3]) #Q of all buses at initial condition - Node feature
         S1 = np.sqrt(P1**2+Q1**2).clone().detach()
-        Vm = torch.tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
-        Va = torch.tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
-        baseKV = torch.tensor(node_data_pre[:,9]) #Base Voltage
-        P2 = torch.tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
-        Q2 = torch.tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
+        Vm = torch.as_tensor(node_data_pre[:,7]) #Voltage magnitude of all buses at initial condition - Node feature
+        Va = torch.as_tensor(node_data_pre[:,8]) #Voltage angle of all buses at initial condition - Node feature
+        baseKV = torch.as_tensor(node_data_pre[:,9]) #Base Voltage
+        P2 = torch.as_tensor(node_data_post[:,2]) #P of all buses after step - used for calculation of Node labels
+        Q2 = torch.as_tensor(node_data_post[:,3]) #Q of all buses after step - used of calculation of Node labels
         S2 = np.sqrt(P2**2+Q2**2).clone().detach()
 
         if multiply_base_voltage:
@@ -839,8 +829,8 @@ class HurricaneDataset(Dataset):
                 Vimag = Vimag*(bus_type[:,1]+bus_type[:,2])
             """
 
-            Vm2 = torch.tensor(node_data_post[:,7]) #*node_data_post[:,9]
-            Va2 = torch.tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
+            Vm2 = torch.as_tensor(node_data_post[:,7]) #*node_data_post[:,9]
+            Va2 = torch.as_tensor(node_data_post[:,8]) #Q of all buses after step - used of calculation of Node labels
 
             if normalize_injection:
                 P_injection /= 100
@@ -917,7 +907,7 @@ class HurricaneDataset(Dataset):
             if gen_data_pre[i,0] == node_data_pre[node_index,0]:
 
                 if gen_data_pre[i,7] >0 and node_data_pre[node_index,1]!=4:    #if generator is active and bus is active
-                    gen_features[node_index][:2] += torch.tensor(gen_data_pre[i,1:3])    #only adds p and q if the generator is active since ac-cfm does not update inactive buses
+                    gen_features[node_index][:2] += torch.as_tensor(gen_data_pre[i,1:3])    #only adds p and q if the generator is active since ac-cfm does not update inactive buses
                     if self.data_type in ['AC', 'n-k', 'ANGF_Vcf']:  #Features not added for TimeSeries
                         gen_features[node_index][6] = 1
                         if gen_features[node_index][3] == 0:    gen_features[node_index][3]=torch.tensor(gen_data_pre[i,4])
@@ -993,10 +983,10 @@ class HurricaneDataset(Dataset):
             mask = np.abs(edge_data) > threshold
         else:                   
             mask = np.abs(edge_data) > threshold
-        edge_index = torch.tensor(mask).nonzero().t()
+        edge_index = torch.as_tensor(mask).nonzero().t()
 
         # Step 2: Extract the corresponding edge attributes (weights)        
-        edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1)
+        edge_attr = torch.cat([torch.as_tensor(edge_data[edge_index[0], edge_index[1]]).real.unsqueeze(1), torch.as_tensor(edge_data[edge_index[0], edge_index[1]]).imag.unsqueeze(1)], dim=1)
 
         return edge_index, edge_attr
     
@@ -1011,11 +1001,11 @@ class HurricaneDataset(Dataset):
 
         # Step 1: Get the indices of entries that satisfy the condition > 1e-8
         mask = abs(edge_data) > threshold
-        edge_index = torch.tensor(mask).nonzero().t()
+        edge_index = torch.as_tensor(mask).nonzero().t()
 
         # Step 2: Extract the corresponding edge attributes (weights)
-        edge_attr = torch.cat([torch.tensor(edge_data[edge_index[0], edge_index[1]].real).unsqueeze(1), torch.tensor(edge_data[edge_index[0], edge_index[1]].imag).unsqueeze(1)], dim=1) 
-        #edge_attr = torch.cat([torch.complex(torch.tensor(edge_data[edge_index[0], edge_index[1]][0]), torch.tensor(edge_data[edge_index[0], edge_index[1]][1]))], dim=1)
+        edge_attr = torch.cat([torch.as_tensor(edge_data[edge_index[0], edge_index[1]]).real.unsqueeze(1), torch.as_tensor(edge_data[edge_index[0], edge_index[1]]).imag.unsqueeze(1)], dim=1) 
+        #edge_attr = torch.cat([torch.complex(torch.as_tensor(edge_data[edge_index[0], edge_index[1]][0]), torch.as_tensor(edge_data[edge_index[0], edge_index[1]][1]))], dim=1)
         return edge_index, edge_attr
 
 
@@ -1468,7 +1458,6 @@ def create_datasets(
     """
     print('Creating Datasets...')
     t1 = time.time()
-    print(t1, flush=True)
     dataset = HurricaneDataset(
         root=root,
         use_supernode=cfg["supernode"],
@@ -1486,6 +1475,10 @@ def create_datasets(
         check_s_y=check_s_y
     )
     #data_list = dataset.data_list
+    if dataset.PROCESSING_LSTM_DATA:
+        t2 = time.time()
+        print(f'Processing took {(t2-t1)/60} mins', flush=True)
+        return None, None, dataset.PROCESSING_LSTM_DATA
 
     if num_samples is None:
         len_dataset=len(dataset)
@@ -1506,20 +1499,13 @@ def create_datasets(
     else:
         trainsize = cfg["train_size"]
         last_train_sample = int(len_dataset*trainsize)
-        """if trainsize <1:
-            while data_list[last_train_sample-1,0]==data_list[last_train_sample,0]:
-                last_train_sample+=1
-            #testset = Subset(dataset, range(last_train_sample, len_dataset))
-        #else: testset= Subset(dataset,range(len_dataset,len_dataset))"""
-    
-
 
         trainset, testset = random_split(dataset, [last_train_sample, len_dataset-last_train_sample])
     
     t2 = time.time()
     print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
 
-    return trainset, testset#, data_list 
+    return trainset, testset
 
 def create_datasets_zhu(
         root,

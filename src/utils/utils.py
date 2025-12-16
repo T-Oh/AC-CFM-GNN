@@ -273,9 +273,10 @@ def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, pin_memory=pin_memory, num_workers=N_CPUS)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, pin_memory=pin_memory, num_workers=N_CPUS)
     else:
-         trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
-         trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
-    return max_seq_len_LDTSF, trainset, trainloader, testloader
+        trainset, testset, PROCESSING_LSTM_DATA = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+        trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
+
+    return max_seq_len_LDTSF, trainset, trainloader, testloader, PROCESSING_LSTM_DATA
 
 
 def tensor_to_serializable(obj):
