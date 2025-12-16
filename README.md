@@ -60,7 +60,7 @@ Important fields:
 3. **Normalization**  
    Normalize the processed data with:
 
-       python normalize_GTSF.py
+       python src/scripts/normalize_GTSF.py
 
    After normalization, rename the normalized output folder to:
 
