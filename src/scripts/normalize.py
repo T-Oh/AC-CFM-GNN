@@ -13,6 +13,8 @@ from torch_geometric.data import Data
 def main():
     processed_dir = 'processed/'
     normalized_dir = 'normalized/'
+    if not os.path.exists(normalized_dir):
+        os.makedirs(normalized_dir)
     data_stats_file = 'unnormalized_data_stats_Zhu_nobustype.npy'
     N_NODE_FEATURES = 4    #if NodeIDs are added as features substract 2000 from N_Features
     N_EDGE_FEATURES = 2
@@ -179,7 +181,7 @@ def main():
                         if torch.isnan(node_labels[i,0]): print(f'After {i} label0') 
                         if torch.isnan(node_labels[i,1]): print(f'After {i} label1') 
             #Graph Labels
-            if 'y' in data.keys:    
+            if 'y' in data.keys():    
                 graph_label = torch.log(data['y']+1)/torch.log(graph_label_max+1)
                 data = Data(x=x, edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
             else:
@@ -261,7 +263,7 @@ def get_min_max_features(processed_dir, n_node_features, n_edge_features, n_targ
                     if node_labels[i,j] < node_labels_min[j]: node_labels_min[j] = node_labels[i,j]
                     node_labels_mean[j] += node_labels[i,j]
             #Graph Labels
-            if 'y' in data.keys:   
+            if 'y' in data.keys():   
                 graph_label = data['y']
                 if graph_label > graph_labels_max: graph_labels_max = graph_label
                 if graph_label < graph_labels_min: graph_labels_min = graph_label
@@ -308,7 +310,7 @@ def get_feature_stds(processed_dir, x_means, edge_means, node_label_means, graph
 
 
             #Graph Label
-            if 'y' in data.keys:
+            if 'y' in data.keys():
                 graph_label = data['y']
                 graph_label_std += (graph_label - graph_label_mean)**2
 
