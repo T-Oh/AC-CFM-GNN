@@ -262,6 +262,7 @@ def choose_criterion(task, use_weighted_loss_label, weighted_loss_factor, cfg, d
 
 def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
     max_seq_len_LDTSF = -1
+    PROCESSING_LSTM_DATA = False
     if cfg['model'] == 'Node2Vec':
          trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
          trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1

@@ -74,16 +74,18 @@ class HurricaneDataset(Dataset):
 
         super().__init__(root, transform, pre_transform, pre_filter)
         self.stormsplit = stormsplit
-        self.data_list = self.processed_file_names
-        if self.data_type == 'LDTSF':
-            self.data_list = self.get_data_list(N_Scenarios)  #list containing all instances in order
+        #self.data_list = self.processed_file_names
+        #if self.data_type == 'LDTSF':
+        #    self.data_list = self.get_data_list(N_Scenarios)  #list containing all instances in order
 
         
 
 
 
-
-        #self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
+        if self.data_type != 'LSTM':
+            self.data_list=self.get_data_list(N_Scenarios)  #list containing all instances in order
+        print('End of init')
+        print(self.PROCESSING_LSTM_DATA)
 
         
         
@@ -1315,14 +1317,15 @@ class HurricaneDataset(Dataset):
     
     
     def __getitem__(self,idx):
-        if self.data_type == 'LDTSF':
-            scenario=int(self.data_list[idx,0])
-            step=int(self.data_list[idx,1])
-            data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
-        else:
-            #data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
-
-            data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
+        scenario=int(self.data_list[idx,0])
+        step=int(self.data_list[idx,1])
+        data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
+        #if self.data_type == 'LDTSF':
+        #    scenario=int(self.data_list[idx,0])
+        #    step=int(self.data_list[idx,1])
+        #    data = torch.load(os.path.join(self.processed_dir, f'data_{scenario}'f'_{step}.pt'))
+        #else:
+        #    data = torch.load(os.path.join(self.processed_dir, self.data_list[idx]))
 
         #QUESTION
         if 'zhu' not in self.data_type.lower():
@@ -1475,6 +1478,8 @@ def create_datasets(
         check_s_y=check_s_y
     )
     #data_list = dataset.data_list
+    print('create_dataset()')
+    print('PROCESSING_LSTM_DATA:', dataset.PROCESSING_LSTM_DATA)
     if dataset.PROCESSING_LSTM_DATA:
         t2 = time.time()
         print(f'Processing took {(t2-t1)/60} mins', flush=True)
@@ -1489,6 +1494,7 @@ def create_datasets(
     if stormsplit != 0:
         print(len(dataset.data_list))
         for i in range(len(dataset.data_list)):
+            print(dataset.data_list[i][0])
             if str(dataset.data_list[i][0]).startswith(str(stormsplit)):
                 last_train_sample=i-1
                 break
@@ -1505,7 +1511,7 @@ def create_datasets(
     t2 = time.time()
     print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
 
-    return trainset, testset
+    return trainset, testset, None
 
 def create_datasets_zhu(
         root,
