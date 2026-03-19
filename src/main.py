@@ -14,6 +14,7 @@ from run.run_single import run_single
 from run.run_crossval import run_crossval
 from run.run_study import run_study
 from utils.utils import check_config_conflicts
+from processing.process import run_processing
 
 if __name__ == "__main__":
     #fix for windows :\
@@ -50,11 +51,7 @@ if __name__ == "__main__":
 
 
     # choosing device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")   #device = "cuda:0"
-    """device = torch.device('cpu')
-    print('HARDCODED USING CPU!')
-    print('HARDCODED USING CPU!')
-    print('HARDCODED USING CPU!')"""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
     print(device, flush=True)
 
 
@@ -66,7 +63,8 @@ if __name__ == "__main__":
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = True
 
-
+    #Process raw data
+    run_processing(cfg)
 
     # Runs study if set in configuration file
     if cfg["study::run"]:

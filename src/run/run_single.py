@@ -20,29 +20,60 @@ from utils.setups import setup_datasets_and_loaders, setup_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
-from processing.process import run_processing
-
-
-
 
 def run_single(cfg, device, N_CPUS):
     """
-    Trains a single model (i.e. no cross-validation and no study)
+    Run a single model training and evaluation pipeline.
+    This function orchestrates the complete workflow for training and evaluating a GNN model,
+    including dataset setup, model initialization, training execution, and result saving.
+    Parameters
+    ----------
+    cfg : dict
+            Configuration dictionary containing model parameters, task settings, data paths,
+            and hyperparameters for training.
+    cfg['model'] : str
+            The model type to use. Supported values include 'Mean' (baseline) and 'Node2Vec'.
+    cfg['task'] : str
+            The type of task to perform (e.g., classification, regression).
+    cfg['use_masking'] : bool
+            Whether to apply node masking during training.
+    cfg['mask_bias'] : float
+            Bias parameter for masking.
+    cfg['weighted_loss_label'] : str
+            Label for weighted loss calculation.
+    cfg['weighted_loss_factor'] : float
+            Factor for weighting the loss.
+    cfg['track_gradients'] : bool
+            Whether to track gradients during training.
+    cfg['track_test_gradients'] : bool
+            Whether to track gradients during testing.
+    cfg['accuracy_tolerance'] : float
+            Tolerance threshold for early stopping.
+    cfg['cfg_path'] : str
+            Path to save configuration and parameters.
+    device : str
+            Computing device to use ('cuda' or 'cpu').
+    N_CPUS : int
+            Number of CPUs to use for data loading.
+    Returns
+    -------
+    None
+            Results are saved to disk via save_output() and model weights are saved to "results/".
+    Notes
+    -----
+    For 'Mean' baseline model, the function exits after execution.
+    For other models, the function sets up datasets, trains the model, and saves outputs.
     """
 
     if cfg['model'] == 'Mean':  # Model used as baseline that simply predicts the mean load shed of the training set
         #Run Mean Baseline
-        result = run_mean_baseline(cfg)
+        run_mean_baseline(cfg)
         exit()
 
 
     else:
         if device == 'cuda':    pin_memory = True
         else:                   pin_memory = False
-
-        #Process raw data
-        run_processing(cfg)
-
 
         # Create Datasets and Dataloaders
         max_seq_len_LDTSF, trainset, trainloader, testloader, PROCESSING_LSTM_DATA = setup_datasets_and_loaders(cfg, N_CPUS, pin_memory)

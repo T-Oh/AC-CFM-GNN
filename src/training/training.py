@@ -192,7 +192,7 @@ def _objective(search_space, cfg, device,
                                                                          pre_transform=None,
                                                                          stormsplit=cfg['stormsplit'],
                                                                          data_type=cfg['data'])
-        trainloader, finetune_loader, testloader = create_loaders(cfg, pretrain_set, finetune_set, testset,)
+        trainloader, finetune_loader, testloader = create_loaders(cfg, pretrain_set, finetune_set, testset)
 
         if PL_STAGE == 'finetune':
             trainloader = finetune_loader
