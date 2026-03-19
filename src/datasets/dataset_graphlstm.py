@@ -1,10 +1,12 @@
 import os
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import  DataLoader, random_split #Dataset,
+from torch_geometric.data import Dataset
 from torch_geometric.data import Batch
+from utils.processing import ProcessingConfig
 
 class dataset_graphlstm(Dataset):
-    def __init__(self, root_dir, sequence_indices=None, max_seq_len=100, autoregressive = True):
+    def __init__(self, root, data_type, edge_attr, ls_threshold, N_below_threshold, normalize_injection, multiply_base_voltage, zhu_check_buses, check_s_y, sequence_indices=None, max_seq_len=100, autoregressive = True):
         """
         root_dir: Path to the directory containing sequences and timesteps.
         sequence_indices: Indices of sequences to include in this dataset.
@@ -12,26 +14,51 @@ class dataset_graphlstm(Dataset):
         # Ensure the root directory ends with 'processed/' without duplication
         self.AUTOREGRESSIVE = autoregressive
         self.WINDOWSIZE = max_seq_len
-        if not root_dir.endswith('processed/'):
-            self.root_dir = os.path.join(root_dir, 'processed/')
-        else:
-            self.root_dir = root_dir
-        
+        self.root = root
+        processed_dir = os.path.join(root, 'processed/')
+        raw_paths = [os.path.join(root, 'raw', f) for f in os.listdir(os.path.join(root, 'raw'))]
+
+        self.PROCESSING_CONFIG = ProcessingConfig(root=root, processed_dir=processed_dir, raw_paths=raw_paths, data_type=data_type, edge_attr_type=edge_attr, ls_threshold=ls_threshold, N_below_threshold=N_below_threshold,
+                                                normalize_injection=normalize_injection, multiply_base_voltage=multiply_base_voltage, zhu_check_buses=zhu_check_buses, check_s_y=check_s_y)
+    
+        #super().__init__(root)
         if not self.AUTOREGRESSIVE:
             self.sequence_paths = sorted(
-                [entry for entry in os.listdir(self.root_dir) if os.path.isdir(os.path.join(self.root_dir, entry))]
+                [entry for entry in os.listdir(self.processed_dir) if os.path.isdir(os.path.join(self.processed_dir, entry))]
             )
         else:
             print('Autoregressive data loading')
             self.sequence_paths = sorted(
-                [entry for entry in os.listdir(self.root_dir)[:self.WINDOWSIZE] if os.path.isdir(os.path.join(self.root_dir, entry))]
+                [entry for entry in os.listdir(self.processed_dir)[:self.WINDOWSIZE] if os.path.isdir(os.path.join(self.processed_dir, entry))]
             )
-        self.static_data = torch.load(os.path.join(self.root_dir, 'data_static.pt'))
+        self.static_data = torch.load(os.path.join(self.processed_dir, 'data_static.pt'))
         self.max_seq_len = max_seq_len
 
         # Filter sequences by indices
         if sequence_indices is not None:
             self.sequence_paths = [self.sequence_paths[i] for i in sequence_indices]
+
+    @property
+    def processed_dir(self):
+        if not self.root.endswith('processed/'):
+            processed_dir = os.path.join(self.root, 'processed/')
+        else:
+            processed_dir = self.root
+        return processed_dir
+
+    @property
+    def raw_file_names(self):
+        return os.listdir(self.root + "/raw")
+
+    @property
+    def processed_file_names(self):
+        files = []
+        for root, _, filenames in os.walk(self.root + "/processed"):
+            for filename in filenames:
+                if filename.startswith("data"):
+                    files.append(os.path.relpath(os.path.join(root, filename), self.root + "/processed"))
+        return files
+      
 
 
     def __len__(self):
@@ -44,7 +71,7 @@ class dataset_graphlstm(Dataset):
         """
         #print('THIS')
         sequence_name = self.sequence_paths[idx]
-        seq_dir = os.path.join(self.root_dir, sequence_name)
+        seq_dir = os.path.join(self.processed_dir, sequence_name)
         timestep_files = sorted(os.listdir(seq_dir), key=lambda x: int(x.split('_')[2].split('.')[0]))
         seq_len = len(timestep_files)
         #print('seq_len:', seq_len)
@@ -130,11 +157,22 @@ def create_train_test_split(dataset, train_ratio=0.8, random_seed=42, stormsplit
 
     return train_indices, test_indices
 
-def create_lstm_datasets(root_dir, train_ratio, random_seed, stormsplit, max_seq_len, autoregressive):
-    dataset = dataset_graphlstm(root_dir=root_dir, max_seq_len=max_seq_len, autoregressive=autoregressive)
-    train_indices, test_indices =create_train_test_split(dataset, train_ratio, random_seed, stormsplit)
-    trainset = dataset_graphlstm(dataset.root_dir, sequence_indices=train_indices, max_seq_len=max_seq_len, autoregressive=autoregressive)
-    testset = dataset_graphlstm(dataset.root_dir, sequence_indices=test_indices, max_seq_len=max_seq_len, autoregressive=autoregressive)
+def create_lstm_datasets(cfg):
+    dataset = dataset_graphlstm(root=cfg["dataset::path"], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
+                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
+                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
+                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"], 
+                                max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"]
+                                )
+    train_indices, test_indices = create_train_test_split(dataset, cfg["train_size"], cfg["manual_seed"], cfg["stormsplit"])
+    trainset = dataset_graphlstm(root=cfg['dataset::path'], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
+                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
+                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
+                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"],  sequence_indices=train_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"])
+    testset = dataset_graphlstm(root=cfg['dataset::path'], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
+                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
+                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
+                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"],  sequence_indices=test_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"])
 
     return trainset, testset
 

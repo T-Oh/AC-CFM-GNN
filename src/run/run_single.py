@@ -15,10 +15,12 @@ from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, g
 from models.get_models import get_model
 from models.run_mean_baseline import run_mean_baseline
 from models.run_node2vec import run_node2vec
-from utils.utils import setup_params, choose_criterion, save_params, setup_datasets_and_loaders, save_output, physics_loss
+from utils.utils import choose_criterion, save_params, save_output
+from utils.setups import setup_datasets_and_loaders, setup_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training
+from processing.process import run_processing
 
 
 
@@ -37,6 +39,10 @@ def run_single(cfg, device, N_CPUS):
     else:
         if device == 'cuda':    pin_memory = True
         else:                   pin_memory = False
+
+        #Process raw data
+        run_processing(cfg)
+
 
         # Create Datasets and Dataloaders
         max_seq_len_LDTSF, trainset, trainloader, testloader, PROCESSING_LSTM_DATA = setup_datasets_and_loaders(cfg, N_CPUS, pin_memory)
