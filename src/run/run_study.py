@@ -12,7 +12,7 @@ from ray import tune, train ,air#, train
 from os.path import isfile
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
-from utils.utils import setup_searchspace, setup_params
+from utils.setups import setup_searchspace, setup_params
 from ray.tune.search.bayesopt import BayesOptSearch
 from training.training import objective
 from models.run_node2vec import run_node2vec

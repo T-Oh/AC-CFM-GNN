@@ -3,14 +3,15 @@ import numpy as np
 import time
 
 from torch import no_grad, cat
-from torch.cuda.amp import GradScaler, autocast
+from torch.cuda.amp import GradScaler
 from torchmetrics import R2Score
 from torchmetrics.classification import MulticlassF1Score, MulticlassPrecision, MulticlassRecall, MulticlassAccuracy, BinaryF1Score, BinaryPrecision, BinaryRecall, BinaryAccuracy
 
 
 from datasets.dataset import mask_probs_add_bias
 
-from utils.utils import grad_norm, state_loss, physics_loss
+from utils.loss_functions import physics_loss
+from utils.utils import grad_norm
 
 """def safe_grad_norm(loss, model, retain_graph=False):
     grads = torch.autograd.grad(

@@ -21,8 +21,8 @@ from training.engine import Engine
 from models.get_models import get_model
 from utils.get_optimizers import get_optimizer
 
-from utils.utils import weighted_loss_label, setup_params, setup_params_from_search_space, state_loss, save_params, save_output, physics_loss
-
+from utils.utils import weighted_loss_label, state_loss, save_params, save_output, physics_loss
+from utils.setups import setup_params, setup_params_from_search_space
 from datasets.dataset import create_datasets, create_loaders, get_attribute_sizes, create_datasets_zhu
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
 from sklearn.metrics import confusion_matrix
