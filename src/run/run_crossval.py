@@ -15,7 +15,8 @@ import numpy as np
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
 from models.get_models import get_model
 from models.run_node2vec import run_node2vec
-from utils.utils import setup_params, weighted_loss_label
+from utils.utils import weighted_loss_label
+from utils.setups import setup_params
 from utils.get_optimizers import get_optimizer
 from training.engine import Engine
 from training.training import run_training

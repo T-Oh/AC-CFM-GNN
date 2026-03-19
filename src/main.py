@@ -5,9 +5,11 @@ import shutil
 import time
 import os
 
-from utils.utils import get_arg
+import torch.multiprocessing
+
 from numpy.random import seed as numpy_seed
 
+from utils.utils import get_arg
 from run.run_single import run_single
 from run.run_crossval import run_crossval
 from run.run_study import run_study
@@ -15,7 +17,7 @@ from utils.utils import check_config_conflicts
 
 if __name__ == "__main__":
     #fix for windows :\
-    import torch.multiprocessing
+
     torch.multiprocessing.freeze_support()
 
 
