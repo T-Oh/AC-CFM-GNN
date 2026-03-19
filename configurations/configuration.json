@@ -4,6 +4,8 @@
     "dataset::path":    "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path to the dataset - the folder with the dataset must be called 'processed/'
 
     /*Data Settings*/
+    "process":              true,     //train, test, predict
+    "normalize":            true,     //Whether to normalize the data (not applicable for LSTM)
     "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
     "edge_attr":            "Y",    //edge_attr: Y, multi
     "ls_threshold":         0.0,    //Load shed threshold under which only N_below_threshold samples are collected
