@@ -7,9 +7,7 @@ Created on Thu May 25 16:29:21 2023
 
 import torch
 
-
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs, get_attribute_sizes
 from models.get_models import get_model
@@ -122,6 +120,32 @@ def run_single(cfg, device, N_CPUS):
 
 
 def setup_node2vec(cfg, device, trainloader, mask_probs, params):
+    """Set up Node2Vec embeddings and integrate them into the dataset for training.
+    This function generates Node2Vec embeddings from the training data, normalizes them,
+    and creates new datasets and dataloaders that incorporate these embeddings as node features
+    for downstream model training.
+    Configuration dictionary containing:
+    cfg['dataset::path'] : str
+            Path to the dataset.
+    cfg['stormsplit'] : bool
+            Whether to apply storm-based data splitting.
+    trainloader : DataLoader
+            PyTorch DataLoader for training data containing graph objects.
+    mask_probs : torch.Tensor or None
+            Masking probabilities for nodes, passed to setup_params.
+    params : dict
+            Parameter dictionary to be updated with new feature sizes.
+    tuple of (DataLoader, DataLoader, dict)
+            trainloader : DataLoader
+                    Updated DataLoader for training data with Node2Vec embeddings integrated.
+            testloader : DataLoader
+                    DataLoader for test data with Node2Vec embeddings integrated.
+            params : dict
+                    Updated parameter dictionary containing new num_features and num_edge_features
+                    based on the dataset with integrated embeddings.
+    The Node2Vec embeddings are normalized per feature dimension by dividing by the maximum
+    value in that dimension. The embeddings are moved to the specified device before integration
+    into the dataset."""
     embedding = run_node2vec(cfg, trainloader, device, params, 0)
     normalized_embedding = embedding.data
             #Normalize the Embedding

@@ -40,7 +40,7 @@ def run_epoch_loop(
     save_outputs=False,
     plotting_dir=None,
     report_to_session=False,
-    output_freq=None
+    output_freq=1
 ):
     output, labels = [], []
     learning_rates = []
@@ -49,13 +49,13 @@ def run_epoch_loop(
         print(f'Epoch: {i}', flush=True)
         t1 = time.time()
 
-        temp_metrics, output, labels = engine.train_epoch(trainloader, cfg.get('gradclip', None))
+        temp_metrics, output, labels, _ = engine.train_epoch(trainloader, cfg['gradclip'], cfg['full_output'])
 
         # Evaluation
         if cfg.get('train_size', 1) == 1 and not report_to_session:
-            temp_eval, _, _, gradients = engine.eval(trainloader)
+            temp_eval, _, _, _ = engine.eval(trainloader)
         else:
-            temp_eval, _, _, gradients = engine.eval(testloader)
+            temp_eval, _, _, _ = engine.eval(testloader) 
 
         # Log and update learning rate
         result, metrics, evaluation = log_metrics(temp_metrics, temp_eval, metrics, evaluation, i, TASK, cfg['cfg_path'], name_or_fold)
@@ -203,13 +203,14 @@ def _objective(search_space, cfg, device,
                                             edge_attr=cfg['edge_attr'])
         trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset,
                                                                  Node2Vec=True)  # If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
-    elif cfg['model'] == 'GATLSTM':
+    elif cfg['model'] in ['GATLSTM', 'TAGLSTM', 'LSTM']:
         # Split dataset into train and test indices
-        trainset, testset = create_lstm_datasets(cfg["dataset::path"], cfg['train_size'], cfg['manual_seed'],
-                                                 cfg['stormsplit'], cfg['max_seq_length'])
+        print('FUCK YOU')
+        print(not cfg['use_unnormalized_data'])
+        trainset, testset = create_lstm_datasets(cfg, normalized=(not cfg['use_unnormalized_data']))
         # Create DataLoaders for train and test sets
-        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True)
-        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False)
+        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=0, pin_memory=pin_memory)
+        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=0, pin_memory=pin_memory)
     else:
         trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None,
                                             stormsplit=cfg['stormsplit'], data_type=cfg['data'],
@@ -246,7 +247,7 @@ def _objective(search_space, cfg, device,
     elif TASK == 'GraphClass':
         criterion = torch.nn.CrossEntropyLoss().to(device)
     elif TASK == 'StateReg':
-        criterion = state_loss(params['loss_weight'])
+        criterion = state_loss(params['loss_weight'], dataset_path=cfg["dataset::path"], weight_nodes_by_centrality=cfg['weight_nodes_by_centrality'], weight_nodes_by_voltage_threshold=cfg['weight_nodes_by_voltage_threshold'], voltage_weight=cfg['voltage_weight'])
     elif cfg['weighted_loss_label']:
         criterion = weighted_loss_label(factor=torch.tensor(cfg['weighted_loss_factor']))
     else:
@@ -281,7 +282,8 @@ def _objective(search_space, cfg, device,
         TASK=TASK,
         metrics=metrics,
         evaluation=evaluation,
-        report_to_session=True
+        report_to_session=True,
+        output_freq=cfg['output_freq']
     )
 
 

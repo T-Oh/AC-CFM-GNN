@@ -9,6 +9,8 @@ from utils.processing import ProcessingConfig
 from utils.processing import get_initial_damages, get_scenario_of_file, load_mat_file, get_ls_tot, get_data, save_static_data, decode_damage
 from utils.processing import get_edge_features, get_node_features, get_edge_labels, get_edge_attrY_Zhumat73, get_edge_attrY
 from utils.utils import check_s_y_relation
+
+
 def process_ac(cfg: ProcessingConfig):
     """
     Loads the raw matlab data, converts it to torch
@@ -83,14 +85,16 @@ def process_ac(cfg: ProcessingConfig):
                     if cfg.check_s_y:
                         check_s_y_relation(node_data_post, edge_data_post, gen_data_post)
                 else:
-                    adj, edge_attr = get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False)
+                    adj, edge_attr = get_edge_features(edge_data_pre, damages, node_data_pre, scenario, i, n_minus_k=False, edge_attr_type=cfg.edge_attr_type)
                 
                 #save unscaled data (non LSTM)
                 if cfg.data_type in ['AC', 'ANGF_Vcf']:
                     data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels, y=graph_label) 
+                    data.path = os.path.join(cfg.processed_dir, f'data_{scenario}_{i}.pt')
                     torch.save(data, os.path.join(cfg.processed_dir, f'data_{scenario}_{i}.pt'))
                 elif cfg.data_type in ['Zhu', 'Zhu_mat73', 'Zhu_nobustype']:
                     data = Data(x=node_feature.float(), edge_index=adj, edge_attr=edge_attr, node_labels=node_labels[:,:2], y=graph_label)
+                    data.path = os.path.join(cfg.processed_dir, f'data_{scenario}_{i}.pt')
                     torch.save(data, os.path.join(cfg.processed_dir, f'data_{str(scenario)}_{str(i)}.pt'))
                     
                 
@@ -101,5 +105,6 @@ def process_ac(cfg: ProcessingConfig):
                                 y=graph_label.to(torch.float32), y_cummulative=torch.as_tensor(cummulative_ls).to(torch.float32), 
                                 edge_labels=torch.as_tensor(edge_labels).to(torch.float32)) 
                     scenario_dir = os.path.join(cfg.root, f'processed/scenario_{scenario}')
+                    data.path = os.path.join(scenario_dir, f'data_{scenario}_{i}.pt')
                     os.makedirs(scenario_dir, exist_ok=True)
                     torch.save(data, os.path.join(scenario_dir, f'data_{scenario}_{i}.pt'))

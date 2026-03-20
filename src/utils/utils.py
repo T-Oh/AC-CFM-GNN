@@ -9,6 +9,7 @@ import warnings
 
 from torch_geometric.data import Data
 from torch import scatter_add
+from torch.utils.data import random_split
 from sys import argv
 
 from utils.loss_functions import weighted_loss_label, state_loss, physics_loss, state_loss_power_injection
@@ -58,6 +59,36 @@ def choose_criterion(task, use_weighted_loss_label, weighted_loss_factor, cfg, d
         elif task == 'NodeReg':
             criterion = torch.nn.MSELoss(reduction='mean')
         return criterion
+
+def create_train_test_split_GTSF(dataset, train_ratio=0.8, random_seed=42, stormsplit=0):
+    """
+    Splits the dataset into train and test sets at the sequence level,
+    ensuring sequences where the first digit of the first integer in the folder name 
+    matches stormsplit go to the test set.
+    """
+    #Random train test split according to train ratio if stormsplit==0
+    if stormsplit == 0:
+        dataset_size = len(dataset)
+        train_size = int(dataset_size * train_ratio)
+        test_size = dataset_size - train_size
+        torch.manual_seed(random_seed)
+        train_indices, test_indices = random_split(range(dataset_size), [train_size, test_size])
+    else:
+        # Extract folder names from dataset paths
+        folder_names = [os.path.basename(path) for path in dataset.sequence_paths]
+
+        # Separate train and test indices based on stormsplit condition
+        train_indices, test_indices = [], []
+
+        for i, folder in enumerate(folder_names):
+            # Extract first integer from folder name (assuming 'scenario_{int}_{int}')
+            first_number = folder.split('_')[1]  # Extract first integer part
+            first_digit = int(first_number[0])   # Extract first digit
+            if first_digit == stormsplit:
+                test_indices.append(i)  # Assign to test set
+            else:
+                train_indices.append(i)  # Assign to train set
+    return train_indices, test_indices
 
 def tensor_to_serializable(obj):
     if isinstance(obj, torch.Tensor):

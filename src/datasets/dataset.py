@@ -52,7 +52,8 @@ class HurricaneDataset(Dataset):
             normalize_injection=True,
             multiply_base_voltage=False,
             zhu_check_buses=False,
-            check_s_y=False
+            check_s_y=False,
+            normalized=True
     ):
         #self.use_supernode=use_supernode
         self.root = root
@@ -63,6 +64,7 @@ class HurricaneDataset(Dataset):
         self.edge_attr = edge_attr
         self.ls_threshold = ls_threshold
         self.N_below_threshold = N_below_threshold
+        self.normalized = normalized
 
         self.normalize_injection = normalize_injection
         self.multiply_base_voltage = multiply_base_voltage
@@ -85,11 +87,18 @@ class HurricaneDataset(Dataset):
     @property
     def processed_file_names(self):
         files = []
-        for root, _, filenames in os.walk(self.root + "/processed"):
-            for filename in filenames:
-                if filename.startswith("data"):
-                    files.append(os.path.relpath(os.path.join(root, filename), self.root + "/processed"))
+        if self.normalized:
+            for root, _, filenames in os.walk(os.path.join(self.root, "normalized")):
+                for filename in filenames:
+                    if filename.startswith("data"):
+                        files.append(os.path.relpath(os.path.join(root, filename), self.root + "/normalized"))
+        else:
+            for root, _, filenames in os.walk(os.path.join(self.root, "processed")):
+                for filename in filenames:
+                    if filename.startswith("data"):
+                        files.append(os.path.relpath(os.path.join(root, filename), self.root + "/processed"))
         return files
+    
         
     
     def get_data_list(self,N_scenarios):
@@ -220,25 +229,13 @@ def collate_fn_fixed_length(batch, max_length):
 
     
 
-def create_datasets(
-        root,
-        cfg,
-        pre_transform=None,
-        num_samples=None,
-        stormsplit=0,
-        embedding=None,
-        data_type = 'AC',
-        edge_attr='multi',
-        normalize_injection=True,
-        multiply_base_voltage=False,
-        zhu_check_buses=False,
-        check_s_y=False
-):
+def create_datasets(cfg, embedding=None, normalized=True):
     """
     Helper function which loads the dataset and splits it into a training and a
     testing set.
     Input:
         root (str) : the root folder for the dataset
+        normalized (bool) : whether to use normalized data
     Return:
         trainset : the training set
         testset : the testset
@@ -246,20 +243,21 @@ def create_datasets(
     """
     print('Creating Datasets...')
     t1 = time.time()
+    stormsplit = cfg['stormsplit']
     dataset = HurricaneDataset(
-        root=root,
-        pre_transform=pre_transform,
+        root=cfg['dataset::path'],
         N_Scenarios=cfg["n_scenarios"],
         stormsplit=stormsplit,
         embedding=embedding,
-        data_type=data_type,
-        edge_attr=edge_attr,
+        data_type=cfg['data'],
+        edge_attr=cfg['edge_attr'],
         ls_threshold=cfg['ls_threshold'],
         N_below_threshold=cfg['N_below_threshold'],
-        normalize_injection=normalize_injection,
-        multiply_base_voltage=multiply_base_voltage,
-        zhu_check_buses=zhu_check_buses,
-        check_s_y=check_s_y
+        normalize_injection=cfg['normalize_injection'],
+        multiply_base_voltage=cfg['multiply_base_voltage'],
+        zhu_check_buses=cfg['zhu_check_buses'],
+        check_s_y=cfg['check_s_y'],
+        normalized=normalized
     )
     #data_list = dataset.data_list
     print('create_dataset()')
@@ -269,10 +267,7 @@ def create_datasets(
         print(f'Processing took {(t2-t1)/60} mins', flush=True)
         return None, None, dataset.PROCESSING_LSTM_DATA
 
-    if num_samples is None:
-        len_dataset=len(dataset)
-    else:
-        print("Error: create_datasets can not accept num_samples as input yet")
+    len_dataset = len(dataset)
     print(f'Len Dataset: {len_dataset}')
     #Get last train sample if stormsplit
     if stormsplit != 0:
@@ -295,7 +290,7 @@ def create_datasets(
     t2 = time.time()
     print(f'Creating datasets took {(t2-t1)/60} mins', flush=True)
 
-    return trainset, testset, None
+    return trainset, testset, False
 
 def create_datasets_zhu(
         root,

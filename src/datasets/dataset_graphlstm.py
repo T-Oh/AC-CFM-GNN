@@ -1,27 +1,24 @@
 import os
 import torch
-from torch.utils.data import  DataLoader, random_split #Dataset,
+
+from torch.utils.data import  DataLoader
 from torch_geometric.data import Dataset
 from torch_geometric.data import Batch
-from utils.processing import ProcessingConfig
+
+from utils.utils import create_train_test_split_GTSF
 
 class dataset_graphlstm(Dataset):
-    def __init__(self, root, data_type, edge_attr, ls_threshold, N_below_threshold, normalize_injection, multiply_base_voltage, zhu_check_buses, check_s_y, sequence_indices=None, max_seq_len=100, autoregressive = True):
+    def __init__(self, root, sequence_indices=None, max_seq_len=100, autoregressive = True, normalized=False):
         """
         root_dir: Path to the directory containing sequences and timesteps.
         sequence_indices: Indices of sequences to include in this dataset.
         """
-        # Ensure the root directory ends with 'processed/' without duplication
         self.AUTOREGRESSIVE = autoregressive
         self.WINDOWSIZE = max_seq_len
         self.root = root
-        processed_dir = os.path.join(root, 'processed/')
-        raw_paths = [os.path.join(root, 'raw', f) for f in os.listdir(os.path.join(root, 'raw'))]
+        self.normalized = normalized
+        print(self.normalized)
 
-        self.PROCESSING_CONFIG = ProcessingConfig(root=root, processed_dir=processed_dir, raw_paths=raw_paths, data_type=data_type, edge_attr_type=edge_attr, ls_threshold=ls_threshold, N_below_threshold=N_below_threshold,
-                                                normalize_injection=normalize_injection, multiply_base_voltage=multiply_base_voltage, zhu_check_buses=zhu_check_buses, check_s_y=check_s_y)
-    
-        #super().__init__(root)
         if not self.AUTOREGRESSIVE:
             self.sequence_paths = sorted(
                 [entry for entry in os.listdir(self.processed_dir) if os.path.isdir(os.path.join(self.processed_dir, entry))]
@@ -31,7 +28,8 @@ class dataset_graphlstm(Dataset):
             self.sequence_paths = sorted(
                 [entry for entry in os.listdir(self.processed_dir)[:self.WINDOWSIZE] if os.path.isdir(os.path.join(self.processed_dir, entry))]
             )
-        self.static_data = torch.load(os.path.join(self.processed_dir, 'data_static.pt'))
+        if self.normalized: self.static_data = torch.load(os.path.join(self.root, 'normalized/data_static.pt'))
+        else:   self.static_data = torch.load(os.path.join(self.processed_dir, 'data_static.pt'))
         self.max_seq_len = max_seq_len
 
         # Filter sequences by indices
@@ -40,10 +38,13 @@ class dataset_graphlstm(Dataset):
 
     @property
     def processed_dir(self):
-        if not self.root.endswith('processed/'):
-            processed_dir = os.path.join(self.root, 'processed/')
+
+        if self.normalized:
+            processed_dir = os.path.join(self.root, 'normalized/')
+            print('Entred normalized dir')
+            print(processed_dir)
         else:
-            processed_dir = self.root
+            processed_dir = os.path.join(self.root, 'processed/')
         return processed_dir
 
     @property
@@ -70,6 +71,7 @@ class dataset_graphlstm(Dataset):
         Returns all timesteps for a single sequence as a list of Data objects.
         """
         #print('THIS')
+        print(self.processed_dir)
         sequence_name = self.sequence_paths[idx]
         seq_dir = os.path.join(self.processed_dir, sequence_name)
         timestep_files = sorted(os.listdir(seq_dir), key=lambda x: int(x.split('_')[2].split('.')[0]))
@@ -125,54 +127,13 @@ def collate_fn(batch):
 
     return batched_sequences, sequence_lengths
 
-def create_train_test_split(dataset, train_ratio=0.8, random_seed=42, stormsplit=0):
-    """
-    Splits the dataset into train and test sets at the sequence level,
-    ensuring sequences where the first digit of the first integer in the folder name 
-    matches stormsplit go to the test set.
-    """
-    #Random train test split according to train ratio if stormsplit==0
-    if stormsplit == 0:
-        dataset_size = len(dataset)
-        train_size = int(dataset_size * train_ratio)
-        test_size = dataset_size - train_size
-        torch.manual_seed(random_seed)
-        train_indices, test_indices = random_split(range(dataset_size), [train_size, test_size])
-    else:
-        # Extract folder names from dataset paths
-        folder_names = [os.path.basename(path) for path in dataset.sequence_paths]
-
-        # Separate train and test indices based on stormsplit condition
-        train_indices, test_indices = [], []
-
-        for i, folder in enumerate(folder_names):
-            # Extract first integer from folder name (assuming 'scenario_{int}_{int}')
-            first_number = folder.split('_')[1]  # Extract first integer part
-            first_digit = int(first_number[0])   # Extract first digit
-            if first_digit == stormsplit:
-                test_indices.append(i)  # Assign to test set
-            else:
-                train_indices.append(i)  # Assign to train set
 
 
-    return train_indices, test_indices
-
-def create_lstm_datasets(cfg):
-    dataset = dataset_graphlstm(root=cfg["dataset::path"], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
-                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
-                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
-                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"], 
-                                max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"]
-                                )
-    train_indices, test_indices = create_train_test_split(dataset, cfg["train_size"], cfg["manual_seed"], cfg["stormsplit"])
-    trainset = dataset_graphlstm(root=cfg['dataset::path'], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
-                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
-                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
-                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"],  sequence_indices=train_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"])
-    testset = dataset_graphlstm(root=cfg['dataset::path'], data_type=cfg["data"], edge_attr=cfg["edge_attr"], 
-                                ls_threshold=cfg["ls_threshold"], N_below_threshold=cfg["N_below_threshold"], 
-                                normalize_injection=cfg["normalize_injection"], multiply_base_voltage=cfg["multiply_base_voltage"], 
-                                zhu_check_buses=cfg["zhu_check_buses"], check_s_y=cfg["check_s_y"],  sequence_indices=test_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"])
+def create_lstm_datasets(cfg, normalized=False):
+    dataset = dataset_graphlstm(root=cfg["dataset::path"], max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"], normalized=normalized)
+    train_indices, test_indices = create_train_test_split_GTSF(dataset, cfg["train_size"], cfg["manual_seed"], cfg["stormsplit"])
+    trainset = dataset_graphlstm(root=cfg['dataset::path'], sequence_indices=train_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"], normalized=normalized)
+    testset = dataset_graphlstm(root=cfg['dataset::path'], sequence_indices=test_indices, max_seq_len=cfg["max_seq_length"], autoregressive=cfg["autoregressive"], normalized=normalized)
 
     return trainset, testset
 

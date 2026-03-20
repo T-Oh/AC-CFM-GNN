@@ -1,7 +1,7 @@
 {
     /*General Settings*/
-    "cfg_path":         "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path of the configuration file
-    "dataset::path":    "/home/tohlinger/HUI/Documents/hi-accf-ml/",         //Path to the dataset - the folder with the dataset must be called 'processed/'
+    "cfg_path":         "./",         //Path of the configuration file (study needs absolute paths)
+    "dataset::path":    "./",         //Path to the dataset (study needs absolute paths)
 
     /*Data Settings*/
     "process":              true,     //train, test, predict
@@ -34,8 +34,8 @@
     "train_set::shuffle":   false,
 
     /*Model Settings*/
-    "task":         "StateReg",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI (possibly more)
-    "model":        "TAGLSTM",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM
+    "task":         "NodeReg",     //GraphReg, GraphClass, NodeReg, typeIIClass, StateReg, StateRegPI
+    "model":        "TAG",      //GAT, TAG, GATLSTM, TAGLSTM, GATLSTM, MLPLSTM, lstm
     "autoregressive":    false,          //If true uses autoregressive training for LSTM models
     
     //Convolutional Settings
@@ -180,13 +180,11 @@
     "accuracy_tolerance":0.15,
 
 
-    "supernode" : false,
-
     /*for per unit use "multiply_base_voltage": false and "normalize_injection" : true*/
     "normalize_injection" : true,
     "multiply_base_voltage": false,
-    "zhu_check_buses" :  true,
-    "check_s_y" : true,
+    "zhu_check_buses" :  false,
+    "check_s_y" : false,
 
     /*Zhu*/
     "pl_w1": 1,

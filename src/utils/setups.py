@@ -1,6 +1,37 @@
+import os 
 from ray import tune
+
+from utils.processing import ProcessingConfig
 from datasets.dataset import create_datasets, create_loaders
 from datasets.dataset_graphlstm import create_lstm_datasets, create_lstm_dataloader
+
+
+def setup_ProcessingConfig(cfg):
+    #ProcessingConfig is a class that stores all necessary information for processing the data, it is initialized in setups.py and then passed to the processing functions
+    PROCESSING_CONFIG = ProcessingConfig(
+        #Paths and files
+        root = cfg['dataset::path'],
+        raw_paths = [os.path.join(cfg['dataset::path'], 'raw', f) for f in os.listdir(os.path.join(cfg['dataset::path'], 'raw'))],
+        processed_dir = os.path.join(cfg['dataset::path'], 'processed'),
+        normalized_dir = cfg['normalized_dir'],
+        data_stats_filename= cfg['data_stats_filename'],
+
+        #Processing settings
+        data_type = cfg['data'],
+        gen_feature_index= cfg['gen_feature_index'],
+        edge_attr_type = cfg['edge_attr'],
+        ls_threshold = cfg['ls_threshold'],
+        N_below_threshold = cfg['N_below_threshold'],
+        normalize_injection=cfg['normalize_injection'],
+        multiply_base_voltage=cfg['multiply_base_voltage'],
+        zhu_check_buses=cfg['zhu_check_buses'],
+        check_s_y = cfg['check_s_y'],
+        
+        #Normalization settings
+        recalculate_data_stats = cfg['recalculate_data_stats'],
+        log_normalize = cfg['log_normalize']
+    )
+    return PROCESSING_CONFIG
 
 
 def setup_searchspace(cfg):
@@ -212,12 +243,17 @@ def setup_datasets_and_loaders(cfg, N_CPUS, pin_memory):
          trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, Node2Vec=True)    #If Node2Vec is applied the embeddings must be calculated first which needs a trainloader with batchsize 1
     elif 'LSTM' in cfg['model']:
             # Split dataset into train and test indices
-        trainset, testset = create_lstm_datasets(cfg)
+        if not cfg['use_unnormalized_data']:
+            #Reload Datasets with normalized data
+            if cfg['data'] == 'LSTM':
+                trainset, testset = create_lstm_datasets(cfg, normalized=not cfg['use_unnormalized_data'])
+            else:
+                trainset, testset = create_datasets(cfg, normalized=not cfg['use_unnormalized_data'])
             # Create DataLoaders for train and test sets
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, pin_memory=pin_memory, num_workers=N_CPUS)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, pin_memory=pin_memory, num_workers=N_CPUS)
     else:
-        trainset, testset, PROCESSING_LSTM_DATA = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None, stormsplit=cfg['stormsplit'], data_type=cfg['data'], edge_attr=cfg['edge_attr'])
+        trainset, testset, PROCESSING_LSTM_DATA = create_datasets(cfg)
         trainloader, testloader, max_seq_len_LDTSF = create_loaders(cfg, trainset, testset, num_workers=N_CPUS, pin_memory=pin_memory, data_type=cfg['data'], task=cfg['task'])
 
     return max_seq_len_LDTSF, trainset, trainloader, testloader, PROCESSING_LSTM_DATA

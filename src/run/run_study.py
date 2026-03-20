@@ -39,7 +39,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
 
     """
     # arguments for ray
-    TEMP_DIR = '/home/tohlinger/RAY_TMP2'
+    TEMP_DIR = 'C:/Users/tobia/OneDrive/Dokumente/AC-CFM-GNN/RAY_TMP/'
 
     # init ray
     ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS*N_CPUS, num_gpus=N_GPUS, include_dashboard=False)
@@ -108,7 +108,6 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
     # set up search space
     search_space = setup_searchspace(cfg)
 
-
     # set up optimizer and scheduler
     baysopt = BayesOptSearch(metric='test_loss', mode='min')
     scheduler = tune.schedulers.ASHAScheduler(
@@ -124,7 +123,7 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
         search_alg=baysopt,
         scheduler=scheduler)
     
-    run_config = air.RunConfig(local_dir=cfg['cfg_path']+'results/', name=cfg['study_ID'])#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
+    run_config = air.RunConfig(storage_path=cfg['cfg_path']+'results/', name=cfg['study_ID'])#, checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10, num_to_keep=1))
     
     trainable = tune.with_parameters(objective,
                                      cfg=cfg,  

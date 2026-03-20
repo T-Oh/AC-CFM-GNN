@@ -12,20 +12,28 @@ from utils.utils import zhu_perform_bus_check
 
 @dataclass
 class ProcessingConfig:
+    #Paths and files
     root: str
     raw_paths: list
     processed_dir: str
+    normalized_dir: str
+    data_stats_filename: str
 
+    #Processing settings
     data_type: str
     edge_attr_type: str
-
+    gen_feature_index: int
     ls_threshold: float
     N_below_threshold: int
-
     normalize_injection: bool
     multiply_base_voltage: bool
     zhu_check_buses: bool
     check_s_y: bool
+
+    #Normalization settings
+    recalculate_data_stats: bool
+    log_normalize: bool
+
 
 def get_initial_damages():
     '''
@@ -520,7 +528,7 @@ def get_edge_attrY_Zhumat73(edge_data, decoded_damages):
     return edge_index, edge_attr
 
 
-def get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k):
+def get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k, edge_attr_type):
     N_BUSES = node_data_pre.shape[0]
 
     rating = edge_data[:,5] #long term rating (MVA) - edge feature
@@ -649,7 +657,7 @@ def get_edge_features(edge_data, damages, node_data_pre, scenario, i, n_minus_k)
 
     adj = torch.tensor([adj_from,adj_to])
 
-    if self.edge_attr == 'Y':
+    if edge_attr_type == 'Y':
         impedance = torch.tensor([resistance_feature, reactance_feature])
         impedance = torch.transpose(impedance, 0, 1).contiguous()   #(5154, 2)
         impedance_complex = torch.view_as_complex(impedance)        #(5154)
