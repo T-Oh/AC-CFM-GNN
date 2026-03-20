@@ -1,4 +1,4 @@
-name: AC-CFM-GNN
+name: AC-CFM-GNN3
 channels:
   - pyg
   - pytorch
@@ -30,7 +30,7 @@ dependencies:
 
   # Pip-only packages (no numeric core!)
   - pip:
-      - bayesian-optimization
+      - bayesian-optimization==1.4.3
       - "ray[tune]"
       - seaborn
       - torcheval
