@@ -1,0 +1,9 @@
+RAY_TMP/
+results/
+venv/
+.git/
+__pycache__/
+*.vhdx
+raw/
+processed/
+normalized/

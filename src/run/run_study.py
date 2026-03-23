@@ -9,7 +9,7 @@ import ray
 import torch
 
 from ray import tune, train ,air#, train
-from os.path import isfile
+from os.path import isfile, join
 
 from datasets.dataset import create_datasets, create_loaders, calc_mask_probs
 from utils.setups import setup_searchspace, setup_params
@@ -39,7 +39,8 @@ def run_study(cfg, device, N_TASKS, N_CPUS, N_GPUS, port_dashboard):
 
     """
     # arguments for ray
-    TEMP_DIR = 'C:/Users/tobia/OneDrive/Dokumente/AC-CFM-GNN/RAY_TMP/'
+    TEMP_DIR = join(cfg['cfg_path'], 'tmp')
+    print(TEMP_DIR)
 
     # init ray
     ray.init( _temp_dir=TEMP_DIR,num_cpus=N_TASKS*N_CPUS, num_gpus=N_GPUS, include_dashboard=False)

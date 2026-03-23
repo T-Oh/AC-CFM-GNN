@@ -209,8 +209,8 @@ def _objective(search_space, cfg, device,
         print(not cfg['use_unnormalized_data'])
         trainset, testset = create_lstm_datasets(cfg, normalized=(not cfg['use_unnormalized_data']))
         # Create DataLoaders for train and test sets
-        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=0, pin_memory=pin_memory)
-        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=0, pin_memory=pin_memory)
+        trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=N_CPUS, pin_memory=pin_memory)
+        testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=N_CPUS, pin_memory=pin_memory)
     else:
         trainset, testset, _ = create_datasets(cfg=cfg, normalized=(not cfg['use_unnormalized_data']))
         trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS,

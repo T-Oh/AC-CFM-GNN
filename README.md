@@ -20,6 +20,8 @@ Create and activate it with:
     conda env create -f configurations/local_env.yml
     conda activate AC-CFM-GNN   
 
+
+
 ### Git LFS (required)
 
 This project uses Git LFS for large data files. Install Git LFS: https://git-lfs.github.com/
@@ -31,12 +33,31 @@ After installing, run:
 
 > **Note:** Without Git LFS the repository contains pointer files instead of the actual data files. So without LFS you will have no data to train the models on.
 
----
+### Docker Setup (Alternative)
 
-## Full end-to-end pipeline (GTSF + DP)
+For a containerized environment, the project provides pre-built Docker images for CPU and GPU setups. This ensures reproducibility and simplifies deployment.
 
-From raw data to final training, the project now supports a clear and reproducible pipeline controlled via configuration keywords.
+#### Prerequisites
+- Docker Desktop or Docker Engine
+- For GPU: NVIDIA Container Toolkit (see [NVIDIA Docs](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html))
 
+#### CPU Quickstart
+```bash
+# Build the image
+docker compose build ac-cfm-cpu
+
+# Run end-to-end training
+docker compose up ac-cfm-cpu
+```
+
+#### GPU Quickstart
+```bash
+# Build the GPU image
+docker compose --profile gpu build ac-cfm-gpu
+
+# Run end-to-end training
+docker compose --profile gpu up ac-cfm-gpu
+```
 ### 1) Pipeline control keywords
 
 In `configurations/configuration.json`, use these keywords to control the pipeline flow:

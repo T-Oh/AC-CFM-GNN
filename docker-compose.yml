@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AC-CFM-GNN  –  docker-compose.yml
+#
+# Profiles:
+#   CPU (default) :  docker compose up
+#   GPU           :  docker compose --profile gpu up
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── CPU training ─────────────────────────────────────────────────────────
+  ac-cfm-cpu:
+    build:
+      context: .
+      args:
+        USE_GPU: "0"
+    image: ac-cfm-gnn:cpu
+    container_name: ac-cfm-cpu
+
+    # Mount data and results as volumes so they persist outside the container
+    volumes:
+      - ./raw:/app/raw                                         # raw .mat input files
+      - ./processed:/app/processed                             # normalisierte Daten (Input für Training)
+      - ./normalized:/app/normalized   # Zwischenschritt nach erstem Processing
+      - ./results:/app/results                                 # Training outputs & plots
+      - ./configurations:/app/configurations                   # config (lokal editierbar)
+
+    # Override the command to run the normalization script first if needed:
+    #   docker compose run ac-cfm-cpu python src/scripts/normalize_GTSF.py
+    command: ["python", "src/main.py", "1", "1", "0", "8887"]
+
+    ports:
+      - "8887:8887"   # Ray Tune dashboard
+
+  # ── GPU training (requires NVIDIA Container Toolkit) ─────────────────────
+  ac-cfm-gpu:
+    profiles: ["gpu"]
+    build:
+      context: .
+      args:
+        USE_GPU: "1"
+    image: ac-cfm-gnn:gpu
+    container_name: ac-cfm-gpu
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    volumes:
+      - ./raw:/app/raw
+      - ./processed:/app/processed                             # normalisierte Daten (Input für Training)
+      - ./normalized:/app/normalized   # Zwischenschritt nach erstem Processing
+      - ./results:/app/results
+      - ./configurations:/app/configurations
+
+    # Pass GPU count to main.py  (1 task / 1 CPU / 1 GPU / ray-port)
+    command: ["python", "src/main.py", "1", "1", "1", "8887"]
+
+    ports:
+      - "8887:8887"
