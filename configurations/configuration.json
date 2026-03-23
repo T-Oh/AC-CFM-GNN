@@ -4,14 +4,22 @@
     "dataset::path":    "./",         //Path to the dataset (study needs absolute paths)
 
     /*Data Settings*/
-    "process":              true,     //train, test, predict
-    "normalize":            true,     //Whether to normalize the data (not applicable for LSTM)
-    "data":                 "LSTM", //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
-    "edge_attr":            "Y",    //edge_attr: Y, multi
-    "ls_threshold":         0.0,    //Load shed threshold under which only N_below_threshold samples are collected
-    "N_below_threshold":    1000,   //Number of samples below the load shed threshold
-    "n_scenarios":          1000,     //used only for stormsplit should be larger than the largest ID of used scenarios
-    "max_seq_length":       5,      //Maximum sequence length for LSTM; in case of autoregressive this defines the window size
+    "process":              false,      //train, test, predict
+    "use_unnormalized_data": false,     //If true uses unnormalized data (from processed/)
+    "data":                 "Zhu",     //Data types: AC, LSTM, Zhu, ANGF_Vcf, LDTSF, LDTSF_DC, n-k, Zhu_nobustype, LSTM, Zhu_n_minus_k (for physics informed approach)
+    "edge_attr":            "Y",        //edge_attr: Y, multi
+    "ls_threshold":         0.0,        //Load shed threshold under which only N_below_threshold samples are collected
+    "N_below_threshold":    1000,       //Number of samples below the load shed threshold
+    "n_scenarios":          1000,       //used only for stormsplit should be larger than the largest ID of used scenarios
+    "max_seq_length":       5,          //Maximum sequence length for LSTM; in case of autoregressive this defines the window size
+
+    /*Normalization Settings*/
+    "normalize":            false,               //Whether to normalize the data (not applicable for LSTM)
+    "normalized_dir":       "normalized/",    //Path to the normalized data, by default data in normalized dir is used for training and testing
+    "data_stats_filename":  "data_stats_LSTM",    //Filename for the file in which the data stats (min/max/mean/std) are stored, used for normalization
+    "recalculate_data_stats": false,           //If true the data stats will be recalculated and overwritten, otherwise they will be loaded from file
+    "log_normalize":       false,             //If true applies log normalization to the features
+    "gen_feature_index":     -1,                //Index of the first generator feature (used to skip bus types during normalization if bus types are part of the features), set to -1 for no bus types or no generator features
 
     /*General Run Control*/
     "crossvalidation":  false,     //Crossvalidation not implemented for LSTM

@@ -212,9 +212,7 @@ def _objective(search_space, cfg, device,
         trainloader = create_lstm_dataloader(trainset, batch_size=cfg['train_set::batchsize'], shuffle=True, num_workers=0, pin_memory=pin_memory)
         testloader = create_lstm_dataloader(testset, batch_size=cfg['test_set::batchsize'], shuffle=False, num_workers=0, pin_memory=pin_memory)
     else:
-        trainset, testset = create_datasets(cfg["dataset::path"], cfg=cfg, pre_transform=None,
-                                            stormsplit=cfg['stormsplit'], data_type=cfg['data'],
-                                            edge_attr=cfg['edge_attr'])
+        trainset, testset, _ = create_datasets(cfg=cfg, normalized=(not cfg['use_unnormalized_data']))
         trainloader, testloader, max_seq_length = create_loaders(cfg, trainset, testset, num_workers=N_CPUS,
                                                                  pin_memory=pin_memory, data_type=cfg['data'],
                                                                  task=cfg['task'])

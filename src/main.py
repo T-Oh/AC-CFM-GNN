@@ -50,8 +50,8 @@ if __name__ == "__main__":
     check_config_conflicts(cfg)
 
     # save config in results for reference
-    shutil.copyfile(PATH+"configurations/configuration.json", PATH+"results/configuration.json")
-    logging.basicConfig(filename=PATH+ "results/regression.log", filemode="w", level=logging.INFO)
+    shutil.copyfile(os.path.join(PATH, "configurations/configuration.json"), os.path.join(PATH, "results/configuration.json"))
+    logging.basicConfig(filename=os.path.join(PATH, "results/regression.log"), filemode="w", level=logging.INFO)
 
     # choosing device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 

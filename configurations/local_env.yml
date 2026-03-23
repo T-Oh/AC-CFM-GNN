@@ -1,4 +1,4 @@
-name: AC-CFM-GNN3
+name: AC-CFM-GNN
 channels:
   - pyg
   - pytorch
@@ -8,7 +8,6 @@ channels:
 dependencies:
   - python=3.10
 
-  # Core numerical stack (ALL from conda)
   - numpy<2
   - scipy
   - pandas
@@ -18,7 +17,7 @@ dependencies:
   - numexpr>=2.8.4     # updated to avoid Pandas warning
 
   # PyTorch / PyG (CPU only)
-  - pytorch=*=cpu*     # on Windows, remove '=*=cpu*'
+  - pytorch=*=cpu*     
   - pyg
   - torchmetrics
 
@@ -28,9 +27,9 @@ dependencies:
   - pickleshare
   - pip
 
-  # Pip-only packages (no numeric core!)
+  # Pip-only packages
   - pip:
-      - bayesian-optimization==1.4.3
+      - bayesian-optimization==1.4.3  # needs to be <= v.1.4.3 because of ray conflicts
       - "ray[tune]"
       - seaborn
       - torcheval

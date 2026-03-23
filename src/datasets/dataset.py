@@ -111,7 +111,7 @@ class HurricaneDataset(Dataset):
         #Regular Split 
         if self.stormsplit == 0:   
             for file in self.processed_file_names:
-                if file.startswith('data'):
+                if file.startswith('data') and file.endswith('.pt'):
                     scenario, step = self.get_scenario_step_of_file(file)
                     data_list[idx,:] = [scenario, step]                   
                     idx += 1       
@@ -119,7 +119,7 @@ class HurricaneDataset(Dataset):
         else:   
             test_idx = len(data_list)-1
             for file in self.processed_file_names:           
-                if file.startswith('data'):
+                if file.startswith('data') and file.endswith('.pt'):
                     scenario, step = self.get_scenario_step_of_file(file)
                     if str(scenario).startswith(str(self.stormsplit)):
                         data_list[test_idx,:] = [scenario, step]
